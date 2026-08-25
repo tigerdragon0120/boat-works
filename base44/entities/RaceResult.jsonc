@@ -1,0 +1,60 @@
+{
+  "name": "RaceResult",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "result_1": {
+      "type": "number"
+    },
+    "result_2": {
+      "type": "number"
+    },
+    "result_3": {
+      "type": "number"
+    },
+    "trifecta": {
+      "type": "string"
+    },
+    "is_uichi": {
+      "type": "boolean"
+    },
+    "uichi_combo": {
+      "type": "string"
+    },
+    "payout_trifecta": {
+      "type": "number"
+    },
+    "boat1_grade_class": {
+      "type": "string"
+    },
+    "boat1_national_win_rate": {
+      "type": "number"
+    },
+    "boat1_local_win_rate": {
+      "type": "number"
+    },
+    "boat1_avg_st": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "race_id",
+    "race_date",
+    "venue_code"
+  ]
+}

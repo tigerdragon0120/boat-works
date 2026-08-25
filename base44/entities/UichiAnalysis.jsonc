@@ -1,0 +1,77 @@
+{
+  "name": "UichiAnalysis",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "pre",
+        "day",
+        "final"
+      ]
+    },
+    "similar_count": {
+      "type": "number"
+    },
+    "uichi_hits": {
+      "type": "number"
+    },
+    "appearance_rate": {
+      "type": "number"
+    },
+    "synthetic_odds": {
+      "type": "number"
+    },
+    "expected_value": {
+      "type": "number"
+    },
+    "judgment": {
+      "type": "string",
+      "enum": [
+        "BUY",
+        "WATCH",
+        "SKIP",
+        "PENDING"
+      ]
+    },
+    "boat1_grade": {
+      "type": "string",
+      "enum": [
+        "S",
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    "boat1_score": {
+      "type": "number"
+    },
+    "min_similar_ok": {
+      "type": "boolean"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "race_id"
+  ]
+}

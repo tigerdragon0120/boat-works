@@ -1,0 +1,72 @@
+{
+  "name": "Alert",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pre_appearance_rate": {
+      "type": "number"
+    },
+    "pre_grade": {
+      "type": "string",
+      "enum": [
+        "S",
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "day_appearance_rate": {
+      "type": "number"
+    },
+    "final_judgment": {
+      "type": "string",
+      "enum": [
+        "BUY",
+        "WATCH",
+        "SKIP",
+        "PENDING"
+      ]
+    },
+    "final_expected_value": {
+      "type": "number"
+    },
+    "synthetic_odds": {
+      "type": "number"
+    },
+    "notified": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "resolved",
+        "expired"
+      ]
+    }
+  },
+  "required": [
+    "race_id",
+    "race_date",
+    "venue_code"
+  ]
+}

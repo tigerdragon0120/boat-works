@@ -1,0 +1,79 @@
+{
+  "name": "Race",
+  "type": "object",
+  "properties": {
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "race_name": {
+      "type": "string"
+    },
+    "grade": {
+      "type": "string"
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "time_slot": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "day",
+        "night"
+      ]
+    },
+    "weather": {
+      "type": "string"
+    },
+    "wind_dir": {
+      "type": "string"
+    },
+    "wind_speed": {
+      "type": "number"
+    },
+    "wave_height": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "finished",
+        "cancelled"
+      ]
+    },
+    "result_trifecta": {
+      "type": "string"
+    },
+    "is_uichi": {
+      "type": "boolean"
+    },
+    "payout_trifecta": {
+      "type": "number"
+    },
+    "data_source": {
+      "type": "string"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "race_date",
+    "venue_code",
+    "venue_name",
+    "race_number"
+  ]
+}

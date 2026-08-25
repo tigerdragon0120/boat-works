@@ -1,0 +1,37 @@
+{
+  "name": "AppSettings",
+  "type": "object",
+  "properties": {
+    "buy_threshold": {
+      "type": "number"
+    },
+    "watch_threshold": {
+      "type": "number"
+    },
+    "pre_alert_rate": {
+      "type": "number"
+    },
+    "min_similar_races": {
+      "type": "number"
+    },
+    "analysis_period_months": {
+      "type": "number"
+    },
+    "odds_update_interval": {
+      "type": "number"
+    },
+    "notification_on": {
+      "type": "boolean"
+    },
+    "venues_enabled": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_active_config": {
+      "type": "boolean"
+    }
+  },
+  "required": []
+}

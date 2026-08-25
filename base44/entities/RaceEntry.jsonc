@@ -1,0 +1,110 @@
+{
+  "name": "RaceEntry",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "boat_number": {
+      "type": "number"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "grade_class": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "age": {
+      "type": "number"
+    },
+    "weight": {
+      "type": "number"
+    },
+    "national_win_rate": {
+      "type": "number"
+    },
+    "national_2rate": {
+      "type": "number"
+    },
+    "national_3rate": {
+      "type": "number"
+    },
+    "local_win_rate": {
+      "type": "number"
+    },
+    "local_2rate": {
+      "type": "number"
+    },
+    "local_3rate": {
+      "type": "number"
+    },
+    "c1_win_rate": {
+      "type": "number"
+    },
+    "c1_2rate": {
+      "type": "number"
+    },
+    "c1_3rate": {
+      "type": "number"
+    },
+    "avg_st": {
+      "type": "number"
+    },
+    "f_count": {
+      "type": "number"
+    },
+    "l_count": {
+      "type": "number"
+    },
+    "motor_number": {
+      "type": "number"
+    },
+    "motor_2rate": {
+      "type": "number"
+    },
+    "motor_3rate": {
+      "type": "number"
+    },
+    "boat_number_id": {
+      "type": "number"
+    },
+    "boat_2rate": {
+      "type": "number"
+    },
+    "boat_3rate": {
+      "type": "number"
+    },
+    "season_record": {
+      "type": "string"
+    },
+    "entry_course": {
+      "type": "number"
+    },
+    "exhibition_time": {
+      "type": "number"
+    },
+    "tilt": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "race_id",
+    "boat_number"
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "RacerSnapshot",
+  "type": "object",
+  "properties": {
+    "registration_number": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "snapshot_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "grade_class": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "age": {
+      "type": "number"
+    },
+    "weight": {
+      "type": "number"
+    },
+    "national_win_rate": {
+      "type": "number"
+    },
+    "national_2rate": {
+      "type": "number"
+    },
+    "national_3rate": {
+      "type": "number"
+    },
+    "local_win_rate": {
+      "type": "number"
+    },
+    "local_2rate": {
+      "type": "number"
+    },
+    "local_3rate": {
+      "type": "number"
+    },
+    "avg_st": {
+      "type": "number"
+    },
+    "f_count": {
+      "type": "number"
+    },
+    "l_count": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "registration_number",
+    "snapshot_date"
+  ]
+}

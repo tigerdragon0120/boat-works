@@ -1,0 +1,53 @@
+{
+  "name": "OddsSnapshot",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "initial",
+        "10min",
+        "5min",
+        "3min",
+        "1min",
+        "final"
+      ]
+    },
+    "odds_1_2_5": {
+      "type": "number"
+    },
+    "odds_1_2_6": {
+      "type": "number"
+    },
+    "odds_1_3_5": {
+      "type": "number"
+    },
+    "odds_1_3_6": {
+      "type": "number"
+    },
+    "odds_1_4_5": {
+      "type": "number"
+    },
+    "odds_1_4_6": {
+      "type": "number"
+    },
+    "synthetic_odds": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "race_id",
+    "captured_at"
+  ]
+}

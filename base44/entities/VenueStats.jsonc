@@ -1,0 +1,44 @@
+{
+  "name": "VenueStats",
+  "type": "object",
+  "properties": {
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "c1_win_rate": {
+      "type": "number"
+    },
+    "c2_sashi_rate": {
+      "type": "number"
+    },
+    "c3_makuri_rate": {
+      "type": "number"
+    },
+    "c4_makuri_rate": {
+      "type": "number"
+    },
+    "c5_3rate": {
+      "type": "number"
+    },
+    "c6_3rate": {
+      "type": "number"
+    },
+    "uichi_rate": {
+      "type": "number"
+    },
+    "sample_count": {
+      "type": "number"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "venue_code",
+    "venue_name"
+  ]
+}
