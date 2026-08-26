@@ -143,7 +143,7 @@ export default function Analysis() {
 }
 
 function Card({ label, value, accent = "default" }) {
-  const c = { default: "text-foreground", primary: "text-primary", emerald: "text-emerald-400", amber: "text-amber-400" };
+  const c = { default: "text-foreground", primary: "text-primary", emerald: "text-emerald-600", amber: "text-amber-600" };
   return (
     <div className="rounded-2xl bg-card border border-border p-4">
       <div className="text-[11px] text-muted-foreground tracking-wider">{label}</div>

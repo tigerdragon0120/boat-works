@@ -81,7 +81,7 @@ export default function RaceDetail() {
     return (
       <div className="space-y-3">
         <button onClick={() => nav(-1)} className="text-sm text-muted-foreground flex items-center gap-1"><ArrowLeft className="w-4 h-4" />戻る</button>
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+        <div className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-600">
           <AlertCircle className="w-4 h-4" /> {error || "レースが見つかりません"}
         </div>
       </div>
@@ -126,9 +126,9 @@ export default function RaceDetail() {
               <span className="text-2xl font-bold tracking-tight">{race.venue_name}</span>
               <span className="text-lg text-muted-foreground">{race.race_number}R</span>
               {isOfficial ? (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">LIVE</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">LIVE</span>
               ) : (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 border border-slate-500/30">SAMPLE</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-300">SAMPLE</span>
               )}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">{race.race_name} · {race.grade}</div>
@@ -138,7 +138,7 @@ export default function RaceDetail() {
               <Clock className="w-3.5 h-3.5" /> 締切 <span className="tabular-nums text-foreground font-semibold">{fmtTime(race.deadline)}</span>
             </div>
             {mins != null && (
-              <div className={cn("text-xs mt-1 tabular-nums", mins <= 5 ? "text-amber-400" : "text-muted-foreground")}>
+              <div className={cn("text-xs mt-1 tabular-nums", mins <= 5 ? "text-amber-600" : "text-muted-foreground")}>
                 {mins > 0 ? `最終判定まで ${mins}分` : "締切"}
               </div>
             )}
@@ -151,7 +151,7 @@ export default function RaceDetail() {
         <div className="rounded-2xl bg-card border border-border p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-emerald-400" />
+              <Database className="w-4 h-4 text-emerald-600" />
               <h3 className="text-sm font-bold">実データ取得状況</h3>
             </div>
             <button
@@ -176,8 +176,8 @@ export default function RaceDetail() {
           {fetchMsg && (
             <div className={cn(
               "mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm",
-              fetching === "done" ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-                : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+              fetching === "done" ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
+                : "bg-rose-50 text-rose-700 border border-rose-300"
             )}>
               {fetchMsg}
             </div>
@@ -210,7 +210,7 @@ export default function RaceDetail() {
       </div>
 
       {!analysis?.min_similar_ok && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300 flex items-center gap-2">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-center gap-2">
           <AlertCircle className="w-4 h-4" /> データ不足：類似レースが{settings?.min_similar_races || 30}件未満です。出現率は参考値です。
         </div>
       )}

@@ -14,19 +14,19 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Top header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-md">
+      {/* Top header - ocean blue gradient */}
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-sky-600 via-blue-500 to-cyan-500 shadow-md shadow-blue-500/20">
         <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center ring-1 ring-primary/30">
-              <Waves className="w-5 h-5 text-primary" />
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="relative w-9 h-9 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/40">
+              <Waves className="w-5 h-5 text-white" />
             </div>
             <div className="leading-none">
-              <div className="font-display font-bold tracking-tight text-[15px]">BOAT WORKS</div>
-              <div className="text-[10px] text-muted-foreground tracking-widest">1-234-56</div>
+              <div className="font-display font-bold tracking-tight text-[15px] text-white drop-shadow-sm">BOAT WORKS</div>
+              <div className="text-[10px] text-cyan-100 tracking-widest">ういち買い 1-234-56</div>
             </div>
           </Link>
-          <div className="text-[11px] text-muted-foreground hidden sm:block">ういち買い特化・期待値分析</div>
+          <div className="text-[11px] text-cyan-50 hidden sm:block">期待値分析</div>
         </div>
       </header>
 
@@ -50,7 +50,7 @@ export default function Layout() {
                   active ? "text-primary" : "text-muted-foreground"
                 )}
               >
-                <Icon className={cn("w-5 h-5", active && "drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]")} />
+                <Icon className={cn("w-5 h-5", active && "drop-shadow-[0_0_6px_rgba(14,165,233,0.4)]")} />
                 <span className="text-[10px] font-medium">{n.label}</span>
               </Link>
             );

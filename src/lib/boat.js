@@ -43,20 +43,20 @@ export function venueName(code) {
   return v ? v.name : code;
 }
 
-// 判定色
+// 判定色（ライトテーマ対応）
 export const JUDGMENT_STYLE = {
-  BUY: { bg: "bg-emerald-500", text: "text-emerald-400", ring: "ring-emerald-500/40", label: "BUY", glow: "shadow-emerald-500/30" },
-  WATCH: { bg: "bg-amber-500", text: "text-amber-400", ring: "ring-amber-500/40", label: "WATCH", glow: "shadow-amber-500/30" },
-  SKIP: { bg: "bg-rose-600", text: "text-rose-400", ring: "ring-rose-500/40", label: "SKIP", glow: "shadow-rose-500/30" },
-  PENDING: { bg: "bg-slate-600", text: "text-slate-400", ring: "ring-slate-500/40", label: "判定待ち", glow: "shadow-slate-500/20" },
+  BUY: { bg: "bg-emerald-500", text: "text-emerald-600", ring: "ring-emerald-500/30", label: "BUY", glow: "shadow-emerald-500/20" },
+  WATCH: { bg: "bg-orange-500", text: "text-orange-600", ring: "ring-orange-500/30", label: "WATCH", glow: "shadow-orange-500/20" },
+  SKIP: { bg: "bg-red-500", text: "text-red-600", ring: "ring-red-500/30", label: "SKIP", glow: "shadow-red-500/20" },
+  PENDING: { bg: "bg-slate-400", text: "text-slate-500", ring: "ring-slate-400/30", label: "判定待ち", glow: "shadow-slate-400/20" },
 };
 
 export const GRADE_STYLE = {
-  S: "text-emerald-400 border-emerald-500/50 bg-emerald-500/10",
-  A: "text-sky-400 border-sky-500/50 bg-sky-500/10",
-  B: "text-amber-400 border-amber-500/50 bg-amber-500/10",
-  C: "text-slate-300 border-slate-500/50 bg-slate-500/10",
-  D: "text-rose-400 border-rose-500/50 bg-rose-500/10",
+  S: "text-emerald-700 border-emerald-300 bg-emerald-50",
+  A: "text-sky-700 border-sky-300 bg-sky-50",
+  B: "text-amber-700 border-amber-300 bg-amber-50",
+  C: "text-slate-600 border-slate-300 bg-slate-100",
+  D: "text-rose-700 border-rose-300 bg-rose-50",
 };
 
 // 合成オッズ

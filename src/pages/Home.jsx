@@ -147,7 +147,7 @@ export default function Home() {
   return (
     <div className="space-y-5">
       {error && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+        <div className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-600">
           <AlertCircle className="w-4 h-4" /> データ取得失敗：{error}
         </div>
       )}
@@ -173,8 +173,8 @@ export default function Home() {
         {fetchMsg && (
           <div className={cn(
             "mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm",
-            fetching === "done" ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-              : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+            fetching === "done" ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
+              : "bg-rose-50 text-rose-700 border border-rose-300"
           )}>
             {fetching === "done" ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 mt-0.5 shrink-0" />}
             <span className="break-words">{fetchMsg}</span>
@@ -201,7 +201,7 @@ export default function Home() {
       {/* Alert section */}
       <section>
         <div className="flex items-center gap-2 mb-3">
-          <Bell className="w-4 h-4 text-amber-400" />
+          <Bell className="w-4 h-4 text-amber-500" />
           <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日のういち買いアラート" : "前日ういち買いアラート候補"}</h2>
           <span className="ml-auto text-xs text-muted-foreground">{alertRaces.length}件</span>
         </div>

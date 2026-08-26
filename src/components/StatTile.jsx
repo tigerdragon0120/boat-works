@@ -5,9 +5,9 @@ export default function StatTile({ label, value, unit, accent = "default", sub, 
   const accents = {
     default: "text-foreground",
     primary: "text-primary",
-    emerald: "text-emerald-400",
-    amber: "text-amber-400",
-    rose: "text-rose-400",
+    emerald: "text-emerald-600",
+    amber: "text-amber-600",
+    rose: "text-rose-600",
   };
   return (
     <div className={cn("rounded-2xl bg-card border border-border p-4 flex flex-col gap-1", className)}>

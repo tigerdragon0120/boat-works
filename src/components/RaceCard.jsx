@@ -22,9 +22,9 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
           <span className="text-base font-bold tracking-tight">{race.venue_name}</span>
           <span className="text-sm text-muted-foreground">{race.race_number}R</span>
           {race.data_source === "official" ? (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">LIVE</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">LIVE</span>
           ) : (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 border border-slate-500/30">SAMPLE</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-300">SAMPLE</span>
           )}
           {analysis?.boat1_grade && (
             <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded border", GRADE_STYLE[analysis.boat1_grade])}>
@@ -72,7 +72,7 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
         </div>
         <div className="rounded-xl bg-background/50 px-3 py-2">
           <div className="text-[10px] text-muted-foreground tracking-wider">期待値</div>
-          <div className="text-xl font-bold tabular-nums text-emerald-400">{showOdds ? fmtNum(analysis.expected_value, 0) + "%" : "—"}</div>
+          <div className="text-xl font-bold tabular-nums text-emerald-600">{showOdds ? fmtNum(analysis.expected_value, 0) + "%" : "—"}</div>
         </div>
       </div>
 
