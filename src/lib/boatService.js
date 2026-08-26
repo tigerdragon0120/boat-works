@@ -373,6 +373,85 @@ export async function retryErrorFetches(onProgress, abortRef) {
   return { total, processed, success, failed };
 }
 
+// 最終回収モード：完全直列・1場ずつ・30sサーバータイムアウト・35sクライアントタイムアウト・最大3回リトライ（5s/8s待機）
+// 残りエラーを安全に0件へ近づけるための低負荷・確実再取得
+export async function retryErrorFetchesFinal(onProgress, abortRef) {
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const errorRecords = allProgress.filter(p => p.result_fetch_status === "error" && p.venue_code !== "00");
+
+  if (errorRecords.length === 0) {
+    return { total: 0, processed: 0, success: 0, failed: 0 };
+  }
+
+  // 日付順でソート（古い順）
+  errorRecords.sort((a, b) => a.race_date.localeCompare(b.race_date));
+
+  const total = errorRecords.length;
+  let processed = 0, success = 0, failed = 0;
+
+  for (const p of errorRecords) {
+    if (abortRef?.aborted) break;
+
+    const venueName = p.venue_name || p.venue_code;
+    let lastError = null;
+    let succeeded = false;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (abortRef?.aborted) break;
+
+      if (onProgress) onProgress({
+        total, processed, success, failed,
+        currentDate: p.race_date,
+        currentVenue: venueName,
+        currentAttempt: attempt,
+        maxAttempts: 3,
+        remaining: total - processed,
+        status: "loading",
+      });
+
+      try {
+        const res = await Promise.race([
+          base44.functions.invoke("fetchHistoricalResults", {
+            race_date: p.race_date,
+            jcd: String(p.venue_code).padStart(2, "0"),
+            timeout_ms: 30000,
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("client_timeout")), 35000))
+        ]);
+        if (res.data?.status === "success" || res.data?.status === "no_races") {
+          succeeded = true;
+          break;
+        }
+        lastError = res.data?.message || res.data?.status || "error";
+      } catch (e) {
+        lastError = e?.message || "error";
+      }
+
+      // リトライ前待機: 1回目失敗後5s、2回目失敗後8s
+      if (attempt < 3) {
+        const waitMs = attempt === 1 ? 5000 : 8000;
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    }
+
+    processed++;
+    if (succeeded) success++;
+    else failed++;
+
+    if (onProgress) onProgress({
+      total, processed, success, failed,
+      currentDate: p.race_date,
+      currentVenue: venueName,
+      currentAttempt: 3,
+      maxAttempts: 3,
+      remaining: total - processed,
+      status: succeeded ? "done" : "failed",
+    });
+  }
+
+  return { total, processed, success, failed };
+}
+
 // エラー場数を取得
 export async function getErrorFetchCount() {
   const all = await base44.entities.FetchProgress.list("-processed_at", 5000);

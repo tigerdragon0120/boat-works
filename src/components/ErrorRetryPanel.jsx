@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AlertCircle, Play, Square, RefreshCw } from "lucide-react";
-import { retryErrorFetches, getErrorFetchCount } from "@/lib/boatService";
+import { AlertCircle, Play, Square, RefreshCw, Shield } from "lucide-react";
+import { retryErrorFetches, retryErrorFetchesFinal, getErrorFetchCount } from "@/lib/boatService";
 import { cn } from "@/lib/utils";
 
 export default function ErrorRetryPanel() {
@@ -8,6 +8,9 @@ export default function ErrorRetryPanel() {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const abortRef = useRef({ aborted: false });
+  const finalAbortRef = useRef({ aborted: false });
+  const [finalRunning, setFinalRunning] = useState(false);
+  const [finalProgress, setFinalProgress] = useState(null);
 
   const loadCount = useCallback(async () => {
     try {
@@ -33,6 +36,22 @@ export default function ErrorRetryPanel() {
   };
 
   const stop = () => { abortRef.current.aborted = true; };
+
+  const runFinal = async () => {
+    finalAbortRef.current.aborted = false;
+    setFinalRunning(true);
+    setFinalProgress({ total: errorCount || 0, processed: 0, success: 0, failed: 0, currentDate: "", currentVenue: "", currentAttempt: 0, maxAttempts: 3, remaining: errorCount || 0, status: "start" });
+    try {
+      await retryErrorFetchesFinal((p) => {
+        setFinalProgress({ ...p });
+      }, finalAbortRef);
+      await loadCount();
+    } finally {
+      setFinalRunning(false);
+    }
+  };
+
+  const stopFinal = () => { finalAbortRef.current.aborted = true; };
 
   const pct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
 
@@ -99,6 +118,63 @@ export default function ErrorRetryPanel() {
             <RefreshCw className="w-3.5 h-3.5" /> 件数再確認
           </button>
         )}
+      </div>
+
+      {/* 最終回収モード */}
+      <div className="border-t border-border pt-4 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Shield className="w-4 h-4 text-amber-600" />
+          <h4 className="text-sm font-bold">最終回収モード</h4>
+          <span className="text-[11px] text-muted-foreground">完全直列・30秒タイムアウト・最大3回リトライ（5s/8s待機）</span>
+        </div>
+
+        {finalProgress && (finalRunning || finalProgress.processed > 0) && (() => {
+          const fPct = finalProgress.total > 0 ? Math.round((finalProgress.processed / finalProgress.total) * 100) : 0;
+          return (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <Stat label="開始時エラー件数" value={finalProgress.total} />
+                <Stat label="処理済み" value={finalProgress.processed} accent="primary" />
+                <Stat label="成功" value={finalProgress.success} accent="emerald" />
+                <Stat label="失敗" value={finalProgress.failed} accent="rose" />
+                <Stat label="残り" value={finalProgress.remaining} />
+                <Stat label="進捗" value={`${fPct}%`} accent="primary" />
+              </div>
+              <div className="h-2.5 rounded-full bg-background overflow-hidden">
+                <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${fPct}%` }} />
+              </div>
+              {finalProgress.currentDate && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 space-y-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">日付:</span>
+                    <span className="font-bold tabular-nums">{finalProgress.currentDate}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">場:</span>
+                    <span className="font-semibold">{finalProgress.currentVenue}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">試行回数:</span>
+                    <span className="font-bold text-amber-600 tabular-nums">{finalProgress.currentAttempt}/{finalProgress.maxAttempts}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        <div className="flex items-center gap-2">
+          {finalRunning ? (
+            <button onClick={stopFinal} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white">
+              <Square className="w-4 h-4" /> 停止
+            </button>
+          ) : (
+            <button onClick={runFinal} disabled={!errorCount || errorCount === 0 || running}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+              <Play className="w-4 h-4" /> 最終回収モード開始
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
