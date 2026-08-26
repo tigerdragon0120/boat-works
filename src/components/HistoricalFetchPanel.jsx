@@ -72,11 +72,12 @@ export default function HistoricalFetchPanel() {
     setLog([]);
     setSpeed(null);
     speedSamplesRef.current = [];
-    setProgress({ current: 0, total: 0, date: "", venueName: "", status: "start", errors: 0, totalRaces: 0, totalUichi: 0 });
+    setProgress({ phase: "start", currentDate: "", completedDays: 0, totalDays: 0, current: 0, total: 0, venueName: "", status: "start", errors: 0, totalRaces: 0, totalUichi: 0 });
     try {
       await fetchHistoricalRange(startDate, endDate, (p) => {
         setProgress({
-          current: p.current, total: p.total, date: p.date, venueName: p.venue?.name || "",
+          phase: p.phase, currentDate: p.currentDate, completedDays: p.completedDays, totalDays: p.totalDays,
+          current: p.current, total: p.total, venueName: p.venueName || "",
           status: p.status, venueStatus: p.venueStatus, errors: p.errors,
           totalRaces: p.totalRaces, totalUichi: p.totalUichi,
         });
@@ -192,25 +193,42 @@ export default function HistoricalFetchPanel() {
         );
       })()}
 
-      {/* Stage 1 Progress */}
-      {progress && progress.total > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              {running && progress.date ? `${progress.date} ${progress.venueName} ${progress.status === "loading" ? "取得中…" : "処理中"}` : "処理状況"}
-            </span>
-            <span className="tabular-nums font-semibold">{progress.current}/{progress.total}場 ({pct}%)</span>
+      {/* Stage 1 Progress - 日単位主表示 */}
+      {progress && (running || progress.totalDays > 0) && progress.totalDays > 0 && (() => {
+        const dayPct = progress.totalDays > 0 ? Math.round((progress.completedDays / progress.totalDays) * 100) : 0;
+        const venuePct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+        const phaseText = progress.phase === "venue_discovery"
+          ? "開催場一覧取得中…"
+          : progress.phase === "result_fetch" && progress.status === "loading"
+          ? `${progress.venueName} 処理中`
+          : progress.phase === "day_complete"
+          ? "完了"
+          : progress.venueName || "処理中";
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground truncate">
+                {progress.currentDate ? `${progress.currentDate} ${phaseText}` : "処理状況"}
+              </span>
+              <span className="tabular-nums font-bold text-primary whitespace-nowrap">{progress.completedDays}/{progress.totalDays}日 ({dayPct}%)</span>
+            </div>
+            <div className="h-2.5 rounded-full bg-background overflow-hidden">
+              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${dayPct}%` }} />
+            </div>
+            {progress.total > 0 && (
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>開催場進捗</span>
+                <span className="tabular-nums">{progress.current}/{progress.total}場 ({venuePct}%)</span>
+              </div>
+            )}
+            <div className="flex gap-4 text-xs text-muted-foreground">
+              <span>保存レース <span className="text-foreground font-semibold tabular-nums">{progress.totalRaces}</span></span>
+              <span>ういち的中 <span className="text-emerald-600 font-semibold tabular-nums">{progress.totalUichi}</span></span>
+              <span>エラー <span className="text-rose-600 font-semibold tabular-nums">{progress.errors}</span></span>
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-background overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <span>保存レース <span className="text-foreground font-semibold tabular-nums">{progress.totalRaces}</span></span>
-            <span>ういち的中 <span className="text-emerald-600 font-semibold tabular-nums">{progress.totalUichi}</span></span>
-            <span>エラー <span className="text-rose-600 font-semibold tabular-nums">{progress.errors}</span></span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Speed display */}
       {(running || speed) && (
@@ -250,11 +268,11 @@ export default function HistoricalFetchPanel() {
             <SummaryCard label="エラー件数" value={summary.errorCount} accent="rose" />
             <SummaryCard label="最終処理日時" value={summary.lastProcessed ? new Date(summary.lastProcessed).toLocaleString("ja-JP", { hour12: false }) : "—"} small />
           </div>
-          {(running || (progress?.date && progress.total > 0)) && (
+          {(running || (progress?.currentDate && progress.totalDays > 0)) && (
             <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 flex items-center gap-3 text-xs">
               <Clock className="w-3.5 h-3.5 text-primary animate-pulse" />
               <span className="text-muted-foreground">処理中:</span>
-              <span className="font-bold text-primary tabular-nums">{progress?.date || "—"}</span>
+              <span className="font-bold text-primary tabular-nums">{progress?.currentDate || "—"}</span>
               <span className="text-muted-foreground">{progress?.venueName || "—"}</span>
             </div>
           )}
