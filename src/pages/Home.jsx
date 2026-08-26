@@ -1,14 +1,13 @@
 import { useEffect, useState, useMemo } from "react";
-import { Bell, Loader2, AlertCircle, CalendarClock } from "lucide-react";
+import { Bell, Loader2, AlertCircle, CalendarClock, CheckCircle2 } from "lucide-react";
 import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
-  getAlerts, analyzeRacePure, getAllResults, fetchOfficialRace,
+  getAlerts, analyzeRacePure, getAllResults, autoFetchTodayRaces,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
-import { Download, CheckCircle2, XCircle, Loader2 as Spinner } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function dateStr(offset = 0) {
@@ -28,28 +27,7 @@ export default function Home() {
   const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [tick, setTick] = useState(0);
-  const [fetching, setFetching] = useState(null);
-  const [fetchMsg, setFetchMsg] = useState(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  const handleFetchTokuyama = async () => {
-    setFetching("loading");
-    setFetchMsg(null);
-    try {
-      const res = await fetchOfficialRace("2026-08-26", "18", 1);
-      if (res?.status === "success") {
-        setFetching("done");
-        setFetchMsg(`取得成功：${res.entries}艇・オッズ${res.odds_count}通り・合成${fmtNum(res.synthetic_odds, 2)}倍`);
-        setReloadKey((k) => k + 1);
-      } else {
-        setFetching("error");
-        setFetchMsg(res?.message || "実データ取得失敗");
-      }
-    } catch (e) {
-      setFetching("error");
-      setFetchMsg(e?.message || "実データ取得失敗");
-    }
-  };
+  const [autoFetchState, setAutoFetchState] = useState(null); // null|loading|done|error|no_venues
 
   useEffect(() => {
     let m = true;
@@ -58,6 +36,16 @@ export default function Home() {
       setError(null);
       try {
         await seedIfNeeded();
+        // 本日の開催データを自動取得（公式サイト・非同期・軽量スケジュールのみ）
+        if (tab === "today") {
+          setAutoFetchState("loading");
+          try {
+            const af = await autoFetchTodayRaces();
+            setAutoFetchState(af.status === "success" ? "done" : af.status);
+          } catch {
+            setAutoFetchState("error");
+          }
+        }
         const [s, past] = await Promise.all([getSettings(), getAllResults()]);
         if (!m) return;
         setSettings(s);
@@ -89,7 +77,7 @@ export default function Home() {
       }
     })();
     return () => { m = false; };
-  }, [tab, reloadKey]);
+  }, [tab]);
 
   // countdown ticker
   useEffect(() => {
@@ -152,35 +140,22 @@ export default function Home() {
         </div>
       )}
 
-      {/* 実データ取得（検証用） */}
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-bold flex items-center gap-2">
-              <Download className="w-4 h-4 text-primary" /> 徳山 1R 実データ取得
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">公式サイトから出走表＋3連単オッズを取得（2026-08-26）</div>
-          </div>
-          <button
-            onClick={handleFetchTokuyama}
-            disabled={fetching === "loading"}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
-          >
-            {fetching === "loading" ? <Spinner className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {fetching === "loading" ? "取得中…" : "取得"}
-          </button>
+      {/* 本日開催データ自動取得状況 */}
+      {autoFetchState === "loading" && (
+        <div className="flex items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700">
+          <Loader2 className="w-4 h-4 animate-spin" /> 本日の開催データを自動取得中…
         </div>
-        {fetchMsg && (
-          <div className={cn(
-            "mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm",
-            fetching === "done" ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
-              : "bg-rose-50 text-rose-700 border border-rose-300"
-          )}>
-            {fetching === "done" ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 mt-0.5 shrink-0" />}
-            <span className="break-words">{fetchMsg}</span>
-          </div>
-        )}
-      </div>
+      )}
+      {autoFetchState === "done" && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <CheckCircle2 className="w-4 h-4" /> 本日の開催データを取得・キャッシュしました
+        </div>
+      )}
+      {(autoFetchState === "error" || autoFetchState === "no_venues") && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          <AlertCircle className="w-4 h-4" /> {autoFetchState === "no_venues" ? "本日は開催がありません" : "開催データ自動取得に失敗しました（再読込で再試行）"}
+        </div>
+      )}
 
       {/* 今日｜明日 toggle */}
       <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-card border border-border">

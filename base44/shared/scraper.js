@@ -161,6 +161,28 @@ export function parseDailyVenueList(html) {
   return Array.from(jcds).sort();
 }
 
+// 1日のレース一覧パース（raceindexページから各レース番号と締切時刻を抽出）
+// raceindex?jcd=XX&hd=YYYYMMDD のページ構造:
+//   <tr> ... <a href="...racelist?rno=1&jcd=18&hd=...">1R</a> ... >08:40< ... </tr>
+export function parseDaySchedule(html, raceDate) {
+  const races = [];
+  const seen = new Set();
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+  let rowMatch;
+  while ((rowMatch = rowRe.exec(html)) !== null) {
+    const row = rowMatch[1];
+    const rnoMatch = row.match(/racelist\?rno=(\d+)/);
+    if (!rnoMatch) continue;
+    const raceNumber = parseInt(rnoMatch[1], 10);
+    if (seen.has(raceNumber)) continue;
+    seen.add(raceNumber);
+    const timeMatch = row.match(/>\s*(\d{2}:\d{2})\s*</);
+    const deadline = timeMatch ? `${raceDate}T${timeMatch[1]}:00+09:00` : null;
+    races.push({ race_number: raceNumber, deadline });
+  }
+  return races;
+}
+
 // 結果一覧ページパース（1日1場分の全レース結果）
 // 3連単組合わせと払戻金を抽出
 export function parseResultList(html) {

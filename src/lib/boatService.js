@@ -375,6 +375,49 @@ export async function updateSettings(id, data) {
   return base44.entities.AppSettings.update(id, data);
 }
 
+// 1日分の開催スケジュール取得（軽量・raceindexページから締切時刻のみ）
+export async function fetchDaySchedule(raceDate, jcd) {
+  const res = await base44.functions.invoke("fetchDaySchedule", {
+    race_date: raceDate,
+    jcd: String(jcd).padStart(2, "0"),
+  });
+  return res.data;
+}
+
+// 本日の開催データを自動取得・キャッシュ（公式サイト）
+// 1. fetchDailyVenues で本日の開催場一覧を取得
+// 2. 各場の fetchDaySchedule でレース一覧（番号・締切）を取得してRace保存
+// 3. 出走表・オッズは個別レース画面でon-demand取得
+export async function autoFetchTodayRaces() {
+  const today = todayStr(0);
+  let activeJcds = [];
+  try {
+    activeJcds = await getDailyVenues(today);
+  } catch {
+    return { status: "error", message: "開催場一覧取得失敗", venues: 0, races: 0 };
+  }
+  if (!activeJcds.length) return { status: "no_venues", venues: 0, races: 0 };
+
+  const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+  let totalRaces = 0;
+  const results = [];
+  for (const jcd of activeJcds) {
+    const v = allVenues.find((x) => x.jcd === jcd);
+    try {
+      const res = await fetchDaySchedule(today, jcd);
+      if (res?.status === "success") {
+        totalRaces += res.races || 0;
+        results.push({ jcd, name: v?.name || jcd, status: "success", races: res.races });
+      } else {
+        results.push({ jcd, name: v?.name || jcd, status: res?.status || "skip", races: 0 });
+      }
+    } catch (e) {
+      results.push({ jcd, name: v?.name || jcd, status: "error", races: 0 });
+    }
+  }
+  return { status: "success", venues: activeJcds.length, races: totalRaces, results };
+}
+
 // 公式サイト実データ取得（バックエンド関数経由）
 export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
   const res = await base44.functions.invoke("fetchRaceData", {
