@@ -4,10 +4,11 @@ import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
-  getAlerts, analyzeRacePure, getAllResults,
+  getAlerts, analyzeRacePure, getAllResults, fetchOfficialRace,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
-import { fmtPct, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
+import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
+import { Download, CheckCircle2, XCircle, Loader2 as Spinner } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function dateStr(offset = 0) {

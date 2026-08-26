@@ -353,3 +353,13 @@ export async function getAllAnalyses() {
 export async function updateSettings(id, data) {
   return base44.entities.AppSettings.update(id, data);
 }
+
+// 公式サイト実データ取得（バックエンド関数経由）
+export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
+  const res = await base44.functions.invoke("fetchRaceData", {
+    race_date: raceDate,
+    jcd: String(jcd).padStart(2, "0"),
+    race_number: Number(raceNumber),
+  });
+  return res.data;
+}

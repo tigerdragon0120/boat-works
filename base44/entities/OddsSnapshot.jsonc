@@ -44,6 +44,9 @@
     },
     "synthetic_odds": {
       "type": "number"
+    },
+    "all_trifecta_odds": {
+      "type": "object"
     }
   },
   "required": [

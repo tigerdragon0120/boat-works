@@ -63,9 +63,21 @@
       "type": "number"
     },
     "data_source": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "official",
+        "sample"
+      ]
     },
     "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries_fetched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "odds_fetched_at": {
       "type": "string",
       "format": "date-time"
     }

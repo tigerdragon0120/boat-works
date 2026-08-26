@@ -21,6 +21,11 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
         <div className="flex items-center gap-2">
           <span className="text-base font-bold tracking-tight">{race.venue_name}</span>
           <span className="text-sm text-muted-foreground">{race.race_number}R</span>
+          {race.data_source === "official" ? (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">LIVE</span>
+          ) : (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 border border-slate-500/30">SAMPLE</span>
+          )}
           {analysis?.boat1_grade && (
             <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded border", GRADE_STYLE[analysis.boat1_grade])}>
               1号 {analysis.boat1_grade}
