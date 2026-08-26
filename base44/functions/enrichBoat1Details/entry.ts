@@ -29,12 +29,24 @@ export default async function(req) {
     const venueName = VENUE_NAMES[jcd] || jcd;
     const now = new Date().toISOString();
 
-    // FetchProgress を processing に更新
+    // FetchProgress を processing に更新（重複整理付き）
     const existingProgress = await base44.asServiceRole.entities.FetchProgress.filter({
       race_date: raceDate, venue_code: jcd
     });
     let progressId;
-    if (existingProgress.length > 0) {
+    if (existingProgress.length > 1) {
+      // 重複FetchProgress: 最新1件を残し残り削除
+      const sorted = [...existingProgress].sort((a, b) =>
+        (b.processed_at || "").localeCompare(a.processed_at || "")
+      );
+      progressId = sorted[0].id;
+      for (let i = 1; i < sorted.length; i++) {
+        await base44.asServiceRole.entities.FetchProgress.delete(sorted[i].id);
+      }
+      await base44.asServiceRole.entities.FetchProgress.update(progressId, {
+        detail_fetch_status: "processing", detail_processed_at: now
+      });
+    } else if (existingProgress.length === 1) {
       await base44.asServiceRole.entities.FetchProgress.update(existingProgress[0].id, {
         detail_fetch_status: "processing", detail_processed_at: now
       });
