@@ -12,8 +12,6 @@ const RESULT_BASE = "https://boatrace.jp/owpc/pc/race";
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ status: "error", message: "認証が必要です" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const raceDate = body.race_date;
@@ -27,60 +25,66 @@ export default async function(req) {
     const venueName = VENUE_NAMES[jcd] || jcd;
     const now = new Date().toISOString();
 
-    // FetchProgress を processing に更新
-    const existingProgress = await base44.asServiceRole.entities.FetchProgress.filter({
-      race_date: raceDate, venue_code: jcd
-    });
-    const prevDetail = existingProgress[0]?.detail_fetch_status || "pending";
-    const progressData = {
-      race_date: raceDate, venue_code: jcd, venue_name: venueName,
-      result_fetch_status: "processing",
-      status: "processing",
-      detail_fetch_status: prevDetail,
-      processed_at: now,
-      result_processed_at: now,
-    };
-    let progressId;
-    if (existingProgress.length > 0) {
-      await base44.asServiceRole.entities.FetchProgress.update(existingProgress[0].id, progressData);
-      progressId = existingProgress[0].id;
-    } else {
-      const p = await base44.asServiceRole.entities.FetchProgress.create(progressData);
-      progressId = p.id;
-    }
-
-    // 1. 結果一覧ページ取得（1リクエストのみ・第1段階）
+    // 並列化: FetchProgress取得 + 既存RaceResult取得 + 結果一覧HTTP取得を同時実行
     const resultListUrl = `${RESULT_BASE}/resultlist?jcd=${jcd}&hd=${hd}`;
-    const rlRes = await fetch(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const [existingProgress, existing, rlRes] = await Promise.all([
+      base44.asServiceRole.entities.FetchProgress.filter({
+        race_date: raceDate, venue_code: jcd
+      }),
+      base44.asServiceRole.entities.RaceResult.filter({
+        race_date: raceDate, venue_code: jcd, data_source: "official"
+      }),
+      fetch(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }),
+    ]);
+
+    const progressId = existingProgress[0]?.id;
+    const prevDetail = existingProgress[0]?.detail_fetch_status || "pending";
+
     if (!rlRes.ok) {
-      await base44.asServiceRole.entities.FetchProgress.update(progressId, {
-        result_fetch_status: "error", status: "error",
-        error_msg: `結果一覧取得失敗 HTTP ${rlRes.status}`, result_processed_at: now
-      });
+      if (progressId) {
+        await base44.asServiceRole.entities.FetchProgress.update(progressId, {
+          result_fetch_status: "error", status: "error",
+          error_msg: `結果一覧取得失敗 HTTP ${rlRes.status}`, result_processed_at: now
+        });
+      }
       return Response.json({ status: "error", message: `結果一覧取得失敗 HTTP ${rlRes.status}` }, { status: 502 });
     }
     const rlHtml = await rlRes.text();
     if (rlHtml.includes("予期せぬエラーが発生しました") || rlHtml.includes("データがありません")) {
-      await base44.asServiceRole.entities.FetchProgress.update(progressId, {
-        result_fetch_status: "no_races", status: "no_races",
-        race_count: 0, uichi_hits: 0, result_processed_at: now
-      });
+      if (progressId) {
+        await base44.asServiceRole.entities.FetchProgress.update(progressId, {
+          result_fetch_status: "no_races", status: "no_races",
+          race_count: 0, uichi_hits: 0, result_processed_at: now
+        });
+      } else {
+        await base44.asServiceRole.entities.FetchProgress.create({
+          race_date: raceDate, venue_code: jcd, venue_name: venueName,
+          result_fetch_status: "no_races", status: "no_races",
+          detail_fetch_status: prevDetail, race_count: 0, uichi_hits: 0,
+          processed_at: now, result_processed_at: now,
+        });
+      }
       return Response.json({ status: "no_races", races: 0 });
     }
 
     const raceResults = parseResultList(rlHtml);
     if (raceResults.length === 0) {
-      await base44.asServiceRole.entities.FetchProgress.update(progressId, {
-        result_fetch_status: "no_races", status: "no_races",
-        race_count: 0, uichi_hits: 0, result_processed_at: now
-      });
+      if (progressId) {
+        await base44.asServiceRole.entities.FetchProgress.update(progressId, {
+          result_fetch_status: "no_races", status: "no_races",
+          race_count: 0, uichi_hits: 0, result_processed_at: now
+        });
+      } else {
+        await base44.asServiceRole.entities.FetchProgress.create({
+          race_date: raceDate, venue_code: jcd, venue_name: venueName,
+          result_fetch_status: "no_races", status: "no_races",
+          detail_fetch_status: prevDetail, race_count: 0, uichi_hits: 0,
+          processed_at: now, result_processed_at: now,
+        });
+      }
       return Response.json({ status: "no_races", races: 0 });
     }
 
-    // 2. 既存RaceResultを取得（upsert・重複防止）
-    const existing = await base44.asServiceRole.entities.RaceResult.filter({
-      race_date: raceDate, venue_code: jcd, data_source: "official"
-    });
     const existingMap = {};
     for (const e of existing) existingMap[e.race_number] = e;
 
@@ -124,14 +128,23 @@ export default async function(req) {
     const uichiHits = raceResults.filter((r) => UICHI_COMBOS.includes(r.trifecta)).length;
 
     // 3. FetchProgress を done に更新（第1段階完了）
-    await base44.asServiceRole.entities.FetchProgress.update(progressId, {
+    const progressUpdate = {
       result_fetch_status: "done", status: "done",
       race_count: totalRaces,
       uichi_hits: uichiHits,
       error_msg: null,
       result_processed_at: now,
       processed_at: now,
-    });
+    };
+    if (progressId) {
+      await base44.asServiceRole.entities.FetchProgress.update(progressId, progressUpdate);
+    } else {
+      await base44.asServiceRole.entities.FetchProgress.create({
+        race_date: raceDate, venue_code: jcd, venue_name: venueName,
+        detail_fetch_status: prevDetail,
+        ...progressUpdate,
+      });
+    }
 
     return Response.json({
       status: "success",

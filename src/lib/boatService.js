@@ -327,27 +327,42 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
   const dates = enumerateDates(startDate, endDate);
   const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
 
-  // 各日の開催場一覧を取得して作業計画を作成
+  // FetchProgressを一括取得（日付ごとの個別クエリを回避）
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const progressByDate = {};
+  for (const p of allProgress) {
+    if (!progressByDate[p.race_date]) progressByDate[p.race_date] = [];
+    progressByDate[p.race_date].push(p);
+  }
+
+  // 各日の開催場一覧を5日並列で取得して作業計画を作成
   const dayPlans = [];
   let total = 0;
-  for (const date of dates) {
+  for (let di = 0; di < dates.length; di += 5) {
     if (abortRef?.aborted) return { aborted: true, current: 0, total, errors: 0, totalRaces: 0, totalUichi: 0 };
-    let activeVenues = [];
-    try {
-      const jcds = await getDailyVenues(date);
-      activeVenues = jcds.map((jcd) => allVenues.find((v) => v.jcd === jcd)).filter(Boolean);
-    } catch {
-      activeVenues = allVenues;
+    const dateBatch = dates.slice(di, di + 5);
+    const venueResults = await Promise.all(dateBatch.map(async (date) => {
+      try {
+        const jcds = await getDailyVenues(date);
+        return { date, jcds };
+      } catch {
+        return { date, jcds: null };
+      }
+    }));
+    for (const { date, jcds } of venueResults) {
+      const activeVenues = jcds
+        ? jcds.map((jcd) => allVenues.find((v) => v.jcd === jcd)).filter(Boolean)
+        : allVenues;
+      const dayProgress = progressByDate[date] || [];
+      const doneSet = new Set(
+        dayProgress.filter((p) =>
+          (p.result_fetch_status === "done" || p.result_fetch_status === "no_races") ||
+          (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
+        ).map((p) => p.venue_code)
+      );
+      dayPlans.push({ date, activeVenues, doneSet });
+      total += activeVenues.length;
     }
-    const dayProgress = await base44.entities.FetchProgress.filter({ race_date: date });
-    const doneSet = new Set(
-      dayProgress.filter((p) =>
-        (p.result_fetch_status === "done" || p.result_fetch_status === "no_races") ||
-        (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
-      ).map((p) => p.venue_code)
-    );
-    dayPlans.push({ date, activeVenues, doneSet });
-    total += activeVenues.length;
   }
 
   let current = 0, errors = 0, totalRaces = 0, totalUichi = 0;
@@ -399,17 +414,32 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
   return { current, total, errors, totalRaces, totalUichi };
 }
 
-// 第2段階: 1号艇詳細補完（期間一括・直近優先）
+// 第2段階: 1号艇詳細補完（期間一括・優先順位付き）
+// 優先順位: 1.直近30日 2.ういち的中レース 3.残り
 export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, abortRef) {
   const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
   const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate);
   const doneResults = inRange.filter((p) =>
     p.result_fetch_status === "done" || (!p.result_fetch_status && p.status === "done")
   );
-  // 詳細未補完のものを抽出（直近日付優先 = processed_at降順）
   const pending = doneResults.filter((p) =>
     p.detail_fetch_status !== "done" && p.detail_fetch_status !== "skip"
   );
+
+  // 優先順位ソート: 1.直近30日 2.ういち的中 3.残り（同日内はういち的中優先）
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+  pending.sort((a, b) => {
+    const aRecent = a.race_date >= thirtyDaysAgo ? 0 : 1;
+    const bRecent = b.race_date >= thirtyDaysAgo ? 0 : 1;
+    if (aRecent !== bRecent) return aRecent - bRecent;
+    // 同グループ内は日付降順（新しい順）
+    if (a.race_date !== b.race_date) return b.race_date.localeCompare(a.race_date);
+    // 同日内はういち的中優先
+    const aUichi = (a.uichi_hits || 0) > 0 ? 0 : 1;
+    const bUichi = (b.uichi_hits || 0) > 0 ? 0 : 1;
+    return aUichi - bUichi;
+  });
 
   let current = 0, total = pending.length, enriched = 0, errors = 0;
   for (const p of pending) {
