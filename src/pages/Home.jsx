@@ -28,6 +28,28 @@ export default function Home() {
   const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [tick, setTick] = useState(0);
+  const [fetching, setFetching] = useState(null);
+  const [fetchMsg, setFetchMsg] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const handleFetchTokuyama = async () => {
+    setFetching("loading");
+    setFetchMsg(null);
+    try {
+      const res = await fetchOfficialRace("2026-08-26", "18", 1);
+      if (res?.status === "success") {
+        setFetching("done");
+        setFetchMsg(`取得成功：${res.entries}艇・オッズ${res.odds_count}通り・合成${fmtNum(res.synthetic_odds, 2)}倍`);
+        setReloadKey((k) => k + 1);
+      } else {
+        setFetching("error");
+        setFetchMsg(res?.message || "実データ取得失敗");
+      }
+    } catch (e) {
+      setFetching("error");
+      setFetchMsg(e?.message || "実データ取得失敗");
+    }
+  };
 
   useEffect(() => {
     let m = true;
@@ -67,7 +89,7 @@ export default function Home() {
       }
     })();
     return () => { m = false; };
-  }, [tab]);
+  }, [tab, reloadKey]);
 
   // countdown ticker
   useEffect(() => {
@@ -129,6 +151,36 @@ export default function Home() {
           <AlertCircle className="w-4 h-4" /> データ取得失敗：{error}
         </div>
       )}
+
+      {/* 実データ取得（検証用） */}
+      <div className="rounded-2xl bg-card border border-border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold flex items-center gap-2">
+              <Download className="w-4 h-4 text-primary" /> 徳山 1R 実データ取得
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">公式サイトから出走表＋3連単オッズを取得（2026-08-26）</div>
+          </div>
+          <button
+            onClick={handleFetchTokuyama}
+            disabled={fetching === "loading"}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
+          >
+            {fetching === "loading" ? <Spinner className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {fetching === "loading" ? "取得中…" : "取得"}
+          </button>
+        </div>
+        {fetchMsg && (
+          <div className={cn(
+            "mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm",
+            fetching === "done" ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+              : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+          )}>
+            {fetching === "done" ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 mt-0.5 shrink-0" />}
+            <span className="break-words">{fetchMsg}</span>
+          </div>
+        )}
+      </div>
 
       {/* 今日｜明日 toggle */}
       <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-card border border-border">

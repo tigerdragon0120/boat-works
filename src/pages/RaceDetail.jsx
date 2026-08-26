@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Clock, Loader2, AlertCircle, History, Gauge } from "lucide-react";
+import { ArrowLeft, Clock, Loader2, AlertCircle, History, Gauge, RefreshCw, Database } from "lucide-react";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import StatTile from "@/components/StatTile";
 import {
-  getSettings, getEntries, getLatestOdds, getOddsHistory, getAllResults, analyzeRacePure,
+  getSettings, getEntries, getLatestOdds, getOddsHistory, getAllResults, analyzeRacePure, fetchOfficialRace,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import {
@@ -25,33 +25,36 @@ export default function RaceDetail() {
   const [settings, setSettings] = useState(null);
   const [pastResults, setPastResults] = useState([]);
   const [tick, setTick] = useState(0);
+  const [fetching, setFetching] = useState(null);
+  const [fetchMsg, setFetchMsg] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const loadAll = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [s, past] = await Promise.all([getSettings(), getAllResults()]);
+      const r = await base44.entities.Race.get(id);
+      setSettings(s);
+      setPastResults(past);
+      setRace(r);
+      const [ents, latestOdds, hist] = await Promise.all([
+        getEntries(id), getLatestOdds(id), getOddsHistory(id),
+      ]);
+      setEntries(ents);
+      setOdds(latestOdds);
+      setOddsHistory(hist);
+    } catch (e) {
+      setError(e.message || "データ取得失敗");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let m = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const [s, past] = await Promise.all([getSettings(), getAllResults()]);
-        const r = await base44.entities.Race.get(id);
-        if (!m) return;
-        setSettings(s);
-        setPastResults(past);
-        setRace(r);
-        const [ents, latestOdds, hist] = await Promise.all([
-          getEntries(id), getLatestOdds(id), getOddsHistory(id),
-        ]);
-        if (!m) return;
-        setEntries(ents);
-        setOdds(latestOdds);
-        setOddsHistory(hist);
-      } catch (e) {
-        if (m) setError(e.message || "データ取得失敗");
-      } finally {
-        if (m) setLoading(false);
-      }
-    })();
-    return () => { m = false; };
-  }, [id]);
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, reloadKey]);
 
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 15000);
@@ -88,6 +91,26 @@ export default function RaceDetail() {
   const mins = minutesUntilDeadline(race.deadline);
   const within5 = canFinalJudge(race.deadline);
   const boat1 = entries.find((e) => e.boat_number === 1);
+  const isOfficial = race.data_source === "official";
+
+  const handleRefetch = async () => {
+    setFetching("loading");
+    setFetchMsg(null);
+    try {
+      const res = await fetchOfficialRace(race.race_date, race.venue_code, race.race_number);
+      if (res?.status === "success") {
+        setFetching("done");
+        setFetchMsg(`再取得成功：${res.entries}艇・オッズ${res.odds_count}通り・合成${fmtNum(res.synthetic_odds, 2)}倍`);
+        setReloadKey((k) => k + 1);
+      } else {
+        setFetching("error");
+        setFetchMsg(res?.message || "実データ取得失敗");
+      }
+    } catch (e) {
+      setFetching("error");
+      setFetchMsg(e?.message || "実データ取得失敗");
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -102,6 +125,11 @@ export default function RaceDetail() {
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold tracking-tight">{race.venue_name}</span>
               <span className="text-lg text-muted-foreground">{race.race_number}R</span>
+              {isOfficial ? (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">LIVE</span>
+              ) : (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-500/15 text-slate-400 border border-slate-500/30">SAMPLE</span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">{race.race_name} · {race.grade}</div>
           </div>
@@ -117,6 +145,45 @@ export default function RaceDetail() {
           </div>
         </div>
       </div>
+
+      {/* 実データ取得状況（公式データ時） */}
+      {isOfficial && (
+        <div className="rounded-2xl bg-card border border-border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-sm font-bold">実データ取得状況</h3>
+            </div>
+            <button
+              onClick={handleRefetch}
+              disabled={fetching === "loading"}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground disabled:opacity-60"
+            >
+              {fetching === "loading" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {fetching === "loading" ? "取得中…" : "再取得"}
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-xl bg-background/50 px-3 py-2">
+              <div className="text-muted-foreground">出走表取得</div>
+              <div className="font-semibold tabular-nums">{race.entries_fetched_at ? fmtTime(race.entries_fetched_at) : "—"}</div>
+            </div>
+            <div className="rounded-xl bg-background/50 px-3 py-2">
+              <div className="text-muted-foreground">オッズ取得</div>
+              <div className="font-semibold tabular-nums">{race.odds_fetched_at ? fmtTime(race.odds_fetched_at) : "—"}</div>
+            </div>
+          </div>
+          {fetchMsg && (
+            <div className={cn(
+              "mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm",
+              fetching === "done" ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+            )}>
+              {fetchMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Final judgment */}
       <div className="rounded-2xl bg-card border border-border p-5 text-center">
