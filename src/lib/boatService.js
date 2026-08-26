@@ -440,29 +440,53 @@ export async function getDaySummary(raceDate) {
   return { officialCount, uichiHits, errorCount, doneCount, noRacesCount, totalVenues: 24 };
 }
 
-// 期間分の全24場取得（日単位・場単位で逐次、重複スキップ付き）
-export async function fetchHistoricalRange(startDate, endDate, onProgress) {
-  const dates = enumerateDates(startDate, endDate);
-  const venues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
-  let current = 0, errors = 0, totalRaces = 0, totalUichi = 0;
-  const total = dates.length * venues.length;
+// 1日の開催場一覧取得（軽量・公式トップページ）
+export async function getDailyVenues(raceDate) {
+  const res = await base44.functions.invoke("fetchDailyVenues", { race_date: raceDate });
+  return res.data?.venues || [];
+}
 
+// 期間分の開催場のみ取得（日単位・場単位で逐次、重複スキップ・中断可能）
+export async function fetchHistoricalRange(startDate, endDate, onProgress, abortRef) {
+  const dates = enumerateDates(startDate, endDate);
+  const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+
+  // まず各日の開催場一覧を取得して作業計画を作成
+  const dayPlans = [];
+  let total = 0;
   for (const date of dates) {
-    // 当日の完了済み場を取得してスキップ（再開時の重複処理防止）
+    if (abortRef?.aborted) return { aborted: true, current: 0, total, errors: 0, totalRaces: 0, totalUichi: 0 };
+    let activeVenues = [];
+    try {
+      const jcds = await getDailyVenues(date);
+      activeVenues = jcds.map((jcd) => allVenues.find((v) => v.jcd === jcd)).filter(Boolean);
+    } catch {
+      activeVenues = allVenues;
+    }
     const dayProgress = await base44.entities.FetchProgress.filter({ race_date: date });
     const doneSet = new Set(
       dayProgress.filter((p) => p.status === "done" || p.status === "no_races").map((p) => p.venue_code)
     );
+    dayPlans.push({ date, activeVenues, doneSet });
+    total += activeVenues.length;
+  }
 
-    for (const v of venues) {
-      if (doneSet.has(v.jcd)) {
+  let current = 0, errors = 0, totalRaces = 0, totalUichi = 0;
+
+  for (const plan of dayPlans) {
+    for (const v of plan.activeVenues) {
+      if (abortRef?.aborted) return { aborted: true, current, total, errors, totalRaces, totalUichi };
+
+      if (plan.doneSet.has(v.jcd)) {
         current++;
+        if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "skipped", venueStatus: "done", errors, totalRaces, totalUichi });
         continue;
       }
-      if (onProgress) onProgress({ current, total, date, venue: v, status: "loading", errors, totalRaces, totalUichi });
+
+      if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "loading", errors, totalRaces, totalUichi });
       let venueStatus = "ok";
       try {
-        const res = await fetchHistoricalResults(date, v.jcd);
+        const res = await fetchHistoricalResults(plan.date, v.jcd);
         if (res?.status === "success") {
           totalRaces += res.races || 0;
           totalUichi += res.uichi_hits || 0;
@@ -473,16 +497,16 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress) {
         venueStatus = "error";
       }
       current++;
-      if (onProgress) onProgress({ current, total, date, venue: v, status: "done", venueStatus, errors, totalRaces, totalUichi });
+      if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "done", venueStatus, errors, totalRaces, totalUichi });
     }
   }
 
   // 全取得完了後、VenueStats再計算
-  try {
-    await recalcVenueStats();
-  } catch {}
+  if (!abortRef?.aborted) {
+    try { await recalcVenueStats(); } catch {}
+  }
 
-  return { current, errors, totalRaces, totalUichi };
+  return { current, total, errors, totalRaces, totalUichi };
 }
 
 // 期間サマリー（FetchProgressから集計）
@@ -511,10 +535,13 @@ export async function getRangeSummary(startDate, endDate) {
 
 function enumerateDates(start, end) {
   const dates = [];
-  const s = new Date(start + "T00:00:00");
-  const e = new Date(end + "T00:00:00");
-  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-    dates.push(d.toISOString().slice(0, 10));
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const s = Date.UTC(sy, sm - 1, sd);
+  const e = Date.UTC(ey, em - 1, ed);
+  for (let t = s; t <= e; t += 86400000) {
+    const d = new Date(t);
+    dates.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`);
   }
   return dates;
 }

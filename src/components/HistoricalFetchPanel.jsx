@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Database, Loader2, Play, CheckCircle, AlertCircle, RefreshCw, BarChart3 } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Database, Loader2, Play, Square, CheckCircle, AlertCircle, RefreshCw, BarChart3 } from "lucide-react";
 import { fetchHistoricalRange, getRangeSummary, recalcVenueStats } from "@/lib/boatService";
 import { VENUES, fmtPct } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ export default function HistoricalFetchPanel() {
   const [summary, setSummary] = useState(null);
   const [log, setLog] = useState([]);
   const [recalcState, setRecalcState] = useState(null);
+  const abortRef = useRef({ aborted: false });
 
   const loadSummary = useCallback(async () => {
     try {
@@ -23,6 +24,7 @@ export default function HistoricalFetchPanel() {
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   const run = async () => {
+    abortRef.current.aborted = false;
     setRunning(true);
     setLog([]);
     setProgress({ current: 0, total: 0, date: "", venueName: "", status: "start", errors: 0, totalRaces: 0, totalUichi: 0 });
@@ -32,20 +34,25 @@ export default function HistoricalFetchPanel() {
           current: p.current,
           total: p.total,
           date: p.date,
-          venueName: p.venue.name,
+          venueName: p.venue?.name || "",
           status: p.status,
+          venueStatus: p.venueStatus,
           errors: p.errors,
           totalRaces: p.totalRaces,
           totalUichi: p.totalUichi,
         });
-        if (p.status === "done") {
-          setLog((l) => [...l, { date: p.date, name: p.venue.name, status: p.venueStatus }]);
+        if (p.status === "done" || p.status === "skipped") {
+          setLog((l) => [...l, { date: p.date, name: p.venue?.name, status: p.venueStatus || "skipped" }]);
         }
-      });
+      }, abortRef);
       await loadSummary();
     } finally {
       setRunning(false);
     }
+  };
+
+  const stop = () => {
+    abortRef.current.aborted = true;
   };
 
   const handleRecalc = async () => {
@@ -86,14 +93,22 @@ export default function HistoricalFetchPanel() {
           disabled={running}
           className="px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:border-primary"
         />
-        <button
-          onClick={run}
-          disabled={running || !startDate || !endDate}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50"
-        >
-          {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          {running ? "取得中…" : "取得開始"}
-        </button>
+        {running ? (
+          <button
+            onClick={stop}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white"
+          >
+            <Square className="w-4 h-4" /> 停止
+          </button>
+        ) : (
+          <button
+            onClick={run}
+            disabled={!startDate || !endDate}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50"
+          >
+            <Play className="w-4 h-4" /> 取得開始
+          </button>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -101,9 +116,9 @@ export default function HistoricalFetchPanel() {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
-              {running && progress.date ? `${progress.date} ${progress.venueName} 取得中…` : "処理状況"}
+              {running && progress.date ? `${progress.date} ${progress.venueName} ${progress.status === "loading" ? "取得中…" : "処理中"}` : "処理状況"}
             </span>
-            <span className="tabular-nums font-semibold">{progress.current}/{progress.total} ({pct}%)</span>
+            <span className="tabular-nums font-semibold">{progress.current}/{progress.total}場 ({pct}%)</span>
           </div>
           <div className="h-2 rounded-full bg-background overflow-hidden">
             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -150,22 +165,24 @@ export default function HistoricalFetchPanel() {
 
       {/* Venue log */}
       {log.length > 0 && (
-        <div className="rounded-xl bg-background/50 border border-border/50 p-3 max-h-48 overflow-y-auto">
+        <div className="rounded-xl bg-background/50 border border-border/50 p-3 max-h-64 overflow-y-auto">
           <div className="text-[11px] text-muted-foreground mb-2 tracking-wider">処理ログ（最新順）</div>
           <div className="space-y-1">
-            {[...log].reverse().slice(0, 60).map((l, i) => (
+            {[...log].reverse().slice(0, 80).map((l, i) => (
               <div key={i} className="flex items-center gap-1.5 text-xs">
                 {l.status === "success" ? (
                   <CheckCircle className="w-3 h-3 text-emerald-500" />
                 ) : l.status === "no_races" ? (
                   <CheckCircle className="w-3 h-3 text-slate-400" />
+                ) : l.status === "done" || l.status === "skipped" ? (
+                  <CheckCircle className="w-3 h-3 text-sky-500" />
                 ) : (
                   <AlertCircle className="w-3 h-3 text-rose-500" />
                 )}
                 <span className="tabular-nums text-muted-foreground">{l.date}</span>
                 <span className="truncate">{l.name}</span>
                 <span className="text-muted-foreground ml-auto">
-                  {l.status === "success" ? "OK" : l.status === "no_races" ? "開催なし" : "エラー"}
+                  {l.status === "success" ? "完了" : l.status === "no_races" ? "開催なし" : l.status === "done" || l.status === "skipped" ? "スキップ(済)" : "エラー"}
                 </span>
               </div>
             ))}

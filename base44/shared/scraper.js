@@ -150,6 +150,17 @@ export function parseRacelist(html, raceNumber, raceDate) {
   return { deadline, raceName, entries };
 }
 
+// 1日の開催場一覧パース（トップページHTMLからjcd一覧を抽出）
+export function parseDailyVenueList(html) {
+  const jcds = new Set();
+  const re = /jcd=(\d{2})/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    jcds.add(m[1]);
+  }
+  return Array.from(jcds).sort();
+}
+
 // 結果一覧ページパース（1日1場分の全レース結果）
 // 3連単組合わせと払戻金を抽出
 export function parseResultList(html) {
