@@ -46,6 +46,15 @@
         "sample"
       ]
     },
+    "boat1_detail_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "done",
+        "error",
+        "skip"
+      ]
+    },
     "boat1_registration_number": {
       "type": "string"
     },

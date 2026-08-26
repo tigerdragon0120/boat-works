@@ -22,6 +22,26 @@
         "no_races"
       ]
     },
+    "result_fetch_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "done",
+        "error",
+        "no_races"
+      ]
+    },
+    "detail_fetch_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "done",
+        "error",
+        "skip"
+      ]
+    },
     "race_count": {
       "type": "number"
     },
@@ -32,6 +52,14 @@
       "type": "string"
     },
     "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "detail_processed_at": {
       "type": "string",
       "format": "date-time"
     }

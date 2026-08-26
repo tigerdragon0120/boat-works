@@ -220,13 +220,53 @@ export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
   return res.data;
 }
 
-// 過去レース結果取得（1日1場分）
+// 過去レース結果取得（第1段階・結果のみ高速取得）
 export async function fetchHistoricalResults(raceDate, jcd) {
   const res = await base44.functions.invoke("fetchHistoricalResults", {
     race_date: raceDate,
     jcd: String(jcd).padStart(2, "0"),
   });
   return res.data;
+}
+
+// 1号艇詳細補完（第2段階・1場分）
+export async function enrichBoat1Details(raceDate, jcd, options = {}) {
+  const res = await base44.functions.invoke("enrichBoat1Details", {
+    race_date: raceDate,
+    jcd: String(jcd).padStart(2, "0"),
+    race_numbers: options.race_numbers || null,
+    limit: options.limit || 12,
+  });
+  return res.data;
+}
+
+// 1号艇詳細オンデマンド補完（分析時に必要なレースのみ）
+export async function enrichRaceResultsOnDemand(raceIds) {
+  // race_id形式: YYYY-MM-DD_JC_NN → 日付+場ごとにグループ化
+  const groups = {};
+  for (const id of raceIds) {
+    const parts = id.split("_");
+    const date = parts[0];
+    const jcd = parts[1];
+    const num = parseInt(parts[2], 10);
+    const key = `${date}_${jcd}`;
+    if (!groups[key]) groups[key] = { race_date: date, jcd, race_numbers: [] };
+    groups[key].race_numbers.push(num);
+  }
+  const results = [];
+  for (const key of Object.keys(groups)) {
+    const g = groups[key];
+    try {
+      const res = await enrichBoat1Details(g.race_date, g.jcd, {
+        race_numbers: g.race_numbers,
+        limit: g.race_numbers.length,
+      });
+      results.push(res);
+    } catch (e) {
+      results.push({ status: "error", message: e?.message });
+    }
+  }
+  return results;
 }
 
 // 競艇場統計再計算
@@ -281,12 +321,13 @@ export async function getDailyVenues(raceDate) {
   return res.data?.venues || [];
 }
 
-// 期間分の開催場のみ取得（日単位・場単位で逐次、重複スキップ・中断可能）
+// 期間分の開催場を取得（日単位・3場並列・重複スキップ・中断可能）
+// 第1段階：結果のみ高速取得。1号艇詳細は第2段階で別途補完。
 export async function fetchHistoricalRange(startDate, endDate, onProgress, abortRef) {
   const dates = enumerateDates(startDate, endDate);
   const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
 
-  // まず各日の開催場一覧を取得して作業計画を作成
+  // 各日の開催場一覧を取得して作業計画を作成
   const dayPlans = [];
   let total = 0;
   for (const date of dates) {
@@ -300,7 +341,10 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
     }
     const dayProgress = await base44.entities.FetchProgress.filter({ race_date: date });
     const doneSet = new Set(
-      dayProgress.filter((p) => p.status === "done" || p.status === "no_races").map((p) => p.venue_code)
+      dayProgress.filter((p) =>
+        (p.result_fetch_status === "done" || p.result_fetch_status === "no_races") ||
+        (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
+      ).map((p) => p.venue_code)
     );
     dayPlans.push({ date, activeVenues, doneSet });
     total += activeVenues.length;
@@ -309,30 +353,41 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
   let current = 0, errors = 0, totalRaces = 0, totalUichi = 0;
 
   for (const plan of dayPlans) {
+    // 完了済みを先にスキップカウント
+    const pendingInDay = [];
     for (const v of plan.activeVenues) {
-      if (abortRef?.aborted) return { aborted: true, current, total, errors, totalRaces, totalUichi };
-
       if (plan.doneSet.has(v.jcd)) {
         current++;
         if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "skipped", venueStatus: "done", errors, totalRaces, totalUichi });
-        continue;
+      } else {
+        pendingInDay.push(v);
       }
+    }
 
-      if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "loading", errors, totalRaces, totalUichi });
-      let venueStatus = "ok";
-      try {
-        const res = await fetchHistoricalResults(plan.date, v.jcd);
+    // 未処理場を3場並列で取得
+    for (let i = 0; i < pendingInDay.length; i += 3) {
+      if (abortRef?.aborted) return { aborted: true, current, total, errors, totalRaces, totalUichi };
+      const batch = pendingInDay.slice(i, i + 3);
+      if (onProgress) {
+        for (const v of batch) onProgress({ current, total, date: plan.date, venue: v, status: "loading", errors, totalRaces, totalUichi });
+      }
+      const batchResults = await Promise.all(batch.map(async (v) => {
+        try {
+          const res = await fetchHistoricalResults(plan.date, v.jcd);
+          return { v, res, status: res?.status || "ok" };
+        } catch (e) {
+          errors++;
+          return { v, res: null, status: "error" };
+        }
+      }));
+      for (const { v, res, status } of batchResults) {
+        current++;
         if (res?.status === "success") {
           totalRaces += res.races || 0;
           totalUichi += res.uichi_hits || 0;
         }
-        venueStatus = res?.status || "ok";
-      } catch (e) {
-        errors++;
-        venueStatus = "error";
+        if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "done", venueStatus: status, errors, totalRaces, totalUichi });
       }
-      current++;
-      if (onProgress) onProgress({ current, total, date: plan.date, venue: v, status: "done", venueStatus, errors, totalRaces, totalUichi });
     }
   }
 
@@ -344,18 +399,49 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
   return { current, total, errors, totalRaces, totalUichi };
 }
 
-// 期間サマリー（FetchProgressから集計）
+// 第2段階: 1号艇詳細補完（期間一括・直近優先）
+export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, abortRef) {
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate);
+  const doneResults = inRange.filter((p) =>
+    p.result_fetch_status === "done" || (!p.result_fetch_status && p.status === "done")
+  );
+  // 詳細未補完のものを抽出（直近日付優先 = processed_at降順）
+  const pending = doneResults.filter((p) =>
+    p.detail_fetch_status !== "done" && p.detail_fetch_status !== "skip"
+  );
+
+  let current = 0, total = pending.length, enriched = 0, errors = 0;
+  for (const p of pending) {
+    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors };
+    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "loading", enriched, errors });
+    try {
+      const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12 });
+      enriched += res?.enriched || 0;
+      errors += res?.errors || 0;
+    } catch {
+      errors++;
+    }
+    current++;
+    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "done", enriched, errors });
+  }
+  return { current, total, enriched, errors };
+}
+
+// 期間サマリー（FetchProgressから集計・2段階対応）
 export async function getRangeSummary(startDate, endDate) {
   const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
   const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate);
-  const done = inRange.filter((p) => p.status === "done");
-  const errors = inRange.filter((p) => p.status === "error");
-  const noRaces = inRange.filter((p) => p.status === "no_races");
+  const done = inRange.filter((p) => p.result_fetch_status === "done" || (!p.result_fetch_status && p.status === "done"));
+  const errors = inRange.filter((p) => p.result_fetch_status === "error" || (!p.result_fetch_status && p.status === "error"));
+  const noRaces = inRange.filter((p) => p.result_fetch_status === "no_races" || (!p.result_fetch_status && p.status === "no_races"));
   const totalRaces = done.reduce((s, p) => s + (p.race_count || 0), 0);
   const totalUichi = done.reduce((s, p) => s + (p.uichi_hits || 0), 0);
   const dates = new Set(inRange.map((p) => p.race_date));
   const overallRate = totalRaces > 0 ? totalUichi / totalRaces : 0;
   const lastProcessed = inRange[0]?.processed_at || null;
+  const detailDone = inRange.filter((p) => p.detail_fetch_status === "done").length;
+  const detailPending = inRange.filter((p) => !p.detail_fetch_status || p.detail_fetch_status === "pending").length;
   return {
     totalDays: dates.size,
     doneVenues: done.length,
@@ -365,7 +451,30 @@ export async function getRangeSummary(startDate, endDate) {
     overallRate,
     errorCount: errors.length,
     lastProcessed,
+    detailDone,
+    detailPending,
   };
+}
+
+// 1号艇詳細補完統計（RaceResultから集計）
+export async function getBoat1DetailStats(startDate, endDate) {
+  let all = [];
+  let skip = 0;
+  while (skip < 20000) {
+    const batch = await base44.entities.RaceResult.filter(
+      { data_source: "official" }, "-race_date", 500, skip
+    );
+    if (!batch || batch.length === 0) break;
+    all = all.concat(batch);
+    if (batch.length < 500) break;
+    skip += 500;
+  }
+  const inRange = all.filter((r) => (!startDate || r.race_date >= startDate) && (!endDate || r.race_date <= endDate));
+  const total = inRange.length;
+  const enriched = inRange.filter((r) => r.boat1_detail_status === "done" || (!r.boat1_detail_status && r.boat1_racer_name)).length;
+  const pending = inRange.filter((r) => !r.boat1_detail_status || r.boat1_detail_status === "pending").length;
+  const errorCount = inRange.filter((r) => r.boat1_detail_status === "error").length;
+  return { total, enriched, pending, errorCount, rate: total > 0 ? enriched / total : 0 };
 }
 
 function enumerateDates(start, end) {
