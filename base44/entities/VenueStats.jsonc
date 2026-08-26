@@ -8,7 +8,34 @@
     "venue_name": {
       "type": "string"
     },
+    "total_races": {
+      "type": "number"
+    },
     "c1_win_rate": {
+      "type": "number"
+    },
+    "uichi_hits": {
+      "type": "number"
+    },
+    "uichi_rate": {
+      "type": "number"
+    },
+    "combo_1_2_5_rate": {
+      "type": "number"
+    },
+    "combo_1_2_6_rate": {
+      "type": "number"
+    },
+    "combo_1_3_5_rate": {
+      "type": "number"
+    },
+    "combo_1_3_6_rate": {
+      "type": "number"
+    },
+    "combo_1_4_5_rate": {
+      "type": "number"
+    },
+    "combo_1_4_6_rate": {
       "type": "number"
     },
     "c2_sashi_rate": {
@@ -26,11 +53,15 @@
     "c6_3rate": {
       "type": "number"
     },
-    "uichi_rate": {
-      "type": "number"
-    },
     "sample_count": {
       "type": "number"
+    },
+    "data_source": {
+      "type": "string",
+      "enum": [
+        "official",
+        "sample"
+      ]
     },
     "last_updated": {
       "type": "string",

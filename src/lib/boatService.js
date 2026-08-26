@@ -279,17 +279,26 @@ export async function getAlerts(dateStr) {
 }
 
 // 純粋関数版（過去結果を外部から渡す・バッチ計算用）
+// pastResults は official のみを使用（data_source === "official" のみ類似判定）
 export function analyzeRacePure(race, entries, odds, pastResults, settings, stage = "day") {
   const boat1 = entries.find((e) => e.boat_number === 1);
   const boat1Grade = gradeBoat1(boat1);
 
   const similar = pastResults.filter((p) => {
+    if (p.data_source && p.data_source !== "official") return false;
     let s = 0;
-    if (p.venue_code === race.venue_code) s += 30;
-    if (p.boat1_grade_class === boat1?.grade_class) s += 20;
-    s += 20 * (1 - Math.abs((boat1?.national_win_rate || 0) - p.boat1_national_win_rate) / 8);
-    s += 15 * (1 - Math.abs((boat1?.local_win_rate || 0) - p.boat1_local_win_rate) / 8);
-    s += 10 * (1 - Math.abs((boat1?.avg_st || 0.2) - p.boat1_avg_st) / 0.15);
+    if (p.venue_code === race.venue_code) s += 25;
+    if (p.boat1_grade_class && p.boat1_grade_class === boat1?.grade_class) s += 15;
+    s += 15 * (1 - Math.abs((boat1?.national_win_rate || 0) - (p.boat1_national_win_rate || 0)) / 8);
+    s += 10 * (1 - Math.abs((boat1?.local_win_rate || 0) - (p.boat1_local_win_rate || 0)) / 8);
+    s += 10 * (1 - Math.abs((boat1?.avg_st || 0.2) - (p.boat1_avg_st || 0.2)) / 0.15);
+    // F数（少ないほど良い）
+    const fDiff = Math.abs((boat1?.f_count || 0) - (p.boat1_f_count || 0));
+    s += 5 * Math.max(0, 1 - fDiff / 3);
+    // モーター2連率
+    s += 10 * (1 - Math.abs((boat1?.motor_2rate || 35) - (p.boat1_motor_2rate || 35)) / 30);
+    // モーター3連率
+    s += 10 * (1 - Math.abs((boat1?.motor_3rate || 50) - (p.boat1_motor_3rate || 50)) / 30);
     return s >= 55;
   });
   return _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Grade);
@@ -332,9 +341,9 @@ function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Gra
   };
 }
 
-// 1件分（DBから過去結果を取得）
+// 1件分（DBから過去結果を取得・officialのみ）
 export async function analyzeRace(race, entries, odds, settings, stage = "day") {
-  const past = await base44.entities.RaceResult.list("-race_date", 500);
+  const past = await getAllResults();
   return analyzeRacePure(race, entries, odds, past, settings, stage);
 }
 
@@ -342,8 +351,20 @@ export async function getVenueStats() {
   return base44.entities.VenueStats.list("venue_name", 24);
 }
 
+// official の過去結果を取得（ページネーション対応）
 export async function getAllResults() {
-  return base44.entities.RaceResult.list("-race_date", 500);
+  let all = [];
+  let skip = 0;
+  while (skip < 20000) {
+    const batch = await base44.entities.RaceResult.filter(
+      { data_source: "official" }, "-race_date", 500, skip
+    );
+    if (!batch || batch.length === 0) break;
+    all = all.concat(batch);
+    if (batch.length < 500) break;
+    skip += 500;
+  }
+  return all;
 }
 
 export async function getAllAnalyses() {
@@ -362,4 +383,46 @@ export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
     race_number: Number(raceNumber),
   });
   return res.data;
+}
+
+// 過去レース結果取得（1日1場分）
+export async function fetchHistoricalResults(raceDate, jcd) {
+  const res = await base44.functions.invoke("fetchHistoricalResults", {
+    race_date: raceDate,
+    jcd: String(jcd).padStart(2, "0"),
+  });
+  return res.data;
+}
+
+// 競艇場統計再計算
+export async function recalcVenueStats() {
+  const res = await base44.functions.invoke("recalcVenueStats", {});
+  return res.data;
+}
+
+// 過去データ取得進捗を取得
+export async function getFetchProgress() {
+  return base44.entities.FetchProgress.list("-processed_at", 5000);
+}
+
+// 過去データ取得のサマリー
+export async function getHistoricalSummary() {
+  const all = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const done = all.filter((p) => p.status === "done");
+  const errors = all.filter((p) => p.status === "error");
+  const noRaces = all.filter((p) => p.status === "no_races");
+  const totalRaces = done.reduce((s, p) => s + (p.race_count || 0), 0);
+  const totalUichi = done.reduce((s, p) => s + (p.uichi_hits || 0), 0);
+  const lastProcessed = all[0]?.processed_at || null;
+  return {
+    total_days: all.length,
+    done_days: done.length,
+    error_count: errors.length,
+    no_races_days: noRaces.length,
+    total_races: totalRaces,
+    total_uichi: totalUichi,
+    overall_rate: totalRaces > 0 ? totalUichi / totalRaces : 0,
+    last_processed: lastProcessed,
+    errors: errors.slice(0, 10),
+  };
 }

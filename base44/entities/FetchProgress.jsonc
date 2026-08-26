@@ -1,0 +1,43 @@
+{
+  "name": "FetchProgress",
+  "type": "object",
+  "properties": {
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "done",
+        "error",
+        "no_races"
+      ]
+    },
+    "race_count": {
+      "type": "number"
+    },
+    "uichi_hits": {
+      "type": "number"
+    },
+    "error_msg": {
+      "type": "string"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "race_date",
+    "venue_code"
+  ]
+}

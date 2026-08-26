@@ -39,16 +39,50 @@
     "payout_trifecta": {
       "type": "number"
     },
+    "data_source": {
+      "type": "string",
+      "enum": [
+        "official",
+        "sample"
+      ]
+    },
+    "boat1_registration_number": {
+      "type": "string"
+    },
+    "boat1_racer_name": {
+      "type": "string"
+    },
     "boat1_grade_class": {
       "type": "string"
     },
     "boat1_national_win_rate": {
       "type": "number"
     },
+    "boat1_national_2rate": {
+      "type": "number"
+    },
+    "boat1_national_3rate": {
+      "type": "number"
+    },
     "boat1_local_win_rate": {
       "type": "number"
     },
+    "boat1_local_2rate": {
+      "type": "number"
+    },
+    "boat1_local_3rate": {
+      "type": "number"
+    },
     "boat1_avg_st": {
+      "type": "number"
+    },
+    "boat1_f_count": {
+      "type": "number"
+    },
+    "boat1_motor_2rate": {
+      "type": "number"
+    },
+    "boat1_motor_3rate": {
       "type": "number"
     }
   },
