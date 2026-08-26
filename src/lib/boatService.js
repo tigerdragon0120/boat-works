@@ -336,122 +336,208 @@ export async function updateImportHeartbeat(phase, currentDate) {
   return now;
 }
 
-// 期間分の開催場を取得（1日ずつ即時処理・3場並列・重複スキップ・中断可能）
+// 期間分の開催場を取得（V3高速化: 2日同時×5場並列=最大10並列・error_pending後回し・最後再取得）
 // 第1段階：結果のみ高速取得。1号艇詳細は第2段階で別途補完。
-// フリーズ防止: 10sタイムアウト・2回リトライ・24場フォールバック廃止・クライアント側30sタイムアウト
-// 即時開始: dayPlans全件事前作成を廃止、1日ずつ開催場一覧→結果取得→次の日へ
+// フリーズ防止: 10sタイムアウト(リトライなし)・クライアント側30sタイムアウト・stale processing解除
+// error_pending: 1回目失敗はerror_pendingに記録して次へ進む。全体終了後に最大2回再取得。
 export async function fetchHistoricalRange(startDate, endDate, onProgress, abortRef) {
   const dates = enumerateDates(startDate, endDate);
   const totalDays = dates.length;
   const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+  const CONCURRENT_DAYS = 2;
+  const CONCURRENT_VENUES = 5;
 
-  let completedDays = 0, current = 0, total = 0, errors = 0, totalRaces = 0, totalUichi = 0;
+  let completedDays = 0, current = 0, total = 0, dayErrors = 0, totalRaces = 0, totalUichi = 0;
+  const errorPending = [];
 
-  for (let di = 0; di < dates.length; di++) {
-    if (abortRef?.aborted) return { aborted: true, completedDays, totalDays, current, total, errors, totalRaces, totalUichi };
-    const date = dates[di];
+  const emit = (p) => {
+    if (!onProgress) return;
+    onProgress({
+      ...p,
+      completedDays, totalDays, current, total,
+      errors: dayErrors + errorPending.length,
+      totalRaces, totalUichi,
+      concurrentDays: CONCURRENT_DAYS, concurrentVenues: CONCURRENT_VENUES,
+      errorPendingCount: errorPending.length,
+    });
+  };
 
-    // === 日処理開始 heartbeat ===
-    try { await updateImportHeartbeat("venue_discovery", date); } catch {}
+  // === 日付を2日ずつ同時処理 ===
+  for (let di = 0; di < dates.length; di += CONCURRENT_DAYS) {
+    if (abortRef?.aborted) return { aborted: true, completedDays, totalDays, current, total, errors: dayErrors + errorPending.length, totalRaces, totalUichi, errorPending: errorPending.length };
 
-    // === 開催場一覧取得中を即時表示 ===
-    if (onProgress) onProgress({ phase: "venue_discovery", currentDate: date, completedDays, totalDays, current, total, venueName: "", status: "loading", errors, totalRaces, totalUichi });
+    const datePair = dates.slice(di, di + CONCURRENT_DAYS);
 
-    // === 開催場一覧取得（その日だけ・2回リトライ付き・24場フォールバック廃止） ===
-    let jcds = null;
-    let lastErr = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (abortRef?.aborted) return { aborted: true, completedDays, totalDays, current, total, errors, totalRaces, totalUichi };
+    // heartbeat
+    for (const date of datePair) {
+      try { await updateImportHeartbeat("venue_discovery", date); } catch {}
+    }
+
+    emit({ phase: "venue_discovery", currentDate: datePair.join(" / "), venueName: "", status: "loading", currentDates: datePair, currentVenues: [] });
+
+    // === 開催場一覧を2日並列取得 ===
+    const venueResults = await Promise.all(datePair.map(async (date) => {
+      let jcds = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (abortRef?.aborted) return { date, jcds: null };
+        try {
+          jcds = await getDailyVenues(date);
+          if (jcds && jcds.length > 0) break;
+        } catch (e) {}
+        if (attempt < 1) await new Promise(r => setTimeout(r, 1000));
+      }
+      return { date, jcds };
+    }));
+
+    // heartbeat
+    for (const date of datePair) {
+      try { await updateImportHeartbeat("result_fetch", date); } catch {}
+    }
+
+    // === done/no_races判定を先にまとめて取得（不要なAPIアクセス回避） ===
+    const doneSetResults = await Promise.all(datePair.map(async (date) => {
       try {
-        jcds = await getDailyVenues(date);
-        if (jcds && jcds.length > 0) break;
-      } catch (e) { lastErr = e; }
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
-    }
+        const dayProgress = await base44.entities.FetchProgress.filter(
+          { race_date: date, venue_code: { $ne: "00" } }, "venue_code", 50
+        );
+        return new Set(
+          dayProgress.filter((p) =>
+            (p.result_fetch_status === "done" || p.result_fetch_status === "no_races") ||
+            (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
+          ).map((p) => p.venue_code)
+        );
+      } catch {
+        return new Set();
+      }
+    }));
 
-    // 開催場一覧取得完了 heartbeat
-    try { await updateImportHeartbeat("result_fetch", date); } catch {}
+    // === 各日の未処理場を収集 ===
+    const pendingByDate = datePair.map((date, i) => {
+      const jcds = venueResults[i].jcds;
+      if (!jcds || jcds.length === 0) return { date, venues: [], failed: true };
+      const doneSet = doneSetResults[i];
+      const activeVenues = jcds.map((jcd) => allVenues.find((v) => v.jcd === jcd)).filter(Boolean);
+      total += activeVenues.length;
+      const pending = activeVenues.filter((v) => !doneSet.has(v.jcd));
+      // done/no_races場をスキップカウント
+      for (const v of activeVenues) {
+        if (doneSet.has(v.jcd)) {
+          current++;
+          emit({ phase: "result_fetch", currentDate: date, venueName: v.name, status: "skipped", venueStatus: "done", currentDates: datePair, currentVenues: [] });
+        }
+      }
+      return { date, venues: pending, failed: false };
+    });
 
-    // 開催場一覧取得失敗 → その日をerrorとして次の日へ
-    if (!jcds || jcds.length === 0) {
-      errors++;
-      completedDays++;
-      if (onProgress) onProgress({ phase: "day_complete", currentDate: date, completedDays, totalDays, current, total, venueName: "", status: "done", venueStatus: "error", errors, totalRaces, totalUichi });
+    // 全場完了済み → 2日とも完了扱い
+    const allEmpty = pendingByDate.every((p) => p.venues.length === 0);
+    if (allEmpty) {
+      for (const p of pendingByDate) {
+        if (p.failed) dayErrors++;
+        completedDays++;
+      }
+      for (const date of datePair) {
+        try { await updateImportHeartbeat("day_complete", date); } catch {}
+      }
+      emit({ phase: "day_complete", currentDate: datePair.join(" / "), venueName: "", status: "done", currentDates: [], currentVenues: [] });
       continue;
     }
 
-    // === その日のFetchProgressを確認して完了済み場をスキップ ===
-    const dayProgress = await base44.entities.FetchProgress.filter({ race_date: date, venue_code: { $ne: "00" } }, "venue_code", 50);
-    const doneSet = new Set(
-      dayProgress.filter((p) =>
-        (p.result_fetch_status === "done" || p.result_fetch_status === "no_races") ||
-        (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
-      ).map((p) => p.venue_code)
-    );
+    // === 未処理場を5場ずつ並列取得（2日同時 = 最大10並列HTTP） ===
+    await Promise.all(pendingByDate.map(async (p) => {
+      if (p.venues.length === 0) return;
 
-    const activeVenues = jcds.map((jcd) => allVenues.find((v) => v.jcd === jcd)).filter(Boolean);
-    total += activeVenues.length;
+      for (let i = 0; i < p.venues.length; i += CONCURRENT_VENUES) {
+        if (abortRef?.aborted) return;
+        const batch = p.venues.slice(i, i + CONCURRENT_VENUES);
+        const batchNames = batch.map(v => v.name).join(" / ");
 
-    const pendingInDay = [];
-    for (const v of activeVenues) {
-      if (doneSet.has(v.jcd)) {
-        current++;
-        if (onProgress) onProgress({ phase: "result_fetch", currentDate: date, completedDays, totalDays, current, total, venueName: v.name, status: "skipped", venueStatus: "done", errors, totalRaces, totalUichi });
-      } else {
-        pendingInDay.push(v);
+        emit({ phase: "result_fetch", currentDate: p.date, venueName: batchNames, status: "loading", currentDates: datePair, currentVenues: batch });
+
+        const batchResults = await Promise.all(batch.map(async (v) => {
+          try {
+            const res = await Promise.race([
+              fetchHistoricalResults(p.date, v.jcd),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("client_timeout")), 30000))
+            ]);
+            return { v, res, status: res?.status || "ok" };
+          } catch (e) {
+            return { v, res: null, status: "error", errorMsg: e?.message || "error" };
+          }
+        }));
+
+        for (const { v, res, status } of batchResults) {
+          current++;
+          if (res?.status === "success") {
+            totalRaces += res.races || 0;
+            totalUichi += res.uichi_hits || 0;
+          } else if (status === "error" || res?.status === "error") {
+            // その場でリトライせず error_pending に記録して次へ
+            errorPending.push({ date: p.date, jcd: v.jcd, venue: v });
+          }
+          emit({ phase: "result_fetch", currentDate: p.date, venueName: v.name, status: "done", venueStatus: status, currentDates: datePair, currentVenues: batch });
+        }
       }
-    }
+    }));
 
-    // 全場完了済み → その日を完了扱い
-    if (pendingInDay.length === 0) {
+    // 日完了
+    for (const p of pendingByDate) {
+      if (p.failed) dayErrors++;
       completedDays++;
-      if (onProgress) onProgress({ phase: "day_complete", currentDate: date, completedDays, totalDays, current, total, venueName: "", status: "done", errors, totalRaces, totalUichi });
-      continue;
     }
+    for (const date of datePair) {
+      try { await updateImportHeartbeat("day_complete", date); } catch {}
+    }
+    emit({ phase: "day_complete", currentDate: datePair.join(" / "), venueName: "", status: "done", currentDates: [], currentVenues: [] });
+  }
 
-    // === 未処理場を3場並列で取得（クライアント側30sタイムアウト付き・1場ハングで全体停止しない） ===
-    for (let i = 0; i < pendingInDay.length; i += 3) {
-      if (abortRef?.aborted) return { aborted: true, completedDays, totalDays, current, total, errors, totalRaces, totalUichi };
-      const batch = pendingInDay.slice(i, i + 3);
-      const batchNames = batch.map(v => v.name).join(" / ");
-      if (onProgress) {
-        for (const v of batch) onProgress({ phase: "result_fetch", currentDate: date, completedDays, totalDays, current, total, venueName: batchNames, status: "loading", errors, totalRaces, totalUichi });
-      }
-      const batchResults = await Promise.all(batch.map(async (v) => {
+  // === error_pending 再取得フェーズ（最大2回） ===
+  for (let retryRound = 0; retryRound < 2 && errorPending.length > 0; retryRound++) {
+    if (abortRef?.aborted) break;
+
+    const toRetry = [...errorPending];
+    errorPending.length = 0;
+
+    emit({ phase: "error_retry", currentDate: `エラー再取得 (${retryRound + 1}/2)`, venueName: `${toRetry.length}場`, status: "loading", currentDates: [], currentVenues: [] });
+
+    // 5場並列で再取得
+    for (let i = 0; i < toRetry.length; i += CONCURRENT_VENUES) {
+      if (abortRef?.aborted) break;
+      const batch = toRetry.slice(i, i + CONCURRENT_VENUES);
+      const batchResults = await Promise.all(batch.map(async (item) => {
         try {
           const res = await Promise.race([
-            fetchHistoricalResults(date, v.jcd),
+            fetchHistoricalResults(item.date, item.jcd),
             new Promise((_, reject) => setTimeout(() => reject(new Error("client_timeout")), 30000))
           ]);
-          return { v, res, status: res?.status || "ok" };
+          return { item, res, status: res?.status || "ok" };
         } catch (e) {
-          errors++;
-          return { v, res: null, status: "error", errorMsg: e?.message || "error" };
+          return { item, res: null, status: "error", errorMsg: e?.message || "error" };
         }
       }));
-      for (const { v, res, status } of batchResults) {
-        current++;
+
+      for (const { item, res, status } of batchResults) {
         if (res?.status === "success") {
           totalRaces += res.races || 0;
           totalUichi += res.uichi_hits || 0;
+        } else if (status === "error" || res?.status === "error") {
+          errorPending.push(item);
         }
-        if (onProgress) onProgress({ phase: "result_fetch", currentDate: date, completedDays, totalDays, current, total, venueName: v.name, status: "done", venueStatus: status, errors, totalRaces, totalUichi });
       }
-    }
 
-    // === その日完了 ===
-    completedDays++;
-    try { await updateImportHeartbeat("day_complete", date); } catch {}
-    if (onProgress) onProgress({ phase: "day_complete", currentDate: date, completedDays, totalDays, current, total, venueName: "", status: "done", errors, totalRaces, totalUichi });
+      emit({ phase: "error_retry", currentDate: `エラー再取得 (${retryRound + 1}/2)`, venueName: `${errorPending.length}場残り`, status: "loading", currentDates: [], currentVenues: [] });
+    }
   }
 
-  // 全取得完了後、VenueStats再計算
+  const errors = dayErrors + errorPending.length;
+
+  // VenueStats再計算
   if (!abortRef?.aborted) {
     try { await recalcVenueStats(); } catch {}
     try { await updateImportHeartbeat("completed", dates[dates.length - 1] || startDate); } catch {}
   }
 
-  return { completedDays, totalDays, current, total, errors, totalRaces, totalUichi };
+  return { completedDays, totalDays, current, total, errors, totalRaces, totalUichi, errorPending: errorPending.length };
 }
 
 // 第2段階: 1号艇詳細補完（期間一括・優先順位付き）

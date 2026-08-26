@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { UICHI_COMBOS } from "../../shared/uichi.js";
-import { VENUE_NAMES, parseResultList, fetchWithRetry } from "../../shared/scraper.js";
+import { VENUE_NAMES, parseResultList, fetchWithTimeout } from "../../shared/scraper.js";
 
 // BOAT WORKS 過去レース結果高速取得（第1段階）
 // 結果一覧ページ1アクセスのみで1場12R分の結果を保存する。
@@ -88,7 +88,7 @@ export default async function(req) {
     const resultListUrl = `${RESULT_BASE}/resultlist?jcd=${jcd}&hd=${hd}`;
     let rlRes;
     try {
-      rlRes = await fetchWithRetry(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+      rlRes = await fetchWithTimeout(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000);
     } catch (fetchError) {
       const isTimeout = fetchError.name === "AbortError" || fetchError.message.includes("abort") || fetchError.message.includes("timeout");
       await base44.asServiceRole.entities.FetchProgress.update(progressId, {
