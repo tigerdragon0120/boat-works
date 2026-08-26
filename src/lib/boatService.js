@@ -400,6 +400,46 @@ export async function recalcVenueStats() {
   return res.data;
 }
 
+// 1日分の全24場取得（逐次・公式サイト負荷配慮）
+export async function fetchHistoricalDay(raceDate, onProgress) {
+  const venues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+  let done = 0, errors = 0, totalRaces = 0, totalUichi = 0;
+  const results = [];
+  for (const v of venues) {
+    if (onProgress) onProgress({ venue: v, done, total: venues.length, status: "loading" });
+    try {
+      const res = await fetchHistoricalResults(raceDate, v.jcd);
+      const races = res?.races || 0;
+      const uichi = res?.uichi_hits || 0;
+      results.push({ venue: v, status: res?.status || "ok", races, uichi });
+      if (res?.status === "success") {
+        totalRaces += races;
+        totalUichi += uichi;
+      }
+    } catch (e) {
+      errors++;
+      results.push({ venue: v, status: "error", error: e?.message || "error" });
+    }
+    done++;
+    if (onProgress) onProgress({ venue: v, done, total: venues.length, status: "done", errors, totalRaces, totalUichi });
+  }
+  return { done, errors, totalRaces, totalUichi, results };
+}
+
+// 指定日のofficialサマリー
+export async function getDaySummary(raceDate) {
+  const [results, progress] = await Promise.all([
+    base44.entities.RaceResult.filter({ race_date: raceDate, data_source: "official" }, "-race_number", 500),
+    base44.entities.FetchProgress.filter({ race_date: raceDate }, "-processed_at", 100),
+  ]);
+  const officialCount = results.length;
+  const uichiHits = results.filter((r) => r.is_uichi).length;
+  const errorCount = progress.filter((p) => p.status === "error").length;
+  const doneCount = progress.filter((p) => p.status === "done").length;
+  const noRacesCount = progress.filter((p) => p.status === "no_races").length;
+  return { officialCount, uichiHits, errorCount, doneCount, noRacesCount, totalVenues: 24 };
+}
+
 // 過去データ取得進捗を取得
 export async function getFetchProgress() {
   return base44.entities.FetchProgress.list("-processed_at", 5000);

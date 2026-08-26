@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, Loader2, Save, Check } from "lucide-react";
 import { getSettings, updateSettings } from "@/lib/boatService";
 import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
+import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,8 @@ export default function Admin() {
         <SettingsIcon className="w-5 h-5 text-primary" />
         <h1 className="text-xl font-bold">管理設定</h1>
       </div>
+
+      <HistoricalFetchPanel />
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
         <h3 className="text-sm font-bold text-muted-foreground tracking-wider">判定しきい値</h3>
