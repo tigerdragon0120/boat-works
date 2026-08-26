@@ -8,7 +8,7 @@ import { fmtPct } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 export default function HistoricalFetchPanel() {
-  const [startDate, setStartDate] = useState("2026-07-25");
+  const [startDate, setStartDate] = useState("2026-02-01");
   const [endDate, setEndDate] = useState("2026-07-31");
   const [running, setRunning] = useState(false);
   const [enriching, setEnriching] = useState(false);
@@ -108,6 +108,7 @@ export default function HistoricalFetchPanel() {
   };
 
   const setTestWeek = () => { setStartDate("2026-07-25"); setEndDate("2026-07-31"); };
+  const setSixMonths = () => { setStartDate("2026-02-01"); setEndDate("2026-07-31"); };
 
   const pct = progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
   const enrichPct = enrichProgress && enrichProgress.total > 0 ? Math.round((enrichProgress.current / enrichProgress.total) * 100) : 0;
@@ -135,6 +136,10 @@ export default function HistoricalFetchPanel() {
         <button onClick={setTestWeek} disabled={running || enriching}
           className="px-3 py-2 rounded-lg bg-accent border border-border text-xs font-semibold text-accent-foreground disabled:opacity-50">
           1週間テスト
+        </button>
+        <button onClick={setSixMonths} disabled={running || enriching}
+          className="px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-xs font-bold text-primary disabled:opacity-50">
+          6か月本番
         </button>
         {running ? (
           <button onClick={stop} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white">
@@ -195,17 +200,25 @@ export default function HistoricalFetchPanel() {
       {summary && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <SummaryCard label="結果取得済み日数" value={`${summary.totalDays}日`} />
-            <SummaryCard label="結果取得済み場数" value={summary.doneVenues} accent="primary" />
+            <SummaryCard label="完了日数 / 対象日数" value={`${summary.completedDays || 0} / ${summary.totalCalendarDays || 0}日`} accent="primary" />
+            <SummaryCard label="完了開催場数" value={summary.doneVenues} accent="primary" />
             <SummaryCard label="official保存レース数" value={summary.totalRaces} accent="primary" />
             <SummaryCard label="ういち的中数" value={summary.totalUichi} accent="emerald" />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <SummaryCard label="全体出現率" value={fmtPct(summary.overallRate, 2)} accent="emerald" />
+            <SummaryCard label="ういち出現率" value={fmtPct(summary.overallRate, 2)} accent="emerald" />
             <SummaryCard label="開催なし場数" value={summary.noRacesVenues} />
             <SummaryCard label="エラー件数" value={summary.errorCount} accent="rose" />
             <SummaryCard label="最終処理日時" value={summary.lastProcessed ? new Date(summary.lastProcessed).toLocaleString("ja-JP", { hour12: false }) : "—"} small />
           </div>
+          {(running || (progress?.date && progress.total > 0)) && (
+            <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 flex items-center gap-3 text-xs">
+              <Clock className="w-3.5 h-3.5 text-primary animate-pulse" />
+              <span className="text-muted-foreground">処理中:</span>
+              <span className="font-bold text-primary tabular-nums">{progress?.date || "—"}</span>
+              <span className="text-muted-foreground">{progress?.venueName || "—"}</span>
+            </div>
+          )}
         </div>
       )}
 

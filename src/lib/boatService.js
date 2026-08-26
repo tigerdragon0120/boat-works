@@ -472,8 +472,25 @@ export async function getRangeSummary(startDate, endDate) {
   const lastProcessed = inRange[0]?.processed_at || null;
   const detailDone = inRange.filter((p) => p.detail_fetch_status === "done").length;
   const detailPending = inRange.filter((p) => !p.detail_fetch_status || p.detail_fetch_status === "pending").length;
+  // 完了日数: その日の全場がdone/no_racesの日をカウント
+  const byDate = {};
+  for (const p of inRange) {
+    if (!byDate[p.race_date]) byDate[p.race_date] = [];
+    byDate[p.race_date].push(p);
+  }
+  let completedDays = 0;
+  for (const records of Object.values(byDate)) {
+    const allDone = records.length > 0 && records.every(p =>
+      p.result_fetch_status === "done" || p.result_fetch_status === "no_races" ||
+      (!p.result_fetch_status && (p.status === "done" || p.status === "no_races"))
+    );
+    if (allDone) completedDays++;
+  }
+  const totalCalendarDays = enumerateDates(startDate, endDate).length;
   return {
     totalDays: dates.size,
+    totalCalendarDays,
+    completedDays,
     doneVenues: done.length,
     noRacesVenues: noRaces.length,
     totalRaces,
