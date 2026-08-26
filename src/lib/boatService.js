@@ -1,6 +1,5 @@
 // BOAT WORKS データサービス層
-// UIとデータ取得を分離。現状はサンプルデータ生成＋DB永続化。
-// 実データ連携は base44/functions/fetchRaceData を差し替えれば適用可能。
+// UIとデータ取得を分離。本番運用：officialデータのみ使用・sampleデータは除外・自動生成停止。
 import { base44 } from "@/api/base44Client";
 import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, gradeBoat1 } from "./boat";
 
@@ -10,103 +9,9 @@ function todayStr(offset = 0) {
   return d.toISOString().slice(0, 10);
 }
 
-function rand(min, max) { return Math.random() * (max - min) + min; }
-function randInt(min, max) { return Math.floor(rand(min, max + 1)); }
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-const GRADE_CLASSES = ["A1", "A2", "B1", "B2"];
-const BRANCHES = ["東京", "大阪", "愛知", "福岡", "静岡", "広島", "兵庫", "香川", "徳山", "尼崎"];
-const RACER_NAMES = ["山田", "佐藤", "鈴木", "高橋", "田中", "伊藤", "渡辺", "加藤", "吉田", "山本", "中村", "小林", "清水", "松本", "井上", "木村", "林", "斎藤", "山口", "森"];
-
-function genRacer(boatNum) {
-  const nationalWinRate = boatNum === 1 ? rand(5.5, 7.8) : boatNum <= 3 ? rand(4.5, 6.5) : rand(3.0, 5.5);
-  return {
-    boat_number: boatNum,
-    registration_number: String(randInt(4000, 4999)),
-    racer_name: pick(RACER_NAMES) + " " + pick(RACER_NAMES),
-    grade_class: boatNum === 1 ? pick(["A1", "A2"]) : pick(GRADE_CLASSES),
-    branch: pick(BRANCHES),
-    age: randInt(24, 48),
-    weight: rand(49, 56),
-    national_win_rate: Number(nationalWinRate.toFixed(2)),
-    national_2rate: Number((nationalWinRate * 2.2 + rand(-3, 3)).toFixed(1)),
-    national_3rate: Number((nationalWinRate * 3.1 + rand(-2, 4)).toFixed(1)),
-    local_win_rate: Number((nationalWinRate + rand(-1.5, 1.5)).toFixed(2)),
-    local_2rate: Number((nationalWinRate * 2.2 + rand(-3, 3)).toFixed(1)),
-    local_3rate: Number((nationalWinRate * 3.1 + rand(-2, 4)).toFixed(1)),
-    c1_win_rate: boatNum === 1 ? Number(rand(48, 68).toFixed(1)) : Number(rand(5, 25).toFixed(1)),
-    c1_2rate: boatNum === 1 ? Number(rand(70, 85).toFixed(1)) : Number(rand(15, 40).toFixed(1)),
-    c1_3rate: boatNum === 1 ? Number(rand(80, 92).toFixed(1)) : Number(rand(25, 50).toFixed(1)),
-    avg_st: Number(rand(0.12, 0.22).toFixed(2)),
-    f_count: Math.random() < 0.15 ? randInt(1, 2) : 0,
-    l_count: Math.random() < 0.1 ? 1 : 0,
-    motor_number: randInt(1, 70),
-    motor_2rate: Number(rand(25, 55).toFixed(1)),
-    motor_3rate: Number(rand(40, 70).toFixed(1)),
-    boat_number_id: randInt(1, 100),
-    boat_2rate: Number(rand(25, 55).toFixed(1)),
-    boat_3rate: Number(rand(40, 70).toFixed(1)),
-    season_record: `${randInt(1, 6)}-${randInt(0, 4)}-${randInt(0, 3)}`,
-    entry_course: boatNum,
-    exhibition_time: Number(rand(6.4, 6.9).toFixed(2)),
-    tilt: Number(rand(-0.5, 0.5).toFixed(1)),
-  };
-}
-
-function genOddsForUichi() {
-  // 6点の3連単オッズ
-  const odds = {};
-  UICHI_COMBOS.forEach((c) => {
-    odds["odds_" + c.replace(/-/g, "_")] = Number(rand(6, 45).toFixed(1));
-  });
-  return odds;
-}
-
-function genResult() {
-  // 3連単結果。ういち買いが約15%で出現するよう偏らせる
-  const isUichi = Math.random() < 0.15;
-  let trifecta;
-  if (isUichi) {
-    trifecta = pick(UICHI_COMBOS);
-  } else {
-    const first = 1;
-    const second = randInt(2, 6);
-    let third = randInt(2, 6);
-    while (third === second) third = randInt(2, 6);
-    trifecta = `${first}-${second}-${third}`;
-  }
-  const [a, b, c] = trifecta.split("-").map(Number);
-  return { trifecta, is_uichi: UICHI_COMBOS.includes(trifecta), result_1: a, result_2: b, result_3: c, payout: Number(rand(800, 18000).toFixed(0)) };
-}
-
-let seeding = false;
 export async function seedIfNeeded() {
-  if (seeding) return;
-  seeding = true;
+  // 本番運用: sampleデータ自動生成は停止。AppSettings初期値のみseed。
   try {
-    const existing = await base44.entities.Race.filter({ race_date: todayStr(0) });
-    if (existing.length > 0) return; // already seeded today
-
-    // 1. VenueStats
-    const venueStatsExist = await base44.entities.VenueStats.list(1);
-    if (venueStatsExist.length === 0) {
-      const vstats = VENUES.map((v) => ({
-        venue_code: v.code,
-        venue_name: v.name,
-        c1_win_rate: Number(rand(50, 66).toFixed(1)),
-        c2_sashi_rate: Number(rand(8, 18).toFixed(1)),
-        c3_makuri_rate: Number(rand(5, 14).toFixed(1)),
-        c4_makuri_rate: Number(rand(6, 16).toFixed(1)),
-        c5_3rate: Number(rand(8, 20).toFixed(1)),
-        c6_3rate: Number(rand(4, 14).toFixed(1)),
-        uichi_rate: Number(rand(0.1, 0.2).toFixed(3)),
-        sample_count: randInt(120, 300),
-        last_updated: new Date().toISOString(),
-      }));
-      await base44.entities.VenueStats.bulkCreate(vstats);
-    }
-
-    // 2. Settings
     const settingsExist = await base44.entities.AppSettings.filter({ is_active_config: true });
     if (settingsExist.length === 0) {
       await base44.entities.AppSettings.create({
@@ -121,120 +26,7 @@ export async function seedIfNeeded() {
         is_active_config: true,
       });
     }
-
-    // 3. Historical RaceResults (過去6か月分のサンプル)
-    const resultsExist = await base44.entities.RaceResult.list(1);
-    if (resultsExist.length === 0) {
-      const results = [];
-      for (let i = 0; i < 240; i++) {
-        const v = pick(VENUES);
-        const daysAgo = randInt(1, 180);
-        const d = new Date();
-        d.setDate(d.getDate() - daysAgo);
-        const r = genResult();
-        const b1wr = Number(rand(5.5, 7.5).toFixed(2));
-        results.push({
-          race_id: `hist_${i}`,
-          race_date: d.toISOString().slice(0, 10),
-          venue_code: v.code,
-          venue_name: v.name,
-          race_number: randInt(1, 12),
-          result_1: r.result_1,
-          result_2: r.result_2,
-          result_3: r.result_3,
-          trifecta: r.trifecta,
-          is_uichi: r.is_uichi,
-          uichi_combo: r.is_uichi ? r.trifecta : null,
-          payout_trifecta: r.payout,
-          boat1_grade_class: pick(["A1", "A2", "B1"]),
-          boat1_national_win_rate: b1wr,
-          boat1_local_win_rate: Number((b1wr + rand(-1, 1)).toFixed(2)),
-          boat1_avg_st: Number(rand(0.13, 0.21).toFixed(2)),
-        });
-      }
-      await base44.entities.RaceResult.bulkCreate(results);
-    }
-
-    // 4. Today's & Tomorrow's races (batched)
-    const raceObjs = [];
-    for (const offset of [0, 1]) {
-      const date = todayStr(offset);
-      const activeVenues = VENUES.filter(() => Math.random() < 0.33).slice(0, 6);
-      for (const v of activeVenues) {
-        const raceCount = randInt(10, 12);
-        for (let r = 1; r <= raceCount; r++) {
-          const baseHour = offset === 0 ? (r <= 4 ? 8 : r <= 8 ? 11 : 14) : 9;
-          const deadline = new Date(`${date}T${String(baseHour + Math.floor(r / 3)).padStart(2, "0")}:${String((r * 7) % 60).padStart(2, "0")}:00`);
-          raceObjs.push({
-            race_date: date,
-            venue_code: v.code,
-            venue_name: v.name,
-            race_number: r,
-            race_name: r <= 4 ? "モーニング" : r <= 8 ? "一般" : "特別選",
-            grade: "一般",
-            deadline: deadline.toISOString(),
-            time_slot: r <= 4 ? "morning" : r <= 8 ? "day" : "night",
-            weather: pick(["晴", "曇", "雨"]),
-            wind_dir: pick(["北", "南", "東", "西"]),
-            wind_speed: Number(rand(1, 8).toFixed(1)),
-            wave_height: Number(rand(2, 8).toFixed(1)),
-            status: "scheduled",
-            data_source: "sample",
-            last_updated: new Date().toISOString(),
-          });
-        }
-      }
-    }
-    const createdRaces = await base44.entities.Race.bulkCreate(raceObjs);
-
-    // entries + odds (batched)
-    const allEntries = [];
-    const allOdds = [];
-    for (const race of createdRaces) {
-      for (let b = 1; b <= 6; b++) {
-        const e = genRacer(b);
-        e.race_id = race.id;
-        e.race_date = race.race_date;
-        e.venue_code = race.venue_code;
-        e.race_number = race.race_number;
-        allEntries.push(e);
-      }
-      if (race.race_date === todayStr(0)) {
-        const od = genOddsForUichi();
-        od.race_id = race.id;
-        od.race_date = race.race_date;
-        od.captured_at = new Date().toISOString();
-        od.stage = "initial";
-        od.synthetic_odds = syntheticOdds(UICHI_COMBOS.map((c) => od["odds_" + c.replace(/-/g, "_")]));
-        allOdds.push(od);
-      }
-    }
-    if (allEntries.length) await base44.entities.RaceEntry.bulkCreate(allEntries);
-    if (allOdds.length) await base44.entities.OddsSnapshot.bulkCreate(allOdds);
-
-    // 5. Pre-day alerts for tomorrow's high-rate races
-    const tomorrowRaces = createdRaces.filter((r) => r.race_date === todayStr(1));
-    const alertObjs = tomorrowRaces.slice(0, 6).map((race) => {
-      const rate = Number(rand(0.14, 0.19).toFixed(3));
-      const grade = rate >= 0.17 ? "S" : rate >= 0.15 ? "A" : rate >= 0.13 ? "B" : "C";
-      return {
-        race_id: race.id,
-        race_date: race.race_date,
-        venue_code: race.venue_code,
-        venue_name: race.venue_name,
-        race_number: race.race_number,
-        deadline: race.deadline,
-        pre_appearance_rate: rate,
-        pre_grade: grade,
-        final_judgment: "PENDING",
-        notified: false,
-        status: "active",
-      };
-    });
-    if (alertObjs.length) await base44.entities.Alert.bulkCreate(alertObjs);
-  } finally {
-    seeding = false;
-  }
+  } catch {}
 }
 
 export async function getSettings() {
@@ -248,7 +40,7 @@ export async function getSettings() {
 }
 
 export async function getRacesByDate(dateStr) {
-  return base44.entities.Race.filter({ race_date: dateStr }, "race_number", 200);
+  return base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 200);
 }
 
 export async function getEntries(raceId) {
@@ -348,7 +140,7 @@ export async function analyzeRace(race, entries, odds, settings, stage = "day") 
 }
 
 export async function getVenueStats() {
-  return base44.entities.VenueStats.list("venue_name", 24);
+  return base44.entities.VenueStats.filter({ data_source: "official" }, "venue_name", 24);
 }
 
 // official の過去結果を取得（ページネーション対応）
