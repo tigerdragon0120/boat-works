@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Bell, Loader2, Clock } from "lucide-react";
 import JudgmentBadge from "@/components/JudgmentBadge";
-import { getAlerts, getSettings, getRacesByDate, getLatestOddsByDate, getAllResults, analyzeRacePure } from "@/lib/boatService";
+import { getAlerts, getSettings, getRacesByDate, getLatestOddsByDate, analyzeRaceWithSimilar } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import { GRADE_STYLE, fmtPct, fmtTime, fmtNum, canFinalJudge, minutesUntilDeadline } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -26,26 +26,38 @@ export default function Alerts() {
     (async () => {
       setLoading(true);
       try {
-        const [s, past] = await Promise.all([getSettings(), getAllResults()]);
+        const s = await getSettings();
         const [todayR, tomA] = await Promise.all([getRacesByDate(dateStr(0)), getAlerts(dateStr(1))]);
         if (!m) return;
         setTodayRaces(todayR);
         setTomorrowAlerts(tomA);
-        // today odds
-        const om = await getLatestOddsByDate(dateStr(0));
-        const ents = await base44.entities.RaceEntry.filter({ race_date: dateStr(0) }, "boat_number", 600);
+        setLoading(false);
+
+        // today odds + entries
+        const [om, ents] = await Promise.all([
+          getLatestOddsByDate(dateStr(0)),
+          base44.entities.RaceEntry.filter({ race_date: dateStr(0) }, "boat_number", 600),
+        ]);
+        if (!m) return;
         const byRace = {};
         for (const e of ents) (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
+
+        // background analysis per race (getAllResults不使用・類似候補をDB側で絞り取得)
         const an = {};
         for (const r of todayR) {
-          const within5 = canFinalJudge(r.deadline);
-          an[r.id] = analyzeRacePure(r, byRace[r.id] || [], om[r.id], past, s, om[r.id] ? "day" : "pre");
+          if (!m) return;
+          try {
+            an[r.id] = await analyzeRaceWithSimilar(r, byRace[r.id] || [], om[r.id], s, om[r.id] ? "day" : "pre");
+            if (m) setAnalyses({ ...an });
+          } catch {
+            an[r.id] = null;
+          }
         }
-        if (m) setAnalyses(an);
+
         // today alerts = BUY/WATCH within 5min
         const ta = todayR.filter((r) => canFinalJudge(r.deadline) && (an[r.id]?.judgment === "BUY" || an[r.id]?.judgment === "WATCH"));
         if (m) setTodayAlerts(ta);
-      } finally {
+      } catch {
         if (m) setLoading(false);
       }
     })();
@@ -82,12 +94,12 @@ export default function Alerts() {
                 <Link key={r.id} to={`/race/${r.id}`} className="rounded-2xl bg-card border border-border p-4 hover:border-primary/40">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-bold">{r.venue_name} {r.race_number}R</span>
-                    <JudgmentBadge judgment={a.judgment} size="md" />
+                    <JudgmentBadge judgment={a?.judgment || "PENDING"} size="md" />
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <Mini label="出現率" value={fmtPct(a.appearance_rate, 1)} />
-                    <Mini label="合成オッズ" value={fmtNum(a.synthetic_odds, 2)} />
-                    <Mini label="期待値" value={fmtNum(a.expected_value, 0) + "%"} />
+                    <Mini label="出現率" value={fmtPct(a?.appearance_rate, 1)} />
+                    <Mini label="合成オッズ" value={fmtNum(a?.synthetic_odds, 2)} />
+                    <Mini label="期待値" value={fmtNum(a?.expected_value, 0) + "%"} />
                   </div>
                   <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" />締切 {fmtTime(r.deadline)}</span>

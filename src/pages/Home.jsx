@@ -4,7 +4,7 @@ import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
-  getAlerts, analyzeRacePure, getAllResults, autoFetchTodayRaces,
+  getAlerts, analyzeRaceWithSimilar, autoFetchTodayRaces, invalidateCache,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
@@ -23,56 +23,77 @@ export default function Home() {
   const [races, setRaces] = useState([]);
   const [entriesByRace, setEntriesByRace] = useState({});
   const [oddsMap, setOddsMap] = useState({});
-  const [pastResults, setPastResults] = useState([]);
   const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [analyses, setAnalyses] = useState({});
   const [tick, setTick] = useState(0);
-  const [autoFetchState, setAutoFetchState] = useState(null); // null|loading|done|error|no_venues
+  const [autoFetchState, setAutoFetchState] = useState(null);
 
   useEffect(() => {
     let m = true;
     (async () => {
+      const t0 = performance.now();
       setLoading(true);
       setError(null);
+      setAnalyses({});
       try {
         await seedIfNeeded();
-        // 本日の開催データを自動取得（公式サイト・非同期・軽量スケジュールのみ）
-        if (tab === "today") {
-          setAutoFetchState("loading");
-          try {
-            const af = await autoFetchTodayRaces();
-            setAutoFetchState(af.status === "success" ? "done" : af.status);
-          } catch {
-            setAutoFetchState("error");
-          }
-        }
-        const [s, past] = await Promise.all([getSettings(), getAllResults()]);
+        const s = await getSettings();
         if (!m) return;
         setSettings(s);
-        setPastResults(past);
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         const [rs, al] = await Promise.all([getRacesByDate(date), getAlerts(date)]);
         if (!m) return;
         setRaces(rs);
         setAlerts(al);
-        // entries for the day
-        const ents = await base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 600);
-        const byRace = {};
-        for (const e of ents) {
-          (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
-        }
+        console.log(`[Home] Race+Alert取得: ${Math.round(performance.now() - t0)}ms`);
+
+        const [ents, om] = await Promise.all([
+          base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 600),
+          tab === "today" ? getLatestOddsByDate(date) : Promise.resolve({}),
+        ]);
         if (!m) return;
+        const byRace = {};
+        for (const e of ents) (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
         setEntriesByRace(byRace);
-        // odds for today
+        setOddsMap(om);
+        setLoading(false);
+        console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms`);
+
+        // 本日開催データ自動取得（非同期・非ブロッキング）
         if (tab === "today") {
-          const om = await getLatestOddsByDate(date);
-          if (m) setOddsMap(om);
-        } else {
-          setOddsMap({});
+          setAutoFetchState("loading");
+          try {
+            const af = await autoFetchTodayRaces();
+            if (!m) return;
+            setAutoFetchState(af.status === "success" ? "done" : af.status);
+            if (af.status === "success") {
+              invalidateCache(`races_${date}`);
+              const newRs = await getRacesByDate(date);
+              if (m) setRaces(newRs);
+            }
+          } catch {
+            if (m) setAutoFetchState("error");
+          }
         }
+
+        // Phase 2: バックグラウンド分析（getAllResults不使用・類似候補をDB側で絞り取得）
+        const tAnalysis = performance.now();
+        const an = {};
+        for (const r of rs) {
+          if (!m) return;
+          try {
+            const within5 = canFinalJudge(r.deadline);
+            const stage = tab === "today" ? (within5 ? "final" : "day") : "pre";
+            an[r.id] = await analyzeRaceWithSimilar(r, byRace[r.id] || [], om[r.id], s, om[r.id] ? stage : "pre");
+            if (m) setAnalyses({ ...an });
+          } catch {
+            an[r.id] = null;
+          }
+        }
+        console.log(`[Home] 分析データ取得: ${Math.round(performance.now() - tAnalysis)}ms`);
       } catch (err) {
         if (m) setError(err.message || "データ取得失敗");
-      } finally {
         if (m) setLoading(false);
       }
     })();
@@ -84,23 +105,6 @@ export default function Home() {
     const t = setInterval(() => setTick((x) => x + 1), 30000);
     return () => clearInterval(t);
   }, []);
-
-  const analyses = useMemo(() => {
-    if (!settings || !pastResults) return {};
-    const out = {};
-    for (const r of races) {
-      const ents = entriesByRace[r.id] || [];
-      const odds = oddsMap[r.id];
-      const within5 = canFinalJudge(r.deadline);
-      const stage = tab === "today" ? (within5 ? "final" : "day") : "pre";
-      try {
-        out[r.id] = analyzeRacePure(r, ents, odds, pastResults, settings, odds ? stage : "pre");
-      } catch {
-        out[r.id] = null;
-      }
-    }
-    return out;
-  }, [races, entriesByRace, oddsMap, pastResults, settings, tab, tick]);
 
   const sortedRaces = useMemo(() => {
     return [...races].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));

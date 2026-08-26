@@ -3,6 +3,28 @@
 import { base44 } from "@/api/base44Client";
 import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, gradeBoat1 } from "./boat";
 
+// 短時間キャッシュ（同一画面内の重複DBクエリ防止・ページ遷移時の再取得削減）
+const _cache = new Map();
+function cached(key, ttl, fetcher) {
+  const e = _cache.get(key);
+  if (e && Date.now() - e.t < ttl) return Promise.resolve(e.v);
+  if (e && e.p) return e.p;
+  const p = fetcher().then(v => {
+    _cache.set(key, { v, t: Date.now(), p: null });
+    return v;
+  }).catch(err => {
+    if (_cache.get(key)?.p === p) _cache.delete(key);
+    throw err;
+  });
+  _cache.set(key, { v: e?.v, t: e?.t || 0, p });
+  return p;
+}
+
+export function invalidateCache(key) {
+  if (key) _cache.delete(key);
+  else _cache.clear();
+}
+
 function todayStr(offset = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offset);
@@ -29,18 +51,22 @@ export async function seedIfNeeded() {
   } catch {}
 }
 
-export async function getSettings() {
-  const list = await base44.entities.AppSettings.filter({ is_active_config: true });
-  if (list.length > 0) return list[0];
-  return {
-    buy_threshold: 110, watch_threshold: 100, pre_alert_rate: 15,
-    min_similar_races: 30, analysis_period_months: 6, odds_update_interval: 60,
-    notification_on: true, venues_enabled: VENUES.map((v) => v.code),
-  };
+export function getSettings() {
+  return cached("settings", 60000, async () => {
+    const list = await base44.entities.AppSettings.filter({ is_active_config: true });
+    if (list.length > 0) return list[0];
+    return {
+      buy_threshold: 110, watch_threshold: 100, pre_alert_rate: 15,
+      min_similar_races: 30, analysis_period_months: 6, odds_update_interval: 60,
+      notification_on: true, venues_enabled: VENUES.map((v) => v.code),
+    };
+  });
 }
 
-export async function getRacesByDate(dateStr) {
-  return base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 200);
+export function getRacesByDate(dateStr) {
+  return cached(`races_${dateStr}`, 30000, () =>
+    base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 200)
+  );
 }
 
 export async function getEntries(raceId) {
@@ -66,8 +92,10 @@ export async function getLatestOddsByDate(dateStr) {
   return map;
 }
 
-export async function getAlerts(dateStr) {
-  return base44.entities.Alert.filter({ race_date: dateStr }, "deadline", 100);
+export function getAlerts(dateStr) {
+  return cached(`alerts_${dateStr}`, 30000, () =>
+    base44.entities.Alert.filter({ race_date: dateStr }, "deadline", 100)
+  );
 }
 
 // 純粋関数版（過去結果を外部から渡す・バッチ計算用）
@@ -139,8 +167,29 @@ export async function analyzeRace(race, entries, odds, settings, stage = "day") 
   return analyzeRacePure(race, entries, odds, past, settings, stage);
 }
 
-export async function getVenueStats() {
-  return base44.entities.VenueStats.filter({ data_source: "official" }, "venue_name", 24);
+// 類似候補をDB側で絞って取得（venue_code + official限定・最大500件・過去のみ）
+// getAllResults()の代替：RaceResult全件取得ではなくDB側フィルタで候補を限定
+export async function getSimilarResultsForRace(race, boat1, settings) {
+  if (!race?.venue_code) return [];
+  const candidates = await base44.entities.RaceResult.filter(
+    { data_source: "official", venue_code: race.venue_code },
+    "-race_date", 500
+  );
+  // 過去のみ対象（当日・未来のレースは除外）
+  return candidates.filter(p => p.race_date < race.race_date);
+}
+
+// 1件分（類似候補をDB側で絞って取得・officialのみ・getAllResults不使用）
+export async function analyzeRaceWithSimilar(race, entries, odds, settings, stage = "day") {
+  const boat1 = entries.find(e => e.boat_number === 1);
+  const similar = await getSimilarResultsForRace(race, boat1, settings);
+  return analyzeRacePure(race, entries, odds, similar, settings, stage);
+}
+
+export function getVenueStats() {
+  return cached("venueStats", 60000, () =>
+    base44.entities.VenueStats.filter({ data_source: "official" }, "venue_name", 24)
+  );
 }
 
 // official の過去結果を取得（ページネーション対応）
@@ -163,8 +212,16 @@ export async function getAllAnalyses() {
   return base44.entities.UichiAnalysis.list("-captured_at", 500);
 }
 
+// Analysis画面用集計データ（バックエンド関数経由・RaceResult全件をクライアントに読み込まない）
+export async function getAnalysisStats() {
+  const res = await base44.functions.invoke("getAnalysisStats", {});
+  return res.data;
+}
+
 export async function updateSettings(id, data) {
-  return base44.entities.AppSettings.update(id, data);
+  const res = await base44.entities.AppSettings.update(id, data);
+  invalidateCache("settings");
+  return res;
 }
 
 // 1日分の開催スケジュール取得（軽量・raceindexページから締切時刻のみ）

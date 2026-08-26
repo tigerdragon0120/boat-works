@@ -4,7 +4,7 @@ import { ArrowLeft, Clock, Loader2, AlertCircle, History, Gauge, RefreshCw, Data
 import JudgmentBadge from "@/components/JudgmentBadge";
 import StatTile from "@/components/StatTile";
 import {
-  getSettings, getEntries, getLatestOdds, getOddsHistory, getAllResults, analyzeRacePure, fetchOfficialRace,
+  getSettings, getEntries, getLatestOdds, getOddsHistory, analyzeRaceWithSimilar, fetchOfficialRace,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import {
@@ -23,7 +23,7 @@ export default function RaceDetail() {
   const [odds, setOdds] = useState(null);
   const [oddsHistory, setOddsHistory] = useState([]);
   const [settings, setSettings] = useState(null);
-  const [pastResults, setPastResults] = useState([]);
+  const [analysis, setAnalysis] = useState(null);
   const [tick, setTick] = useState(0);
   const [fetching, setFetching] = useState(null);
   const [fetchMsg, setFetchMsg] = useState(null);
@@ -32,11 +32,11 @@ export default function RaceDetail() {
   const loadAll = async () => {
     setLoading(true);
     setError(null);
+    setAnalysis(null);
     try {
-      const [s, past] = await Promise.all([getSettings(), getAllResults()]);
+      const s = await getSettings();
       const r = await base44.entities.Race.get(id);
       setSettings(s);
-      setPastResults(past);
       setRace(r);
       const [ents, latestOdds, hist] = await Promise.all([
         getEntries(id), getLatestOdds(id), getOddsHistory(id),
@@ -44,9 +44,17 @@ export default function RaceDetail() {
       setEntries(ents);
       setOdds(latestOdds);
       setOddsHistory(hist);
+      setLoading(false);
+
+      // Background analysis (getAllResults不使用・類似候補をDB側で絞り取得)
+      try {
+        const a = await analyzeRaceWithSimilar(r, ents, latestOdds, s, latestOdds ? "day" : "pre");
+        setAnalysis(a);
+      } catch {
+        setAnalysis(null);
+      }
     } catch (e) {
       setError(e.message || "データ取得失敗");
-    } finally {
       setLoading(false);
     }
   };
@@ -60,15 +68,6 @@ export default function RaceDetail() {
     const t = setInterval(() => setTick((x) => x + 1), 15000);
     return () => clearInterval(t);
   }, []);
-
-  const analysis = useMemo(() => {
-    if (!race || !settings || !pastResults) return null;
-    try {
-      return analyzeRacePure(race, entries, odds, pastResults, settings, odds ? "day" : "pre");
-    } catch {
-      return null;
-    }
-  }, [race, entries, odds, pastResults, settings, tick]);
 
   if (loading) {
     return (
@@ -209,7 +208,7 @@ export default function RaceDetail() {
         <StatTile label="期待値指数" value={within5 && odds ? fmtNum(analysis?.expected_value, 0) + "%" : "—"} accent="amber" />
       </div>
 
-      {!analysis?.min_similar_ok && (
+      {!analysis?.min_similar_ok && analysis && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-center gap-2">
           <AlertCircle className="w-4 h-4" /> データ不足：類似レースが{settings?.min_similar_races || 30}件未満です。出現率は参考値です。
         </div>

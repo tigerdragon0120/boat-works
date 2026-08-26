@@ -1,22 +1,21 @@
 import { useEffect, useState, useMemo } from "react";
 import { BarChart3, Loader2 } from "lucide-react";
-import { getAllResults, getAllAnalyses, getVenueStats } from "@/lib/boatService";
+import { getVenueStats, getAnalysisStats } from "@/lib/boatService";
 import { VENUES, UICHI_COMBOS, fmtPct, fmtNum } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 export default function Analysis() {
   const [loading, setLoading] = useState(true);
-  const [results, setResults] = useState([]);
-  const [analyses, setAnalyses] = useState([]);
   const [venueStats, setVenueStats] = useState([]);
+  const [analysisStats, setAnalysisStats] = useState(null);
 
   useEffect(() => {
     let m = true;
     (async () => {
       setLoading(true);
       try {
-        const [r, a, vs] = await Promise.all([getAllResults(), getAllAnalyses(), getVenueStats()]);
-        if (m) { setResults(r); setAnalyses(a); setVenueStats(vs); }
+        const [vs, as] = await Promise.all([getVenueStats(), getAnalysisStats()]);
+        if (m) { setVenueStats(vs); setAnalysisStats(as); }
       } finally {
         if (m) setLoading(false);
       }
@@ -25,56 +24,28 @@ export default function Analysis() {
   }, []);
 
   const stats = useMemo(() => {
-    const total = results.length;
-    const uichiHits = results.filter((r) => r.is_uichi).length;
+    if (!analysisStats) {
+      return { total: 0, uichiHits: 0, rate: 0, byVenue: {}, byGrade: {}, byCombo: {}, byRaceNum: {}, buyCount: 0, buyHitRate: 0, buyRecovery: 0 };
+    }
+    const total = analysisStats.total || 0;
+    const uichiHits = analysisStats.uichiHits || 0;
     const rate = total > 0 ? uichiHits / total : 0;
-    // venue breakdown
+    // venue breakdown from VenueStats (集計済みデータ・RaceResult全件不使用)
     const byVenue = {};
-    for (const r of results) {
-      byVenue[r.venue_code] = byVenue[r.venue_code] || { name: r.venue_name, total: 0, hits: 0 };
-      byVenue[r.venue_code].total++;
-      if (r.is_uichi) byVenue[r.venue_code].hits++;
+    for (const v of venueStats) {
+      byVenue[v.venue_code] = { name: v.venue_name, total: v.total_races || 0, hits: v.uichi_hits || 0 };
     }
-    // grade breakdown
-    const byGrade = {};
-    for (const r of results) {
-      const g = r.boat1_grade_class || "不明";
-      byGrade[g] = byGrade[g] || { total: 0, hits: 0 };
-      byGrade[g].total++;
-      if (r.is_uichi) byGrade[g].hits++;
-    }
-    // combo breakdown
-    const byCombo = {};
-    for (const c of UICHI_COMBOS) byCombo[c] = { count: 0, sumPayout: 0 };
-    for (const r of results) {
-      if (r.is_uichi && r.uichi_combo && byCombo[r.uichi_combo]) {
-        byCombo[r.uichi_combo].count++;
-        byCombo[r.uichi_combo].sumPayout += r.payout_trifecta || 0;
-      }
-    }
-    // race number breakdown
-    const byRaceNum = {};
-    for (let i = 1; i <= 12; i++) byRaceNum[i] = { total: 0, hits: 0 };
-    for (const r of results) {
-      const n = r.race_number;
-      if (byRaceNum[n]) { byRaceNum[n].total++; if (r.is_uichi) byRaceNum[n].hits++; }
-    }
-    // BUY judgment stats
-    const buyAnalyses = analyses.filter((a) => a.judgment === "BUY");
-    const buyCount = buyAnalyses.length;
-    // 勝敗判定は結果と紐づけが難しいので、BUY分析のうち結果がういち的中か
-    const buyHits = buyAnalyses.filter((a) => {
-      const matched = results.find((r) => r.race_id === a.race_id);
-      return matched && matched.is_uichi;
-    }).length;
-    const buyHitRate = buyCount > 0 ? buyHits / buyCount : 0;
-    const buyPayoutSum = buyAnalyses.reduce((s, a) => {
-      const matched = results.find((r) => r.race_id === a.race_id);
-      return s + (matched && matched.is_uichi ? matched.payout_trifecta || 0 : 0);
-    }, 0);
-    const buyRecovery = buyCount > 0 ? buyPayoutSum / (buyCount * 100) : 0; // 100円/点×6点=600円/レース想定
-    return { total, uichiHits, rate, byVenue, byGrade, byCombo, byRaceNum, buyCount, buyHitRate, buyRecovery };
-  }, [results, analyses]);
+    return {
+      total, uichiHits, rate,
+      byVenue,
+      byGrade: analysisStats.byGrade || {},
+      byCombo: analysisStats.byCombo || {},
+      byRaceNum: analysisStats.byRaceNum || {},
+      buyCount: analysisStats.buyCount || 0,
+      buyHitRate: analysisStats.buyHitRate || 0,
+      buyRecovery: analysisStats.buyRecovery || 0,
+    };
+  }, [venueStats, analysisStats]);
 
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mr-2" />集計中…</div>;
 
@@ -100,7 +71,7 @@ export default function Analysis() {
       {/* Venue breakdown */}
       <Section title="競艇場別出現率">
         <div className="space-y-1">
-          {Object.values(stats.byVenue).sort((a, b) => (b.hits / b.total || 0) - (a.hits / a.total || 0)).map((v) => (
+          {Object.values(stats.byVenue).filter(v => v.total > 0).sort((a, b) => (b.hits / b.total || 0) - (a.hits / a.total || 0)).map((v) => (
             <Row key={v.name} label={v.name} right={fmtPct(v.hits / v.total, 1)} sub={`${v.hits}/${v.total}`} bar={v.hits / v.total} />
           ))}
         </div>
@@ -109,7 +80,7 @@ export default function Analysis() {
       {/* Grade breakdown */}
       <Section title="1号艇級別出現率">
         <div className="space-y-1">
-          {Object.entries(stats.byGrade).map(([g, v]) => (
+          {Object.entries(stats.byGrade).filter(([, v]) => v.total > 0).map(([g, v]) => (
             <Row key={g} label={g} right={fmtPct(v.hits / v.total, 1)} sub={`${v.hits}/${v.total}`} bar={v.hits / v.total} />
           ))}
         </div>
@@ -121,7 +92,7 @@ export default function Analysis() {
           {Object.entries(stats.byRaceNum).map(([n, v]) => (
             <div key={n} className="rounded-lg bg-background/50 px-2 py-2 text-center">
               <div className="text-xs text-muted-foreground">{n}R</div>
-              <div className="font-bold tabular-nums text-sm">{fmtPct(v.hits / v.total, 1)}</div>
+              <div className="font-bold tabular-nums text-sm">{v.total > 0 ? fmtPct(v.hits / v.total, 1) : "—"}</div>
               <div className="text-[10px] text-muted-foreground">{v.hits}/{v.total}</div>
             </div>
           ))}
@@ -132,7 +103,7 @@ export default function Analysis() {
       <Section title="6点別出現分析">
         <div className="space-y-1">
           {UICHI_COMBOS.map((c) => {
-            const v = stats.byCombo[c];
+            const v = stats.byCombo[c] || { count: 0, sumPayout: 0 };
             const avg = v.count > 0 ? v.sumPayout / v.count : 0;
             return <Row key={c} label={c} right={`${v.count}回`} sub={`平均 ${fmtNum(avg, 0)}円`} bar={v.count / Math.max(stats.uichiHits, 1)} mono />;
           })}
