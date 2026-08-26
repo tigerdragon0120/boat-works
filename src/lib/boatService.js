@@ -440,6 +440,85 @@ export async function getDaySummary(raceDate) {
   return { officialCount, uichiHits, errorCount, doneCount, noRacesCount, totalVenues: 24 };
 }
 
+// 期間分の全24場取得（日単位・場単位で逐次、重複スキップ付き）
+export async function fetchHistoricalRange(startDate, endDate, onProgress) {
+  const dates = enumerateDates(startDate, endDate);
+  const venues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+  let current = 0, errors = 0, totalRaces = 0, totalUichi = 0;
+  const total = dates.length * venues.length;
+
+  for (const date of dates) {
+    // 当日の完了済み場を取得してスキップ（再開時の重複処理防止）
+    const dayProgress = await base44.entities.FetchProgress.filter({ race_date: date });
+    const doneSet = new Set(
+      dayProgress.filter((p) => p.status === "done" || p.status === "no_races").map((p) => p.venue_code)
+    );
+
+    for (const v of venues) {
+      if (doneSet.has(v.jcd)) {
+        current++;
+        continue;
+      }
+      if (onProgress) onProgress({ current, total, date, venue: v, status: "loading", errors, totalRaces, totalUichi });
+      let venueStatus = "ok";
+      try {
+        const res = await fetchHistoricalResults(date, v.jcd);
+        if (res?.status === "success") {
+          totalRaces += res.races || 0;
+          totalUichi += res.uichi_hits || 0;
+        }
+        venueStatus = res?.status || "ok";
+      } catch (e) {
+        errors++;
+        venueStatus = "error";
+      }
+      current++;
+      if (onProgress) onProgress({ current, total, date, venue: v, status: "done", venueStatus, errors, totalRaces, totalUichi });
+    }
+  }
+
+  // 全取得完了後、VenueStats再計算
+  try {
+    await recalcVenueStats();
+  } catch {}
+
+  return { current, errors, totalRaces, totalUichi };
+}
+
+// 期間サマリー（FetchProgressから集計）
+export async function getRangeSummary(startDate, endDate) {
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate);
+  const done = inRange.filter((p) => p.status === "done");
+  const errors = inRange.filter((p) => p.status === "error");
+  const noRaces = inRange.filter((p) => p.status === "no_races");
+  const totalRaces = done.reduce((s, p) => s + (p.race_count || 0), 0);
+  const totalUichi = done.reduce((s, p) => s + (p.uichi_hits || 0), 0);
+  const dates = new Set(inRange.map((p) => p.race_date));
+  const overallRate = totalRaces > 0 ? totalUichi / totalRaces : 0;
+  const lastProcessed = inRange[0]?.processed_at || null;
+  return {
+    totalDays: dates.size,
+    doneVenues: done.length,
+    noRacesVenues: noRaces.length,
+    totalRaces,
+    totalUichi,
+    overallRate,
+    errorCount: errors.length,
+    lastProcessed,
+  };
+}
+
+function enumerateDates(start, end) {
+  const dates = [];
+  const s = new Date(start + "T00:00:00");
+  const e = new Date(end + "T00:00:00");
+  for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 // 過去データ取得進捗を取得
 export async function getFetchProgress() {
   return base44.entities.FetchProgress.list("-processed_at", 5000);
