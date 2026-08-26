@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
-import { parseDailyVenueList } from "../../shared/scraper.js";
+import { parseDailyVenueList, fetchWithRetry } from "../../shared/scraper.js";
 
 // BOAT WORKS 1日の開催場一覧取得
 // 公式トップページ（index?hd=YYYYMMDD）からその日開催のjcd一覧を返す。
@@ -19,7 +19,7 @@ export default async function(req) {
 
     const hd = raceDate.replace(/-/g, "");
     const url = `${INDEX_URL}?hd=${hd}`;
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const res = await fetchWithRetry(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
     if (!res.ok) return Response.json({ status: "error", message: `HTTP ${res.status}` }, { status: 502 });
 
     const html = await res.text();

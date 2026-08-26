@@ -62,6 +62,10 @@
     "detail_processed_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "last_heartbeat": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "required": [

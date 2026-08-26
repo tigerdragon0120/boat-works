@@ -1,13 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { UICHI_COMBOS } from "../../shared/uichi.js";
-import { VENUE_NAMES, parseResultList } from "../../shared/scraper.js";
+import { VENUE_NAMES, parseResultList, fetchWithRetry } from "../../shared/scraper.js";
 
 // BOAT WORKS 過去レース結果高速取得（第1段階）
 // 結果一覧ページ1アクセスのみで1場12R分の結果を保存する。
 // 出走表(racelist)取得は行わない → 1号艇詳細は第2段階(enrichBoat1Details)で補完。
 // race_id を一意キーとして重複保存を防止する。
+// フリーズ防止: 10sタイムアウト・2回リトライ・古いprocessingロック自動解除・heartbeat記録
 
 const RESULT_BASE = "https://boatrace.jp/owpc/pc/race";
+const STALE_LOCK_MINUTES = 10;
 
 export default async function(req) {
   let base44;
@@ -29,7 +31,6 @@ export default async function(req) {
     const now = new Date().toISOString();
 
     // === 1. FetchProgress取得 + 重複整理 ===
-    // 同一 race_date+venue_code のFetchProgressが複数ある場合は最新1件を残す
     const existingProgress = await base44.asServiceRole.entities.FetchProgress.filter({
       race_date: raceDate, venue_code: jcd
     });
@@ -38,13 +39,11 @@ export default async function(req) {
     let currentProgress = null;
 
     if (existingProgress.length > 1) {
-      // processed_at降順で最新を残す
       const sorted = [...existingProgress].sort((a, b) =>
         (b.processed_at || "").localeCompare(a.processed_at || "")
       );
       currentProgress = sorted[0];
       progressId = sorted[0].id;
-      // 重複FetchProgressを削除
       for (let i = 1; i < sorted.length; i++) {
         await base44.asServiceRole.entities.FetchProgress.delete(sorted[i].id);
       }
@@ -53,43 +52,51 @@ export default async function(req) {
       progressId = existingProgress[0].id;
     }
 
-    // === 2. 並列二重起動防止: processing中なら早期リターン ===
+    // === 2. 並列二重起動防止 + 古いprocessingロック自動解除（10分） ===
     if (currentProgress && currentProgress.result_fetch_status === "processing") {
-      return Response.json({
-        status: "skipped",
-        message: "既に処理中です",
-        races: currentProgress.race_count || 0,
-      });
+      const processedAt = currentProgress.processed_at ? new Date(currentProgress.processed_at).getTime() : 0;
+      const ageMin = (Date.now() - processedAt) / 60000;
+      if (ageMin < STALE_LOCK_MINUTES) {
+        return Response.json({
+          status: "skipped",
+          message: "既に処理中です",
+          races: currentProgress.race_count || 0,
+        });
+      }
+      // 10分以上前のprocessingはstale → 再処理を続行
     }
 
     const prevDetail = currentProgress?.detail_fetch_status || "pending";
 
-    // === 3. processingロックを即時設定 ===
+    // === 3. processingロック + heartbeat即時設定 ===
     if (progressId) {
       await base44.asServiceRole.entities.FetchProgress.update(progressId, {
         result_fetch_status: "processing", status: "processing",
-        error_msg: null, processed_at: now,
+        error_msg: null, processed_at: now, last_heartbeat: now,
       });
     } else {
       const p = await base44.asServiceRole.entities.FetchProgress.create({
         race_date: raceDate, venue_code: jcd, venue_name: venueName,
         result_fetch_status: "processing", status: "processing",
         detail_fetch_status: prevDetail,
-        processed_at: now,
+        processed_at: now, last_heartbeat: now,
       });
       progressId = p.id;
     }
 
-    // === 4. 結果一覧HTTP取得 ===
+    // === 4. 結果一覧HTTP取得（10sタイムアウト・2回リトライ付き） ===
     const resultListUrl = `${RESULT_BASE}/resultlist?jcd=${jcd}&hd=${hd}`;
-    const rlRes = await fetch(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-
-    if (!rlRes.ok) {
+    let rlRes;
+    try {
+      rlRes = await fetchWithRetry(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+    } catch (fetchError) {
+      const isTimeout = fetchError.name === "AbortError" || fetchError.message.includes("abort") || fetchError.message.includes("timeout");
       await base44.asServiceRole.entities.FetchProgress.update(progressId, {
         result_fetch_status: "error", status: "error",
-        error_msg: `結果一覧取得失敗 HTTP ${rlRes.status}`, result_processed_at: now,
+        error_msg: isTimeout ? "timeout" : fetchError.message,
+        result_processed_at: now, last_heartbeat: now,
       });
-      return Response.json({ status: "error", message: `結果一覧取得失敗 HTTP ${rlRes.status}` }, { status: 502 });
+      return Response.json({ status: "error", message: isTimeout ? "timeout" : fetchError.message }, { status: 502 });
     }
 
     const rlHtml = await rlRes.text();
@@ -100,7 +107,7 @@ export default async function(req) {
     if (raceResults.length === 0) {
       await base44.asServiceRole.entities.FetchProgress.update(progressId, {
         result_fetch_status: "no_races", status: "no_races",
-        race_count: 0, uichi_hits: 0, result_processed_at: now,
+        race_count: 0, uichi_hits: 0, result_processed_at: now, last_heartbeat: now,
       });
       return Response.json({ status: "no_races", races: 0 });
     }
@@ -110,7 +117,6 @@ export default async function(req) {
       race_date: raceDate, venue_code: jcd, data_source: "official"
     });
 
-    // race_idでグループ化、重複は1件のみ残す（boat1データありを優先）
     const existingByRaceId = {};
     const duplicateIdsToDelete = [];
     for (const e of existing) {
@@ -119,7 +125,6 @@ export default async function(req) {
         existingByRaceId[rid] = e;
       } else {
         const keeper = existingByRaceId[rid];
-        // boat1_racer_nameがある方を残す、なければ元を維持
         if (e.boat1_racer_name && !keeper.boat1_racer_name) {
           duplicateIdsToDelete.push(keeper.id);
           existingByRaceId[rid] = e;
@@ -129,7 +134,6 @@ export default async function(req) {
       }
     }
 
-    // 重複RaceResult削除
     for (const dupId of duplicateIdsToDelete) {
       await base44.asServiceRole.entities.RaceResult.delete(dupId);
     }
@@ -157,7 +161,6 @@ export default async function(req) {
       };
       const ex = existingByRaceId[raceId];
       if (ex) {
-        // 結果フィールドのみ更新、boat1フィールド・詳細ステータスは保持
         const detailStatus = ex.boat1_detail_status || (ex.boat1_racer_name ? "done" : "pending");
         toUpdate.push({ id: ex.id, ...baseFields, boat1_detail_status: detailStatus });
       } else {
@@ -183,6 +186,7 @@ export default async function(req) {
       error_msg: null,
       result_processed_at: now,
       processed_at: now,
+      last_heartbeat: now,
     });
 
     return Response.json({
@@ -204,7 +208,9 @@ export default async function(req) {
         if (ep.length > 0) {
           await base44.asServiceRole.entities.FetchProgress.update(ep[0].id, {
             result_fetch_status: "error", status: "error",
-            error_msg: error.message, result_processed_at: new Date().toISOString()
+            error_msg: error.message,
+            result_processed_at: new Date().toISOString(),
+            last_heartbeat: new Date().toISOString()
           });
         }
       }

@@ -46,6 +46,33 @@ export function toPayout(s) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
+// AbortController付きHTTP fetch（タイムアウト保証）
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// 最大maxRetries回リトライ付きfetch（1秒待機・HTTPエラー/タイムアウト対応）
+export async function fetchWithRetry(url, options = {}, timeoutMs = 10000, maxRetries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, options, timeoutMs);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res;
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxRetries) await sleep(1000);
+    }
+  }
+  throw lastError;
+}
+
 // 出走表パース（1レース分）
 export function parseRacelist(html, raceNumber, raceDate) {
   let deadline = null;

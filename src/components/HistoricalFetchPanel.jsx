@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Database, Loader2, Play, Square, CheckCircle, AlertCircle, RefreshCw, BarChart3, Zap, Clock, Gauge } from "lucide-react";
 import {
   fetchHistoricalRange, getRangeSummary, getBoat1DetailStats,
-  recalcVenueStats, enrichBoat1DetailsBatch,
+  recalcVenueStats, enrichBoat1DetailsBatch, getImportHeartbeat,
 } from "@/lib/boatService";
 import { fmtPct } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ export default function HistoricalFetchPanel() {
   const [detailStats, setDetailStats] = useState(null);
   const [log, setLog] = useState([]);
   const [recalcState, setRecalcState] = useState(null);
+  const [heartbeat, setHeartbeat] = useState(null);
   const [speed, setSpeed] = useState(null);
   const abortRef = useRef({ aborted: false });
   const enrichAbortRef = useRef({ aborted: false });
@@ -35,6 +36,20 @@ export default function HistoricalFetchPanel() {
   }, [startDate, endDate]);
 
   useEffect(() => { loadSummary(); }, [loadSummary]);
+
+  // Heartbeat polling (15s) - DB基準で処理生存確認
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const hb = await getImportHeartbeat();
+        if (active) setHeartbeat(hb);
+      } catch {}
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => { active = false; clearInterval(interval); };
+  }, [running]);
 
   const recordSpeedSample = useCallback((totalRaces) => {
     const now = Date.now();
@@ -152,6 +167,30 @@ export default function HistoricalFetchPanel() {
           </button>
         )}
       </div>
+
+      {/* Heartbeat status - DB基準で処理生存判定 */}
+      {running && (() => {
+        const hbAge = heartbeat ? (Date.now() - new Date(heartbeat).getTime()) / 1000 : null;
+        const stale = hbAge !== null && hbAge > 120;
+        return (
+          <div className={cn("rounded-xl px-3 py-2 flex items-center gap-2 text-xs border", stale ? "bg-rose-50 border-rose-200" : "bg-emerald-50 border-emerald-200")}>
+            {stale ? (
+              <>
+                <AlertCircle className="w-4 h-4 text-rose-500" />
+                <span className="font-bold text-rose-600">処理停止の可能性</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-4 h-4 text-emerald-500 animate-pulse" />
+                <span className="font-bold text-emerald-600">処理実行中</span>
+              </>
+            )}
+            <span className="text-muted-foreground ml-auto">
+              最終heartbeat: {heartbeat ? new Date(heartbeat).toLocaleTimeString("ja-JP") : "—"}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Stage 1 Progress */}
       {progress && progress.total > 0 && (
