@@ -4,6 +4,7 @@ import { getSettings, updateSettings } from "@/lib/boatService";
 import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
+import ErrorRetryPanel from "@/components/ErrorRetryPanel";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -60,6 +61,8 @@ export default function Admin() {
       </div>
 
       <HistoricalFetchPanel />
+
+      <ErrorRetryPanel />
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
         <h3 className="text-sm font-bold text-muted-foreground tracking-wider">判定しきい値</h3>

@@ -21,6 +21,7 @@ export default async function(req) {
     const body = await req.json().catch(() => ({}));
     raceDate = body.race_date;
     jcd = String(body.jcd || body.venue_code || "").padStart(2, "0");
+    const fetchTimeoutMs = body.timeout_ms || 10000;
 
     if (!raceDate || !jcd) {
       return Response.json({ status: "error", message: "race_date, jcd が必要です" }, { status: 400 });
@@ -88,7 +89,7 @@ export default async function(req) {
     const resultListUrl = `${RESULT_BASE}/resultlist?jcd=${jcd}&hd=${hd}`;
     let rlRes;
     try {
-      rlRes = await fetchWithTimeout(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000);
+      rlRes = await fetchWithTimeout(resultListUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, fetchTimeoutMs);
     } catch (fetchError) {
       const isTimeout = fetchError.name === "AbortError" || fetchError.message.includes("abort") || fetchError.message.includes("timeout");
       await base44.asServiceRole.entities.FetchProgress.update(progressId, {

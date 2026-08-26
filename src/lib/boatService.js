@@ -278,12 +278,105 @@ export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
 }
 
 // 過去レース結果取得（第1段階・結果のみ高速取得）
-export async function fetchHistoricalResults(raceDate, jcd) {
+export async function fetchHistoricalResults(raceDate, jcd, options = {}) {
   const res = await base44.functions.invoke("fetchHistoricalResults", {
     race_date: raceDate,
     jcd: String(jcd).padStart(2, "0"),
+    timeout_ms: options.timeout_ms || null,
   });
   return res.data;
+}
+
+// エラー場専用再取得（FetchProgress result_fetch_status="error"のみ対象）
+// 1日ずつ処理・最大3場並列・タイムアウト20s・最大2回リトライ（3-5s待機）
+// 既存のfetchHistoricalResultsを再利用（race_id重複防止・FetchProgress重複防止・heartbeat・stale lock・ういち判定は関数内で処理）
+export async function retryErrorFetches(onProgress, abortRef) {
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const errorRecords = allProgress.filter(p => p.result_fetch_status === "error" && p.venue_code !== "00");
+
+  if (errorRecords.length === 0) {
+    return { total: 0, processed: 0, success: 0, failed: 0 };
+  }
+
+  // 日付ごとにグループ化（日付の並列処理は行わない）
+  const byDate = {};
+  for (const p of errorRecords) {
+    if (!byDate[p.race_date]) byDate[p.race_date] = [];
+    byDate[p.race_date].push(p);
+  }
+
+  const dates = Object.keys(byDate).sort();
+  const total = errorRecords.length;
+  let processed = 0, success = 0, failed = 0;
+
+  for (const date of dates) {
+    if (abortRef?.aborted) break;
+
+    const dayRecords = byDate[date];
+    // 最大3場並列
+    for (let i = 0; i < dayRecords.length; i += 3) {
+      if (abortRef?.aborted) break;
+
+      const batch = dayRecords.slice(i, i + 3);
+      const batchNames = batch.map(p => p.venue_name || p.venue_code).join(" / ");
+
+      if (onProgress) onProgress({
+        total, processed, success, failed,
+        currentDate: date,
+        currentVenues: batchNames,
+        remaining: total - processed,
+        status: "loading",
+      });
+
+      const results = await Promise.all(batch.map(async (p) => {
+        let lastError = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (abortRef?.aborted) return { success: false, error: "aborted" };
+          try {
+            const res = await Promise.race([
+              base44.functions.invoke("fetchHistoricalResults", {
+                race_date: p.race_date,
+                jcd: String(p.venue_code).padStart(2, "0"),
+                timeout_ms: 20000,
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("client_timeout")), 25000))
+            ]);
+            if (res.data?.status === "success" || res.data?.status === "no_races") {
+              return { success: true, races: res.data?.races || 0 };
+            }
+            lastError = res.data?.message || res.data?.status || "error";
+          } catch (e) {
+            lastError = e?.message || "error";
+          }
+          // 1回目失敗時のみ3-5秒待機してリトライ
+          if (attempt === 0) await new Promise(r => setTimeout(r, 4000));
+        }
+        return { success: false, error: lastError };
+      }));
+
+      for (const r of results) {
+        processed++;
+        if (r.success) success++;
+        else failed++;
+      }
+
+      if (onProgress) onProgress({
+        total, processed, success, failed,
+        currentDate: date,
+        currentVenues: batchNames,
+        remaining: total - processed,
+        status: "done",
+      });
+    }
+  }
+
+  return { total, processed, success, failed };
+}
+
+// エラー場数を取得
+export async function getErrorFetchCount() {
+  const all = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  return all.filter(p => p.result_fetch_status === "error" && p.venue_code !== "00").length;
 }
 
 // 1号艇詳細補完（第2段階・1場分）
