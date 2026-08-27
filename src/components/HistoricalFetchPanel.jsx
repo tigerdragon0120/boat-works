@@ -3,13 +3,19 @@ import { Database, Loader2, Play, Square, CheckCircle, AlertCircle, RefreshCw, B
 import {
   fetchHistoricalRange, getRangeSummary, getBoat1DetailStats,
   recalcVenueStats, enrichBoat1DetailsBatch, getImportHeartbeat,
+  retryErrorFetches,
 } from "@/lib/boatService";
 import { fmtPct } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 export default function HistoricalFetchPanel() {
+  const yesterday = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
   const [startDate, setStartDate] = useState("2026-02-01");
-  const [endDate, setEndDate] = useState("2026-07-31");
+  const [endDate, setEndDate] = useState(yesterday);
   const [running, setRunning] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -18,6 +24,8 @@ export default function HistoricalFetchPanel() {
   const [detailStats, setDetailStats] = useState(null);
   const [log, setLog] = useState([]);
   const [recalcState, setRecalcState] = useState(null);
+  const [foundationRunning, setFoundationRunning] = useState(false);
+  const [foundationStatus, setFoundationStatus] = useState(null);
   const [heartbeat, setHeartbeat] = useState(null);
   const [speed, setSpeed] = useState(null);
   const abortRef = useRef({ aborted: false });
@@ -126,7 +134,41 @@ export default function HistoricalFetchPanel() {
   };
 
   const setTestWeek = () => { setStartDate("2026-07-25"); setEndDate("2026-07-31"); };
-  const setSixMonths = () => { setStartDate("2026-02-01"); setEndDate("2026-07-31"); };
+  const setSixMonths = () => { setStartDate("2026-02-01"); setEndDate(yesterday); };
+
+  const handleCompleteFoundation = async () => {
+    if (running || enriching || foundationRunning) return;
+    const finalStart = "2026-02-01";
+    const finalEnd = yesterday;
+    setStartDate(finalStart);
+    setEndDate(finalEnd);
+    setFoundationRunning(true);
+    setFoundationStatus("第1段階：未取得・エラー結果を確認中");
+    abortRef.current.aborted = false;
+    enrichAbortRef.current.aborted = false;
+    try {
+      await fetchHistoricalRange(finalStart, finalEnd, () => {}, abortRef);
+      setFoundationStatus("残エラーを再取得中");
+      await retryErrorFetches(() => {}, abortRef.current);
+      setFoundationStatus("第2段階：1号艇詳細を補完中");
+      await enrichBoat1DetailsBatch(finalStart, finalEnd, () => {}, enrichAbortRef);
+      setFoundationStatus("VenueStatsを再計算中");
+      await recalcVenueStats();
+      setFoundationStatus("最終チェック中");
+      const [s, d] = await Promise.all([
+        getRangeSummary(finalStart, finalEnd),
+        getBoat1DetailStats(finalStart, finalEnd),
+      ]);
+      setSummary(s);
+      setDetailStats(d);
+      const ok = s.errorCount === 0 && d.errorCount === 0 && d.pending === 0;
+      setFoundationStatus(ok ? "過去データ基盤 完成" : `要確認：結果エラー${s.errorCount}件 / 詳細未完了${d.pending}件 / 詳細エラー${d.errorCount}件`);
+    } catch (e) {
+      setFoundationStatus(`基盤完成処理でエラー：${e?.message || "unknown"}`);
+    } finally {
+      setFoundationRunning(false);
+    }
+  };
 
   const pct = progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
   const enrichPct = enrichProgress && enrichProgress.total > 0 ? Math.round((enrichProgress.current / enrichProgress.total) * 100) : 0;
