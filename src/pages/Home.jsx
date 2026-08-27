@@ -4,14 +4,12 @@ import { Bell, Loader2, AlertCircle, CalendarClock } from "lucide-react";
 import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
-  seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
+  seedIfNeeded, getSettings, getRacesByDate,
   getAlerts,
   getBackfillProgressLight,
-  autoFetchRacesForDate,
 } from "@/lib/boatService";
-import { getCachedAnalysesByDate, computeCacheHitRate, analyzeAllRacesForDate } from "@/lib/analysisCache";
+import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
-import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, finalJudgeTime, GRADE_STYLE } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
@@ -29,8 +27,6 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [races, setRaces] = useState([]);
-  const [entriesByRace, setEntriesByRace] = useState({});
-  const [oddsMap, setOddsMap] = useState({});
   const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [analyses, setAnalyses] = useState({});
@@ -60,101 +56,18 @@ export default function Home() {
         // バックフィル進捗（軽量・非ブロッキング）
         getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
-        // キャッシュ済み分析を先に取得（高速・再分析なし）
-        let [rs, al, cachedAn, cachedPre] = await Promise.all([
-          getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
+        // Homeは保存済みキャッシュだけを読む。外部取得・補修・再分析はバックグラウンド処理へ分離。
+        const [rs, al, cachedAn] = await Promise.all([
+          getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date),
         ]);
-
-        // 今日/明日とも公式の開催場一覧を再確認する。
-        // 特に今日分は、前夜時点で未公開だった開催場が朝に追加されるため、
-        // Raceが一部存在していても毎回軽量な開催場再確認を行い、不足場を補完する。
-        try {
-          const fetchedSchedule = await autoFetchRacesForDate(date);
-          if (fetchedSchedule?.status === "success") {
-            const refreshedRaces = await getRacesByDate(date);
-            if (refreshedRaces.length !== rs.length || tab === "today") {
-              rs = refreshedRaces;
-              // 新規Race追加後に関連キャッシュも取り直す
-              [al, cachedAn, cachedPre] = await Promise.all([
-                getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
-              ]);
-            }
-            console.log(`[Home] 開催場再確認: venues=${fetchedSchedule.venues ?? "?"} races=${rs.length}`);
-          }
-        } catch (scheduleErr) {
-          console.error(`[Home] ${tab === "today" ? "本日" : "明日"}スケジュール再確認失敗`, scheduleErr);
-        }
 
         if (!m) return;
         setRaces(rs);
         setAlerts(al);
         setAnalyses(cachedAn);
         setCacheHitRate(computeCacheHitRate(rs, cachedAn));
-        console.log(`[Home] Race+Alert+分析キャッシュ取得: ${Math.round(performance.now() - t0)}ms`);
-
-        // 先に出走表を確認。6艇揃っていない未終了レースだけを補修する。
-        // Homeを開くたび全場取得するのではなく、欠損レースだけ1回取得する。
-        const nowMs = Date.now();
-        let ents = await base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 2000);
-        const countByRace = {};
-        for (const e of ents) countByRace[e.race_id] = (countByRace[e.race_id] || 0) + 1;
-
-        const activeRaces = rs.filter((r) => tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs);
-        const missingEntryIds = activeRaces.filter(r => (countByRace[r.id] || 0) < 6).map(r => r.id);
-
-        if (missingEntryIds.length > 0) {
-          try {
-            const repairRes = await base44.functions.invoke("repairRaceEntries", {
-              race_date: date,
-              race_ids: missingEntryIds,
-            });
-            if (!m) return;
-            const repair = repairRes?.data || repairRes;
-            console.log(`[Home] 出走表欠損補修: 対象${missingEntryIds.length} / repaired=${repair?.repaired ?? 0} / errors=${repair?.errors ?? 0}`);
-            // 補修後のRaceEntryを取り直す
-            ents = await base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 2000);
-          } catch (repairErr) {
-            console.error("[Home] 出走表欠損補修失敗", repairErr);
-          }
-        }
-
-        if (!m) return;
-        const byRace = {};
-        for (const e of ents) (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
-        setEntriesByRace(byRace);
-
-        // 6艇揃ったレースだけをpre分析。出走表未完成レースは分析しない。
-        const completeRaceIds = new Set(Object.entries(byRace).filter(([, list]) => list.length >= 6).map(([id]) => id));
-        const missingPreIds = activeRaces
-          .filter(r => completeRaceIds.has(r.id) && !cachedPre[r.id])
-          .map(r => r.id);
-
-        if (missingPreIds.length > 0) {
-          try {
-            const preResult = await analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingPreIds, force: false });
-            if (!m) return;
-            if (preResult?.status === "error") throw new Error(preResult.message || "事前分析に失敗しました");
-            const refreshed = await getCachedAnalysesByDate(date);
-            if (!m) return;
-            setAnalyses(refreshed);
-            setCacheHitRate(computeCacheHitRate(rs, refreshed));
-            console.log(`[Home] 不足pre分析完了: 対象${missingPreIds.length} / analyzed=${preResult?.analyzed ?? "?"} / errors=${preResult?.errors ?? "?"}`);
-          } catch (preErr) {
-            console.error("[Home] 不足pre分析失敗", preErr);
-            if (m) setError(`事前分析の作成に失敗：${preErr?.message || "不明なエラー"}`);
-          }
-        }
-
-        const om = tab === "today" ? await getLatestOddsByDate(date) : {};
-        if (!m) return;
-        setOddsMap(om);
         setLoading(false);
-        console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms (キャッシュヒット ${Math.round(computeCacheHitRate(rs, cachedAn)*100)}%)`);
-
-        // Home表示時には外部データ自動取得を開始しない。
-        // データ収集は日次処理・管理画面側で行い、Homeは保存済みデータを読むだけにする。
-        // ※ 再分析は行わない。前夜の一括分析（analyzeAllRacesForDate）でUichiAnalysis保存済み。
-        // キャッシュ欠損レースはnullのまま表示（RaceCardがPENDING表示）。
+        console.log(`[Home] 高速表示完了: ${Math.round(performance.now() - t0)}ms / races=${rs.length}`);
       } catch (err) {
         if (m) setError(err.message || "データ取得失敗");
         if (m) setLoading(false);
