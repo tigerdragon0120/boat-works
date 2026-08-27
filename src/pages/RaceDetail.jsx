@@ -3,8 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Clock, Loader2, AlertCircle, History, Gauge, RefreshCw, Database } from "lucide-react";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import StatTile from "@/components/StatTile";
+import TrustScoreCard from "@/components/TrustScoreCard";
+import BuyReasonCard from "@/components/BuyReasonCard";
 import {
   getSettings, getEntries, getLatestOdds, getOddsHistory, analyzeRaceWithSimilar, fetchOfficialRace,
+  getBoat1TrustScore,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import {
@@ -24,6 +27,7 @@ export default function RaceDetail() {
   const [oddsHistory, setOddsHistory] = useState([]);
   const [settings, setSettings] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [trust, setTrust] = useState(null);
   const [tick, setTick] = useState(0);
   const [fetching, setFetching] = useState(null);
   const [fetchMsg, setFetchMsg] = useState(null);
@@ -52,6 +56,14 @@ export default function RaceDetail() {
         setAnalysis(a);
       } catch {
         setAnalysis(null);
+      }
+
+      // 1号艇信頼スコア（フル版・バックエンドでDB履歴データを使用）
+      try {
+        const t = await getBoat1TrustScore(id);
+        if (t?.status === "success") setTrust(t);
+      } catch {
+        setTrust(null);
       }
     } catch (e) {
       setError(e.message || "データ取得失敗");
@@ -244,11 +256,17 @@ export default function RaceDetail() {
         </div>
       )}
 
+      {/* 1号艇信頼スコア（フル版・DB履歴データ使用） */}
+      <TrustScoreCard trust={trust || analysis?.boat1_trust} />
+
+      {/* 買える理由カード + 不安材料 */}
+      <BuyReasonCard trust={trust || analysis?.boat1_trust} />
+
       {/* 1号艇評価 */}
       <div className="rounded-2xl bg-card border border-border p-4">
         <div className="flex items-center gap-2 mb-3">
           <Gauge className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-bold">1号艇評価</h3>
+          <h3 className="text-sm font-bold">1号艇基本データ</h3>
         </div>
         <div className="flex items-center gap-4">
           <div className={cn("text-5xl font-bold w-16 h-16 flex items-center justify-center rounded-2xl border-2", GRADE_STYLE[analysis?.boat1_grade || "D"])}>

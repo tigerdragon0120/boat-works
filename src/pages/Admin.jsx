@@ -48,6 +48,14 @@ export default function Admin() {
         odds_update_interval: Number(settings.odds_update_interval),
         notification_on: settings.notification_on,
         venues_enabled: settings.venues_enabled,
+        trust_weight_basic: Number(settings.trust_weight_basic ?? 20),
+        trust_weight_lane1: Number(settings.trust_weight_lane1 ?? 20),
+        trust_weight_venue: Number(settings.trust_weight_venue ?? 15),
+        trust_weight_st: Number(settings.trust_weight_st ?? 10),
+        trust_weight_motor: Number(settings.trust_weight_motor ?? 10),
+        trust_weight_weather: Number(settings.trust_weight_weather ?? 10),
+        trust_strong_threshold: Number(settings.trust_strong_threshold ?? 85),
+        trust_buy_threshold: Number(settings.trust_buy_threshold ?? 75),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -85,6 +93,18 @@ export default function Admin() {
         <NumField label="信頼度A（n ≥ ）" value={settings.reliability_a_threshold ?? 500} onChange={(v) => set("reliability_a_threshold", v)} />
         <NumField label="信頼度B（n ≥ ）" value={settings.reliability_b_threshold ?? 250} onChange={(v) => set("reliability_b_threshold", v)} />
         <NumField label="信頼度C（n ≥ ）" value={settings.reliability_c_threshold ?? 100} onChange={(v) => set("reliability_c_threshold", v)} />
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">1号艇信頼スコア重み</h3>
+        <NumField label="選手基本力（最大点）" value={settings.trust_weight_basic ?? 20} onChange={(v) => set("trust_weight_basic", v)} />
+        <NumField label="1コース信頼性（最大点）" value={settings.trust_weight_lane1 ?? 20} onChange={(v) => set("trust_weight_lane1", v)} />
+        <NumField label="当地相性（最大点）" value={settings.trust_weight_venue ?? 15} onChange={(v) => set("trust_weight_venue", v)} />
+        <NumField label="ST評価（最大点）" value={settings.trust_weight_st ?? 10} onChange={(v) => set("trust_weight_st", v)} />
+        <NumField label="モーター評価（最大点）" value={settings.trust_weight_motor ?? 10} onChange={(v) => set("trust_weight_motor", v)} />
+        <NumField label="天候適性（最大点・データ不足時は対象外）" value={settings.trust_weight_weather ?? 10} onChange={(v) => set("trust_weight_weather", v)} />
+        <NumField label="STRONG BUYしきい値（信頼スコア）" value={settings.trust_strong_threshold ?? 85} onChange={(v) => set("trust_strong_threshold", v)} />
+        <NumField label="BUY候補しきい値（信頼スコア）" value={settings.trust_buy_threshold ?? 75} onChange={(v) => set("trust_buy_threshold", v)} />
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">

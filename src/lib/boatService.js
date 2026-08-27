@@ -1,7 +1,7 @@
 // BOAT WORKS データサービス層
 // UIとデータ取得を分離。本番運用：officialデータのみ使用・sampleデータは除外・自動生成停止。
 import { base44 } from "@/api/base44Client";
-import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, judgeFromEVWithSample, reliabilityGrade, dataSufficiencyRate, gradeBoat1 } from "./boat";
+import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, judgeFromEVWithSample, reliabilityGrade, dataSufficiencyRate, gradeBoat1, computeTrustScoreLite } from "./boat";
 
 // 短時間キャッシュ（同一画面内の重複DBクエリ防止・ページ遷移時の再取得削減）
 const _cache = new Map();
@@ -50,6 +50,14 @@ export async function seedIfNeeded() {
         notification_on: true,
         venues_enabled: VENUES.map((v) => v.code),
         is_active_config: true,
+        trust_weight_basic: 20,
+        trust_weight_lane1: 20,
+        trust_weight_venue: 15,
+        trust_weight_st: 10,
+        trust_weight_motor: 10,
+        trust_weight_weather: 10,
+        trust_strong_threshold: 85,
+        trust_buy_threshold: 75,
       });
     }
   } catch {}
@@ -162,6 +170,9 @@ function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Gra
   const reliability = reliabilityGrade(similarCount, settings);
   const isReference = sufficiency < 0.5 || similarCount < (settings.min_buy_sample || 100);
 
+  // 1号艇信頼スコア（lite版・エントリーデータから高速計算）
+  const trustLite = computeTrustScoreLite(boat1, settings);
+
   let judgment = "PENDING";
   if (stage === "pre") {
     judgment = "PENDING";
@@ -186,6 +197,8 @@ function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Gra
     data_sufficiency: sufficiency,
     reliability,
     is_reference: isReference,
+    // 1号艇信頼スコア
+    boat1_trust: trustLite,
     boat1,
     odds_values: oddsValues,
   };
@@ -498,6 +511,12 @@ export async function enrichBoat1Details(raceDate, jcd, options = {}) {
     limit: options.limit || 12,
     error_mode: options.error_mode || false,
   });
+  return res.data;
+}
+
+// 1号艇信頼スコア取得（フル版・バックエンド関数経由・DB履歴データ使用）
+export async function getBoat1TrustScore(raceId) {
+  const res = await base44.functions.invoke("getBoat1TrustScore", { race_id: raceId });
   return res.data;
 }
 

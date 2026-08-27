@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { Clock, ChevronRight } from "lucide-react";
+import { Clock, ChevronRight, Shield } from "lucide-react";
 import JudgmentBadge from "./JudgmentBadge";
-import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, canFinalJudge, minutesUntilDeadline, UICHI_LABEL } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, canFinalJudge, minutesUntilDeadline, UICHI_LABEL, trustScoreColor, trustScoreLabel } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 // race: Race, analysis: 分析結果, countdownMin: 締切まで分, mode: today|tomorrow, preGrade: 前日評価(S/A/B/C)
@@ -78,6 +78,28 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
           <div className="text-xl font-bold tabular-nums text-emerald-600">{showOdds ? fmtNum(analysis.expected_value, 0) + "%" : "—"}</div>
         </div>
       </div>
+
+      {/* 1号艇信頼スコア */}
+      {analysis?.boat1_trust && (
+        <div className="mt-2 flex items-center gap-2 rounded-xl bg-background/50 px-3 py-2">
+          <Shield className={cn("w-4 h-4", trustScoreColor(analysis.boat1_trust.score))} />
+          <span className="text-[10px] text-muted-foreground tracking-wider">1号艇信頼</span>
+          <span className={cn("text-2xl font-bold tabular-nums", trustScoreColor(analysis.boat1_trust.score))}>
+            {analysis.boat1_trust.score}
+          </span>
+          <span className="text-[10px] text-muted-foreground">{trustScoreLabel(analysis.boat1_trust.score)}</span>
+          {analysis.boat1_trust.reasons?.length > 0 && (
+            <span className="ml-auto text-[10px] text-emerald-600 font-semibold">
+              信頼材料{analysis.boat1_trust.reasons.length}
+            </span>
+          )}
+          {analysis.boat1_trust.concerns?.length > 0 && (
+            <span className="text-[10px] text-amber-600 font-semibold">
+              注意{analysis.boat1_trust.concerns.length}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1.5">

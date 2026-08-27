@@ -47,6 +47,46 @@
     "reliability_c_threshold": {
       "type": "number",
       "description": "\u4fe1\u983c\u5ea6C\u306e\u6700\u4f4e\u30b5\u30f3\u30d7\u30eb\u6570"
+    },
+    "trust_weight_basic": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: \u9078\u624b\u57fa\u672c\u529b\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c820)",
+      "default": 20
+    },
+    "trust_weight_lane1": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: 1\u30b3\u30fc\u30b9\u4fe1\u983c\u6027\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c820)",
+      "default": 20
+    },
+    "trust_weight_venue": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: \u5f53\u5730\u76f8\u6027\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c815)",
+      "default": 15
+    },
+    "trust_weight_st": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: ST\u8a55\u4fa1\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c810)",
+      "default": 10
+    },
+    "trust_weight_motor": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: \u30e2\u30fc\u30bf\u30fc\u8a55\u4fa1\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c810)",
+      "default": 10
+    },
+    "trust_weight_weather": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2: \u5929\u5019\u9069\u6027\u306e\u6700\u5927\u70b9 (\u30c7\u30d5\u30a9\u30eb\u30c810\u30fb\u30c7\u30fc\u30bf\u4e0d\u8db3\u6642\u306f\u8a55\u4fa1\u5bfe\u8c61\u5916)",
+      "default": 10
+    },
+    "trust_strong_threshold": {
+      "type": "number",
+      "description": "STRONG BUY\u306e\u4fe1\u983c\u30b9\u30b3\u30a2\u3057\u304d\u3044\u5024 (\u30c7\u30d5\u30a9\u30eb\u30c885)",
+      "default": 85
+    },
+    "trust_buy_threshold": {
+      "type": "number",
+      "description": "BUY\u5019\u88dc\u306e\u4fe1\u983c\u30b9\u30b3\u30a2\u3057\u304d\u3044\u5024 (\u30c7\u30d5\u30a9\u30eb\u30c875)",
+      "default": 75
     }
   },
   "required": []

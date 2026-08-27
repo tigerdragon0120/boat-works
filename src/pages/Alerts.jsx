@@ -101,6 +101,22 @@ export default function Alerts() {
                     <Mini label="合成オッズ" value={fmtNum(a?.synthetic_odds, 2)} />
                     <Mini label="期待値" value={fmtNum(a?.expected_value, 0) + "%"} />
                   </div>
+                  {a?.boat1_trust && (
+                    <div className="mt-2 flex items-center justify-between rounded-lg bg-background/50 px-3 py-1.5">
+                      <span className="text-[10px] text-muted-foreground">1号艇信頼</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("text-lg font-bold tabular-nums",
+                          a.boat1_trust.score >= 75 ? "text-emerald-600" :
+                          a.boat1_trust.score >= 60 ? "text-sky-600" :
+                          a.boat1_trust.score >= 45 ? "text-amber-600" : "text-rose-600"
+                        )}>{a.boat1_trust.score}</span>
+                        <span className="text-[10px] text-muted-foreground">/100</span>
+                        {a.boat1_trust.reasons?.length > 0 && (
+                          <span className="ml-1 text-[10px] text-emerald-600 font-semibold">材料{a.boat1_trust.reasons.length}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" />締切 {fmtTime(r.deadline)}</span>
                     <span className="tabular-nums">{mins > 0 ? `あと${mins}分` : "締切"}</span>
