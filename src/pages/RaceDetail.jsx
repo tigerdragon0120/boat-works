@@ -259,7 +259,7 @@ export default function RaceDetail() {
           <>
             <div className="text-xs text-muted-foreground tracking-wider mb-2">事前評価</div>
             <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
-            {mins != null && mins > 0 && (
+            {mins != null && (
               <div className="text-sm text-muted-foreground mt-2">
                 最終判定予定 <span className="text-foreground font-bold tabular-nums">{fmtTime(finalAt)}</span>
                 <span className="ml-1.5">{mins > 0 ? `（あと${mins}分）` : "（最終判定中…）"}</span>
