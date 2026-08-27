@@ -7,6 +7,7 @@ import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
   getAlerts,
   getBackfillProgressLight,
+  autoFetchRacesForDate,
 } from "@/lib/boatService";
 import { getCachedAnalysesByDate, computeCacheHitRate, analyzeAllRacesForDate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
@@ -57,9 +58,27 @@ export default function Home() {
         getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         // キャッシュ済み分析を先に取得（高速・再分析なし）
-        const [rs, al, cachedAn, cachedPre] = await Promise.all([
+        let [rs, al, cachedAn, cachedPre] = await Promise.all([
           getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
         ]);
+
+        // 明日タブでRaceがまだ0件なら、その場で翌日開催スケジュールを軽量取得する。
+        // 公式側が未公開ならno_venues/0件のまま。公開後に再度開けば取得される。
+        if (tab === "tomorrow" && rs.length === 0) {
+          try {
+            const fetchedTomorrow = await autoFetchRacesForDate(date);
+            if (fetchedTomorrow?.status === "success" && (fetchedTomorrow.races || 0) > 0) {
+              rs = await getRacesByDate(date);
+              // Race作成後に関連キャッシュも取り直す
+              [al, cachedAn, cachedPre] = await Promise.all([
+                getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
+              ]);
+            }
+          } catch (tomorrowErr) {
+            console.error("[Home] 明日スケジュール自動取得失敗", tomorrowErr);
+          }
+        }
+
         if (!m) return;
         setRaces(rs);
         setAlerts(al);
