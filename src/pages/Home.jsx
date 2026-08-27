@@ -67,40 +67,61 @@ export default function Home() {
         setCacheHitRate(computeCacheHitRate(rs, cachedAn));
         console.log(`[Home] Race+Alert+分析キャッシュ取得: ${Math.round(performance.now() - t0)}ms`);
 
-        // キャッシュが無い「これからのレース」だけを1回だけ事前分析して保存する。
-        // 外部サイト取得は行わず、既存DBデータだけでUichiAnalysis(pre)を作成する。
+        // 先に出走表を確認。6艇揃っていない未終了レースだけを補修する。
+        // Homeを開くたび全場取得するのではなく、欠損レースだけ1回取得する。
         const nowMs = Date.now();
-        const missingRaceIds = rs
-          .filter((r) => (tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs) && !cachedPre[r.id])
-          .map((r) => r.id);
-        if (missingRaceIds.length > 0) {
+        let ents = await base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 2000);
+        const countByRace = {};
+        for (const e of ents) countByRace[e.race_id] = (countByRace[e.race_id] || 0) + 1;
+
+        const activeRaces = rs.filter((r) => tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs);
+        const missingEntryIds = activeRaces.filter(r => (countByRace[r.id] || 0) < 6).map(r => r.id);
+
+        if (missingEntryIds.length > 0) {
           try {
-            // 外部サイト取得は行わず、集計済みDBだけで不足分を即時pre分析。
-            // ここは完了を待ってから再読込し、「分析データ未作成」のまま放置しない。
-            const preResult = await analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingRaceIds, force: false });
+            const repairRes = await base44.functions.invoke("repairRaceEntries", {
+              race_date: date,
+              race_ids: missingEntryIds,
+            });
             if (!m) return;
-            if (preResult?.status === "error") {
-              throw new Error(preResult.message || "事前分析に失敗しました");
-            }
+            const repair = repairRes?.data || repairRes;
+            console.log(`[Home] 出走表欠損補修: 対象${missingEntryIds.length} / repaired=${repair?.repaired ?? 0} / errors=${repair?.errors ?? 0}`);
+            // 補修後のRaceEntryを取り直す
+            ents = await base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 2000);
+          } catch (repairErr) {
+            console.error("[Home] 出走表欠損補修失敗", repairErr);
+          }
+        }
+
+        if (!m) return;
+        const byRace = {};
+        for (const e of ents) (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
+        setEntriesByRace(byRace);
+
+        // 6艇揃ったレースだけをpre分析。出走表未完成レースは分析しない。
+        const completeRaceIds = new Set(Object.entries(byRace).filter(([, list]) => list.length >= 6).map(([id]) => id));
+        const missingPreIds = activeRaces
+          .filter(r => completeRaceIds.has(r.id) && !cachedPre[r.id])
+          .map(r => r.id);
+
+        if (missingPreIds.length > 0) {
+          try {
+            const preResult = await analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingPreIds, force: false });
+            if (!m) return;
+            if (preResult?.status === "error") throw new Error(preResult.message || "事前分析に失敗しました");
             const refreshed = await getCachedAnalysesByDate(date);
             if (!m) return;
             setAnalyses(refreshed);
             setCacheHitRate(computeCacheHitRate(rs, refreshed));
-            console.log(`[Home] 不足pre分析完了: 対象${missingRaceIds.length} / analyzed=${preResult?.analyzed ?? "?"} / errors=${preResult?.errors ?? "?"}`);
+            console.log(`[Home] 不足pre分析完了: 対象${missingPreIds.length} / analyzed=${preResult?.analyzed ?? "?"} / errors=${preResult?.errors ?? "?"}`);
           } catch (preErr) {
             console.error("[Home] 不足pre分析失敗", preErr);
             if (m) setError(`事前分析の作成に失敗：${preErr?.message || "不明なエラー"}`);
           }
         }
 
-        const [ents, om] = await Promise.all([
-          base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 600),
-          tab === "today" ? getLatestOddsByDate(date) : Promise.resolve({}),
-        ]);
+        const om = tab === "today" ? await getLatestOddsByDate(date) : {};
         if (!m) return;
-        const byRace = {};
-        for (const e of ents) (byRace[e.race_id] = byRace[e.race_id] || []).push(e);
-        setEntriesByRace(byRace);
         setOddsMap(om);
         setLoading(false);
         console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms (キャッシュヒット ${Math.round(computeCacheHitRate(rs, cachedAn)*100)}%)`);
