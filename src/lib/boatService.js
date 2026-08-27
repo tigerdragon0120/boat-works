@@ -260,9 +260,11 @@ export async function getAllAnalyses() {
 }
 
 // Analysis画面用集計データ（バックエンド関数経由・RaceResult全件をクライアントに読み込まない）
-export async function getAnalysisStats() {
-  const res = await base44.functions.invoke("getAnalysisStats", {});
-  return res.data;
+export function getAnalysisStats() {
+  return cached("analysisStats", 300000, async () => {
+    const res = await base44.functions.invoke("getAnalysisStats", {});
+    return res.data;
+  });
 }
 
 export async function updateSettings(id, data) {
