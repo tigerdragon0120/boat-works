@@ -1,0 +1,54 @@
+{
+  "name": "RacerVenueSnapshot",
+  "type": "object",
+  "properties": {
+    "snapshot_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "grade_class": {
+      "type": "string"
+    },
+    "local_win_rate": {
+      "type": "number"
+    },
+    "local_2rate": {
+      "type": "number"
+    },
+    "local_3rate": {
+      "type": "number"
+    },
+    "motor_number": {
+      "type": "number"
+    },
+    "motor_2rate": {
+      "type": "number"
+    },
+    "motor_3rate": {
+      "type": "number"
+    },
+    "boat_number_id": {
+      "type": "number"
+    },
+    "boat_2rate": {
+      "type": "number"
+    },
+    "boat_3rate": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "snapshot_date",
+    "venue_code",
+    "registration_number"
+  ]
+}
