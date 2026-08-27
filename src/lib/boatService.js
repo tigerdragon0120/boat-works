@@ -1117,14 +1117,20 @@ export async function getBackfillProgressLight() {
 
 // 昨日基準の日付範囲を計算
 function getPriorityDateRanges() {
+  const formatLocalDate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yStr = yesterday.toISOString().slice(0, 10);
+  const yStr = formatLocalDate(yesterday);
 
   function daysAgoStr(n) {
     const d = new Date(yesterday);
     d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDate(d);
   }
 
   return {
