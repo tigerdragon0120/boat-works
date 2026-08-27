@@ -147,7 +147,8 @@ export default function RaceDetail() {
     );
   }
 
-  const mins = minutesUntilDeadline(race.deadline);
+  const finalAt = finalJudgeTime(race.deadline);
+  const mins = finalAt ? Math.max(0, Math.ceil((finalAt.getTime() - Date.now()) / 60000)) : null;
   const within5 = canFinalJudge(race.deadline);
   const boat1 = entries.find((e) => e.boat_number === 1);
   const isOfficial = race.data_source === "official";
@@ -260,8 +261,8 @@ export default function RaceDetail() {
             <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
             {mins != null && mins > 0 && (
               <div className="text-sm text-muted-foreground mt-2">
-                最終判定予定 <span className="text-foreground font-bold tabular-nums">{fmtTime(finalJudgeTime(race.deadline))}</span>
-                <span className="ml-1.5">（あと{mins}分）</span>
+                最終判定予定 <span className="text-foreground font-bold tabular-nums">{fmtTime(finalAt)}</span>
+                <span className="ml-1.5">{mins > 0 ? `（あと${mins}分）` : "（最終判定中…）"}</span>
               </div>
             )}
           </>
