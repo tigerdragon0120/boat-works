@@ -57,8 +57,8 @@ export default function Home() {
         getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         // キャッシュ済み分析を先に取得（高速・再分析なし）
-        const [rs, al, cachedAn] = await Promise.all([
-          getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date),
+        const [rs, al, cachedAn, cachedPre] = await Promise.all([
+          getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
         ]);
         if (!m) return;
         setRaces(rs);
@@ -71,7 +71,7 @@ export default function Home() {
         // 外部サイト取得は行わず、既存DBデータだけでUichiAnalysis(pre)を作成する。
         const nowMs = Date.now();
         const missingRaceIds = rs
-          .filter((r) => (tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs) && !cachedAn[r.id])
+          .filter((r) => (tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs) && !cachedPre[r.id])
           .map((r) => r.id);
         if (missingRaceIds.length > 0) {
           try {
