@@ -1,6 +1,7 @@
 // 締切5分前になったレースだけ最新オッズ取得＋final分析を自動実行
 // in-flight管理・1回リトライ(90s後)・既存finalは再取得しない
 import { useState, useEffect, useRef } from "react";
+import { base44 } from "@/api/base44Client";
 import { fetchOfficialRace } from "@/lib/boatService";
 import { analyzeRaceFinal, getCachedAnalysesForRace } from "@/lib/analysisCache";
 import { minutesUntilDeadline } from "@/lib/boat";
@@ -39,6 +40,15 @@ export function useFinalAutoJudge(races, analyses, onAnalysisUpdated, enabled = 
         const byStage = await getCachedAnalysesForRace(raceId);
         if (byStage.final) {
           onUpdatedRef.current(raceId, byStage.final);
+          // BUY判定時にプッシュ通知送信（失敗は非クリティカル）
+          if (byStage.final.judgment === "BUY") {
+            try {
+              await base44.functions.invoke("notifyBuyAlert", {
+                race_id: raceId,
+                deadline: race.deadline,
+              });
+            } catch (e) { /* 通知失敗は無視 */ }
+          }
         }
         setStatusMap(prev => ({ ...prev, [raceId]: { status: "done" } }));
         failedRef.current.delete(raceId);
