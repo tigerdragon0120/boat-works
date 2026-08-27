@@ -82,7 +82,7 @@ export function getSettings() {
 
 export function getRacesByDate(dateStr) {
   return cached(`races_${dateStr}`, 30000, () =>
-    base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 200)
+    base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 300)
   );
 }
 
