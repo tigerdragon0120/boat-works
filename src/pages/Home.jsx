@@ -65,21 +65,24 @@ export default function Home() {
           getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
         ]);
 
-        // 明日タブでRaceがまだ0件なら、その場で翌日開催スケジュールを軽量取得する。
-        // 公式側が未公開ならno_venues/0件のまま。公開後に再度開けば取得される。
-        if (tab === "tomorrow" && rs.length === 0) {
-          try {
-            const fetchedTomorrow = await autoFetchRacesForDate(date);
-            if (fetchedTomorrow?.status === "success" && (fetchedTomorrow.races || 0) > 0) {
-              rs = await getRacesByDate(date);
-              // Race作成後に関連キャッシュも取り直す
+        // 今日/明日とも公式の開催場一覧を再確認する。
+        // 特に今日分は、前夜時点で未公開だった開催場が朝に追加されるため、
+        // Raceが一部存在していても毎回軽量な開催場再確認を行い、不足場を補完する。
+        try {
+          const fetchedSchedule = await autoFetchRacesForDate(date);
+          if (fetchedSchedule?.status === "success") {
+            const refreshedRaces = await getRacesByDate(date);
+            if (refreshedRaces.length !== rs.length || tab === "today") {
+              rs = refreshedRaces;
+              // 新規Race追加後に関連キャッシュも取り直す
               [al, cachedAn, cachedPre] = await Promise.all([
                 getAlerts(date), getCachedAnalysesByDate(date), getCachedAnalysesByDate(date, "pre"),
               ]);
             }
-          } catch (tomorrowErr) {
-            console.error("[Home] 明日スケジュール自動取得失敗", tomorrowErr);
+            console.log(`[Home] 開催場再確認: venues=${fetchedSchedule.venues ?? "?"} races=${rs.length}`);
           }
+        } catch (scheduleErr) {
+          console.error(`[Home] ${tab === "today" ? "本日" : "明日"}スケジュール再確認失敗`, scheduleErr);
         }
 
         if (!m) return;
