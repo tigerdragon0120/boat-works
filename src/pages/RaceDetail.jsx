@@ -109,9 +109,22 @@ export default function RaceDetail() {
         } catch {}
       }
 
-      // 締切5分前でfinal未分析時は直前分析をバックグラウンド実行
-      if (within5 && !finalCached) {
-        analyzeRaceFinal(id, r.race_date).then(() => setReloadKey(k => k + 1)).catch(() => {});
+      // 締切5分前は、final未作成またはPENDINGなら必ず最新オッズ取得→final分析。
+      // finalレコードがPENDINGのまま残っていても「判定済み」と扱わない。
+      const finalNeedsUpdate = within5 && (!finalCached || finalCached.judgment === "PENDING");
+      if (finalNeedsUpdate) {
+        (async () => {
+          try {
+            const fetched = await fetchOfficialRace(r.race_date, r.venue_code, r.race_number);
+            if (fetched?.status !== "success") throw new Error(fetched?.message || "最新オッズ取得失敗");
+            await analyzeRaceFinal(id, r.race_date);
+            setReloadKey(k => k + 1);
+          } catch (e) {
+            console.error("[RaceDetail] 最終判定失敗", e);
+            setFetchMsg(`最終判定失敗：${e?.message || "不明なエラー"}`);
+            setFetching("error");
+          }
+        })();
       }
     } catch (e) {
       setError(e.message || "データ取得失敗");
