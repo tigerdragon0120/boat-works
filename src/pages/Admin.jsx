@@ -3,11 +3,7 @@ import { Settings as SettingsIcon, Loader2, Save, Check } from "lucide-react";
 import { getSettings, updateSettings } from "@/lib/boatService";
 import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
-import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
-import ErrorRetryPanel from "@/components/ErrorRetryPanel";
 import BackfillStatusBanner from "@/components/BackfillStatusBanner";
-import BatchAnalysisPanel from "@/components/BatchAnalysisPanel";
-import AggregationPanel from "@/components/AggregationPanel";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -82,13 +78,12 @@ export default function Admin() {
 
       <BackfillStatusBanner />
 
-      <AggregationPanel />
-
-      <BatchAnalysisPanel />
-
-      <HistoricalFetchPanel />
-
-      <ErrorRetryPanel />
+      <div className="rounded-2xl bg-card border border-border p-4">
+        <div className="font-bold text-sm">データ更新は自動です</div>
+        <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
+          レース結果の保存、過去データの補完、1号艇詳細の補完、集計更新はバックグラウンドで自動実行します。通常は手動操作不要です。
+        </div>
+      </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
         <h3 className="text-sm font-bold text-muted-foreground tracking-wider">判定しきい値</h3>
