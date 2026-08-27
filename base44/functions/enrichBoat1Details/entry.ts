@@ -265,13 +265,16 @@ export default async function(req) {
       };
 
       const existing = venueCache.get(entry.registration_number);
-      if (existing) {
+      if (existing && existing.id) {
+        // DB由来 → bulkUpdate
         racerVenueSnapsToUpdate.push({ id: existing.id, ...venueSnapData });
         venueCache.set(entry.registration_number, { ...venueSnapData, id: existing.id });
-      } else {
+      } else if (!existing) {
+        // 新規 → bulkCreate
         racerVenueSnapsToCreate.push(venueSnapData);
         venueCache.set(entry.registration_number, venueSnapData);
       }
+      // existing だが id 無し（同一バッチ内で既にcreate済み）→ 何もしない
 
       // 全国データキャッシュ（RacerSnapshot）
       if (!nationalCache.has(entry.registration_number)) {
