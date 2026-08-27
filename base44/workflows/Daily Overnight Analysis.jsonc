@@ -31,7 +31,10 @@
           "call": "invoke_backend_function",
           "with": {
             "function_name": "runDailyOvernight",
-            "args": {}
+            "args": {
+              "target_offset": 1,
+              "skip_aggregate": false
+            }
           },
           "then": "end",
           "x-base44": {
