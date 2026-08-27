@@ -465,6 +465,7 @@ export async function enrichBoat1Details(raceDate, jcd, options = {}) {
     jcd: String(jcd).padStart(2, "0"),
     race_numbers: options.race_numbers || null,
     limit: options.limit || 12,
+    error_mode: options.error_mode || false,
   });
   return res.data;
 }
@@ -769,8 +770,10 @@ export async function fetchHistoricalRange(startDate, endDate, onProgress, abort
   return { completedDays, totalDays, current, total, errors, totalRaces, totalUichi, errorPending: errorPending.length };
 }
 
-// 第2段階: 1号艇詳細補完（期間一括・優先順位付き）
+// 第2段階: 1号艇詳細補完（期間一括・最大2場並列・自動負荷調整付き）
 // 優先順位: 1.直近30日 2.ういち的中レース 3.残り
+// 並列: 最大2場 × 3レース = 最大6同時アクセス
+// 自動調整: 直近30リクエストのエラー率監視（5%→1場、10%→1場、それ以下→2場）
 export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, abortRef) {
   const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
   const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate && p.venue_code !== "00");
@@ -788,20 +791,106 @@ export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, ab
     const aRecent = a.race_date >= thirtyDaysAgo ? 0 : 1;
     const bRecent = b.race_date >= thirtyDaysAgo ? 0 : 1;
     if (aRecent !== bRecent) return aRecent - bRecent;
-    // 同グループ内は日付降順（新しい順）
     if (a.race_date !== b.race_date) return b.race_date.localeCompare(a.race_date);
-    // 同日内はういち的中優先
     const aUichi = (a.uichi_hits || 0) > 0 ? 0 : 1;
     const bUichi = (b.uichi_hits || 0) > 0 ? 0 : 1;
     return aUichi - bUichi;
   });
 
+  // 自動負荷調整: 直近30リクエストのエラー率監視
+  let venueConcurrency = 2;
+  const errorWindow = [];
+  const WINDOW_SIZE = 30;
+  const startTime = Date.now();
+
+  const recordResult = (success) => {
+    errorWindow.push({ success, time: Date.now() });
+    if (errorWindow.length > WINDOW_SIZE) errorWindow.shift();
+  };
+
+  const adjustConcurrency = () => {
+    if (errorWindow.length < 10) return;
+    const recent = errorWindow.slice(-WINDOW_SIZE);
+    const errorCount = recent.filter(e => !e.success).length;
+    const errorRate = errorCount / recent.length;
+    if (errorRate >= 0.10) {
+      venueConcurrency = 1;
+    } else if (errorRate >= 0.05) {
+      venueConcurrency = 1;
+    } else {
+      venueConcurrency = 2;
+    }
+  };
+
   let current = 0, total = pending.length, enriched = 0, errors = 0;
-  for (const p of pending) {
+
+  for (let i = 0; i < pending.length; i += venueConcurrency) {
+    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors };
+
+    adjustConcurrency();
+    const batch = pending.slice(i, i + venueConcurrency);
+    const batchNames = batch.map(p => p.venue_name || p.venue_code).join(" / ");
+    const batchDates = batch.map(p => p.race_date).join(" / ");
+
+    if (onProgress) onProgress({
+      current, total, venue: batchNames, date: batchDates,
+      status: "loading", enriched, errors,
+      venueConcurrency, raceConcurrency: 3,
+      startTime, pendingCount: total - current,
+    });
+
+    const results = await Promise.allSettled(batch.map(async (p) => {
+      try {
+        const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12 });
+        recordResult(true);
+        return { enriched: res?.enriched || 0, errors: res?.errors || 0 };
+      } catch (e) {
+        recordResult(false);
+        return { enriched: 0, errors: 1 };
+      }
+    }));
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        enriched += result.value.enriched;
+        errors += result.value.errors;
+      } else {
+        errors++;
+      }
+      current++;
+    }
+
+    if (onProgress) onProgress({
+      current, total, venue: batchNames, date: batchDates,
+      status: "done", enriched, errors,
+      venueConcurrency, raceConcurrency: 3,
+      startTime, pendingCount: total - current,
+    });
+  }
+
+  return { current, total, enriched, errors };
+}
+
+// 1号艇詳細エラー専用再取得（低速安全モード）
+// 対象: boat1_detail_status = "error" のRaceResultのみ
+// 1場ずつ直列・最大2レース並列・タイムアウト25s・最大3回リトライ（2s待機）
+export async function enrichBoat1DetailsErrors(startDate, endDate, onProgress, abortRef) {
+  const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+  const inRange = allProgress.filter((p) => p.race_date >= startDate && p.race_date <= endDate && p.venue_code !== "00");
+  // detail_fetch_status = "error" または "processing"（未完了でエラー含む可能性）の場を対象
+  const candidates = inRange.filter((p) =>
+    p.detail_fetch_status === "error" || p.detail_fetch_status === "processing"
+  );
+
+  // 日付順（古い順）
+  candidates.sort((a, b) => a.race_date.localeCompare(b.race_date));
+
+  let current = 0, total = candidates.length, enriched = 0, errors = 0;
+  for (const p of candidates) {
     if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors };
     if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "loading", enriched, errors });
     try {
-      const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12 });
+      const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12, error_mode: true });
       enriched += res?.enriched || 0;
       errors += res?.errors || 0;
     } catch {

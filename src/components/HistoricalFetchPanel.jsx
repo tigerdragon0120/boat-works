@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Database, Loader2, Play, Square, CheckCircle, AlertCircle, RefreshCw, BarChart3, Zap, Clock, Gauge } from "lucide-react";
 import {
   fetchHistoricalRange, getRangeSummary, getBoat1DetailStats,
-  recalcVenueStats, enrichBoat1DetailsBatch, getImportHeartbeat,
+  recalcVenueStats, enrichBoat1DetailsBatch, enrichBoat1DetailsErrors, getImportHeartbeat,
   retryErrorFetches,
 } from "@/lib/boatService";
 import { fmtPct } from "@/lib/boat";
@@ -34,6 +34,11 @@ export default function HistoricalFetchPanel() {
   const abortRef = useRef({ aborted: false });
   const enrichAbortRef = useRef({ aborted: false });
   const speedSamplesRef = useRef([]);
+  const enrichSpeedRef = useRef([]);
+  const [enrichSpeed, setEnrichSpeed] = useState(null);
+  const [errorEnriching, setErrorEnriching] = useState(false);
+  const [errorEnrichProgress, setErrorEnrichProgress] = useState(null);
+  const errorEnrichAbortRef = useRef({ aborted: false });
 
   const loadSummary = useCallback(async () => {
     try {
@@ -107,17 +112,38 @@ export default function HistoricalFetchPanel() {
 
   const stop = () => { abortRef.current.aborted = true; };
 
+  const recordEnrichSpeed = useCallback((enrichedCount) => {
+    const now = Date.now();
+    enrichSpeedRef.current.push({ time: now, count: enrichedCount });
+    enrichSpeedRef.current = enrichSpeedRef.current.filter(s => now - s.time < 180000);
+    if (enrichSpeedRef.current.length >= 2) {
+      const latest = enrichSpeedRef.current[enrichSpeedRef.current.length - 1];
+      const oldest = enrichSpeedRef.current[0];
+      const elapsedMin = (latest.time - oldest.time) / 60000;
+      if (elapsedMin > 0.05) {
+        setEnrichSpeed(Math.max(0, Math.round((latest.count - oldest.count) / elapsedMin)));
+      }
+    }
+  }, []);
+
   const handleEnrich = async () => {
     enrichAbortRef.current.aborted = false;
     setEnriching(true);
-    setEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0 });
+    setEnrichSpeed(null);
+    enrichSpeedRef.current = [];
+    setEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0, venueConcurrency: 2, raceConcurrency: 3, startTime: Date.now(), pendingCount: 0 });
     try {
       await enrichBoat1DetailsBatch(startDate, endDate, (p) => {
         setEnrichProgress({
           current: p.current, total: p.total, venue: p.venue || "",
           date: p.date || "", status: p.status,
           enriched: p.enriched, errors: p.errors,
+          venueConcurrency: p.venueConcurrency || 2,
+          raceConcurrency: p.raceConcurrency || 3,
+          startTime: p.startTime || Date.now(),
+          pendingCount: p.pendingCount || 0,
         });
+        if (p.enriched > 0) recordEnrichSpeed(p.enriched);
       }, enrichAbortRef);
       await loadSummary();
     } finally {
@@ -126,6 +152,26 @@ export default function HistoricalFetchPanel() {
   };
 
   const stopEnrich = () => { enrichAbortRef.current.aborted = true; };
+
+  const handleEnrichErrors = async () => {
+    errorEnrichAbortRef.current.aborted = false;
+    setErrorEnriching(true);
+    setErrorEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0 });
+    try {
+      await enrichBoat1DetailsErrors(startDate, endDate, (p) => {
+        setErrorEnrichProgress({
+          current: p.current, total: p.total, venue: p.venue || "",
+          date: p.date || "", status: p.status,
+          enriched: p.enriched, errors: p.errors,
+        });
+      }, errorEnrichAbortRef);
+      await loadSummary();
+    } finally {
+      setErrorEnriching(false);
+    }
+  };
+
+  const stopEnrichErrors = () => { errorEnrichAbortRef.current.aborted = true; };
 
   const handleRecalc = async () => {
     setRecalcState("loading");
@@ -175,6 +221,9 @@ export default function HistoricalFetchPanel() {
 
   const pct = progress && progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
   const enrichPct = enrichProgress && enrichProgress.total > 0 ? Math.round((enrichProgress.current / enrichProgress.total) * 100) : 0;
+  const enrichETA = enrichSpeed && enrichSpeed > 0 && enrichProgress?.pendingCount > 0
+    ? Math.ceil((enrichProgress.pendingCount * 12) / enrichSpeed) : null;
+  const errorEnrichPct = errorEnrichProgress && errorEnrichProgress.total > 0 ? Math.round((errorEnrichProgress.current / errorEnrichProgress.total) * 100) : 0;
   const remainingVenues = progress ? progress.total - progress.current : 0;
   const avgRacesPerVenue = progress && progress.current > 0 ? progress.totalRaces / progress.current : 12;
   const estRemainingMin = speed && speed.racesPerMin > 0 && progress
@@ -380,36 +429,83 @@ export default function HistoricalFetchPanel() {
             </span>
           )}
         </div>
+
+        {/* RaceResult-level stats grid */}
+        {detailStats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <DetailStat label="総対象RaceResult" value={detailStats.total} />
+            <DetailStat label="補完済み" value={detailStats.enriched} accent="emerald" />
+            <DetailStat label="pending" value={detailStats.pending} accent="amber" />
+            <DetailStat label="error" value={detailStats.errorCount} accent="rose" />
+          </div>
+        )}
+
+        {/* Enrichment progress */}
         {enrichProgress && enrichProgress.total > 0 && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
+              <span className="text-muted-foreground truncate">
                 {enriching && enrichProgress.date ? `${enrichProgress.date} ${enrichProgress.venue} 補完中…` : "補完状況"}
               </span>
-              <span className="tabular-nums font-semibold">{enrichProgress.current}/{enrichProgress.total}場 ({enrichPct}%)</span>
+              <span className="tabular-nums font-semibold whitespace-nowrap">{enrichProgress.current}/{enrichProgress.total}場 ({enrichPct}%)</span>
             </div>
             <div className="h-1.5 rounded-full bg-background overflow-hidden">
               <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${enrichPct}%` }} />
             </div>
-            <div className="flex gap-4 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>補完数 <span className="text-foreground font-semibold tabular-nums">{enrichProgress.enriched}</span></span>
               <span>エラー <span className="text-rose-600 font-semibold tabular-nums">{enrichProgress.errors}</span></span>
+              <span>並列 <span className="text-primary font-semibold tabular-nums">{enrichProgress.venueConcurrency || 2}場×{enrichProgress.raceConcurrency || 3}R</span></span>
+              {enrichSpeed != null && <span>速度 <span className="text-primary font-semibold tabular-nums">{enrichSpeed}</span>件/分</span>}
+              {enrichETA != null && <span>推定残り <span className="text-primary font-semibold">約{enrichETA}分</span></span>}
             </div>
           </div>
         )}
-        <div className="flex items-center gap-2">
+
+        {/* Error retry progress */}
+        {errorEnrichProgress && errorEnrichProgress.total > 0 && (
+          <div className="space-y-1.5 border-t border-border pt-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground truncate">
+                {errorEnriching && errorEnrichProgress.date ? `${errorEnrichProgress.date} ${errorEnrichProgress.venue} エラー再取得中…` : "エラー再取得状況"}
+              </span>
+              <span className="tabular-nums font-semibold whitespace-nowrap">{errorEnrichProgress.current}/{errorEnrichProgress.total}場 ({errorEnrichPct}%)</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-background overflow-hidden">
+              <div className="h-full bg-rose-500 rounded-full transition-all" style={{ width: `${errorEnrichPct}%` }} />
+            </div>
+            <div className="flex gap-4 text-xs text-muted-foreground">
+              <span>成功 <span className="text-emerald-600 font-semibold tabular-nums">{errorEnrichProgress.enriched}</span></span>
+              <span>再失敗 <span className="text-rose-600 font-semibold tabular-nums">{errorEnrichProgress.errors}</span></span>
+            </div>
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
           {enriching ? (
             <button onClick={stopEnrich} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-sm font-bold text-white">
               <Square className="w-4 h-4" /> 停止
             </button>
           ) : (
-            <button onClick={handleEnrich} disabled={!startDate || !endDate || running}
+            <button onClick={handleEnrich} disabled={!startDate || !endDate || running || errorEnriching}
               className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
               {enriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               詳細補完開始
             </button>
           )}
-          <button onClick={handleRecalc} disabled={recalcState === "loading" || running || enriching}
+          {errorEnriching ? (
+            <button onClick={stopEnrichErrors} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-sm font-bold text-white">
+              <Square className="w-4 h-4" /> 停止
+            </button>
+          ) : (
+            <button onClick={handleEnrichErrors} disabled={!startDate || !endDate || running || enriching || !detailStats || detailStats.errorCount === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
+              {errorEnriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertCircle className="w-4 h-4" />}
+              詳細エラー再取得
+            </button>
+          )}
+          <button onClick={handleRecalc} disabled={recalcState === "loading" || running || enriching || errorEnriching}
             className="inline-flex items-center gap-1.5 rounded-xl bg-accent border border-border px-3 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50">
             {recalcState === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
             VenueStats再計算
@@ -451,6 +547,16 @@ export default function HistoricalFetchPanel() {
           <RefreshCw className="w-3.5 h-3.5" /> サマリー再読込
         </button>
       )}
+    </div>
+  );
+}
+
+function DetailStat({ label, value, accent }) {
+  const c = { emerald: "text-emerald-600", amber: "text-amber-600", rose: "text-rose-600" };
+  return (
+    <div className="rounded-lg bg-background px-2.5 py-1.5 text-center">
+      <div className="text-[10px] text-muted-foreground tracking-wider">{label}</div>
+      <div className={cn("text-base font-bold tabular-nums", accent && c[accent])}>{value ?? "—"}</div>
     </div>
   );
 }
