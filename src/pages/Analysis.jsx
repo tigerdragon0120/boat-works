@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
-import { BarChart3, Loader2 } from "lucide-react";
+import { BarChart3, Loader2, Target } from "lucide-react";
 import { getVenueStats, getAnalysisStats } from "@/lib/boatService";
 import { VENUES, UICHI_COMBOS, fmtPct, fmtNum } from "@/lib/boat";
 import { cn } from "@/lib/utils";
+import EvPerformanceChart from "@/components/EvPerformanceChart";
 
 export default function Analysis() {
   const [loading, setLoading] = useState(true);
@@ -72,6 +73,15 @@ export default function Analysis() {
         <Card label="BUY的中率" value={fmtPct(stats.buyHitRate, 1)} accent="emerald" />
         <Card label="BUY回収率" value={fmtNum(stats.buyRecovery * 100, 0) + "%"} accent="amber" />
       </div>
+
+      {/* 期待値指数別パフォーマンス */}
+      <Section title="期待値指数別 BUYパフォーマンス">
+        <div className="flex items-center gap-1.5 mb-3 text-xs text-muted-foreground">
+          <Target className="w-3.5 h-3.5" />
+          <span>高期待値のBUY判定がどれだけ的中しているか一目で分かります</span>
+        </div>
+        <EvPerformanceChart />
+      </Section>
 
       {/* Venue breakdown */}
       <Section title="競艇場別出現率">
