@@ -58,7 +58,9 @@ export function useFinalAutoJudge(races, analyses, onAnalysisUpdated, enabled = 
         if (mins == null || mins > 5 || mins <= 0) continue;
 
         const raceId = race.id;
-        if (analysesRef.current[raceId]?.stage === "final") continue;
+        // finalレコードが存在してもPENDINGなら未確定。最新オッズ取得＋final分析を続行する。
+        const currentFinal = analysesRef.current[raceId];
+        if (currentFinal?.stage === "final" && currentFinal?.judgment && currentFinal.judgment !== "PENDING") continue;
         if (inFlightRef.current.has(raceId)) continue;
 
         const failed = failedRef.current.get(raceId);
