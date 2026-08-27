@@ -74,15 +74,23 @@ export default function Home() {
           .filter((r) => (tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs) && !cachedAn[r.id])
           .map((r) => r.id);
         if (missingRaceIds.length > 0) {
-          analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingRaceIds, force: false })
-            .then(async () => {
-              if (!m) return;
-              const refreshed = await getCachedAnalysesByDate(date);
-              if (!m) return;
-              setAnalyses(refreshed);
-              setCacheHitRate(computeCacheHitRate(rs, refreshed));
-            })
-            .catch(() => {});
+          try {
+            // 外部サイト取得は行わず、集計済みDBだけで不足分を即時pre分析。
+            // ここは完了を待ってから再読込し、「分析データ未作成」のまま放置しない。
+            const preResult = await analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingRaceIds, force: false });
+            if (!m) return;
+            if (preResult?.status === "error") {
+              throw new Error(preResult.message || "事前分析に失敗しました");
+            }
+            const refreshed = await getCachedAnalysesByDate(date);
+            if (!m) return;
+            setAnalyses(refreshed);
+            setCacheHitRate(computeCacheHitRate(rs, refreshed));
+            console.log(`[Home] 不足pre分析完了: 対象${missingRaceIds.length} / analyzed=${preResult?.analyzed ?? "?"} / errors=${preResult?.errors ?? "?"}`);
+          } catch (preErr) {
+            console.error("[Home] 不足pre分析失敗", preErr);
+            if (m) setError(`事前分析の作成に失敗：${preErr?.message || "不明なエラー"}`);
+          }
         }
 
         const [ents, om] = await Promise.all([
