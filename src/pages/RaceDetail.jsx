@@ -5,6 +5,7 @@ import JudgmentBadge from "@/components/JudgmentBadge";
 import StatTile from "@/components/StatTile";
 import TrustScoreCard from "@/components/TrustScoreCard";
 import BuyReasonCard from "@/components/BuyReasonCard";
+import EvaluationReasonCard from "@/components/EvaluationReasonCard";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
 import {
@@ -432,6 +433,9 @@ export default function RaceDetail() {
 
       {/* 1号艇信頼スコア（フル版・DB履歴データ使用） */}
       <TrustScoreCard trust={trust || analysis?.boat1_trust} />
+
+      {/* 評価理由カード（スコア算出の具体的要因） */}
+      <EvaluationReasonCard trust={trust || analysis?.boat1_trust} />
 
       {/* 買える理由カード + 不安材料 */}
       <BuyReasonCard trust={trust || analysis?.boat1_trust} />
