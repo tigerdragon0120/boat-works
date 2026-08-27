@@ -12,10 +12,13 @@ import { VENUE_NAMES, parseDailyVenueList, parseDaySchedule, parseRacelist, fetc
 const BASE = "https://boatrace.jp/owpc/pc/race";
 const INDEX_URL = "https://boatrace.jp/owpc/pc/race/index";
 
-function tomorrowStr() {
+function localDateStr(offset = 0) {
   const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + offset);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export default async function(req) {
@@ -26,20 +29,23 @@ export default async function(req) {
     if (user && user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
 
     const t0 = Date.now();
+    const body = await req.json().catch(() => ({}));
+    const targetOffset = Number(body.target_offset ?? 1);
+    const skipAggregate = body.skip_aggregate === true;
 
-    // 前日の結果で集計DBを差分更新（結果があれば）
+    // 前日の結果で集計DBを差分更新（夜間処理のみ。日中補完ではスキップ可能）
     let aggregateUpdate = null;
-    try {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toISOString().slice(0, 10);
-      const aggRes = await base44.asServiceRole.functions.invoke("updateDailyAggregates", { race_date: yStr });
-      aggregateUpdate = aggRes?.data || aggRes;
-    } catch (e) {
-      aggregateUpdate = { status: "error", message: e.message };
+    if (!skipAggregate) {
+      try {
+        const yStr = localDateStr(-1);
+        const aggRes = await base44.asServiceRole.functions.invoke("updateDailyAggregates", { race_date: yStr });
+        aggregateUpdate = aggRes?.data || aggRes;
+      } catch (e) {
+        aggregateUpdate = { status: "error", message: e.message };
+      }
     }
 
-    const raceDate = tomorrowStr();
+    const raceDate = localDateStr(targetOffset);
     const hd = raceDate.replace(/-/g, "");
 
     // === 1. 開催場一覧取得 ===
