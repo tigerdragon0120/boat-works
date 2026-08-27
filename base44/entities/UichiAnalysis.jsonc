@@ -69,6 +69,100 @@
     "captured_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "analyzed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u4e00\u62ec\u5206\u6790\u5b9f\u884c\u65e5\u6642"
+    },
+    "reliability": {
+      "type": "string",
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "description": "\u5206\u6790\u4fe1\u983c\u5ea6\u30e9\u30f3\u30af"
+    },
+    "data_sufficiency": {
+      "type": "number",
+      "description": "\u30c7\u30fc\u30bf\u5145\u8db3\u7387(0-1)"
+    },
+    "boat1_trust_score": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2(0-100)"
+    },
+    "condition_match_score": {
+      "type": "number",
+      "description": "\u6761\u4ef6\u4e00\u81f4\u5ea6(0-100)"
+    },
+    "weighted_probability": {
+      "type": "number",
+      "description": "\u4fe1\u983c\u30b9\u30b3\u30a2\u52a0\u91cd\u51fa\u73fe\u7387"
+    },
+    "pre_grade": {
+      "type": "string",
+      "enum": [
+        "S",
+        "A",
+        "B",
+        "C"
+      ],
+      "description": "\u524d\u65e5\u8a55\u4fa1\u7b49\u7d1a"
+    },
+    "analysis_version": {
+      "type": "string",
+      "description": "\u5206\u6790\u30ed\u30b8\u30c3\u30af\u30d0\u30fc\u30b8\u30e7\u30f3"
+    },
+    "settings_version": {
+      "type": "number",
+      "description": "\u5206\u6790\u6642\u306eAppSettings\u30d0\u30fc\u30b8\u30e7\u30f3"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u8cb7\u3048\u308b\u7406\u7531\u30ea\u30b9\u30c8"
+    },
+    "concerns": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u4e0d\u5b89\u6750\u6599\u30ea\u30b9\u30c8"
+    },
+    "condition_matches": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u6761\u4ef6\u4e00\u81f4\u8a73\u7d30"
+    },
+    "trust_components": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "1\u53f7\u8247\u4fe1\u983c\u30b9\u30b3\u30a2\u5185\u8a33"
+    },
+    "boat1_registration_number": {
+      "type": "string"
+    },
+    "boat1_racer_name": {
+      "type": "string"
+    },
+    "boat1_grade_class": {
+      "type": "string"
+    },
+    "total_pool": {
+      "type": "number",
+      "description": "\u5168\u904e\u53bb\u30ec\u30fc\u30b9\u6570"
+    },
+    "valid_pool": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u8a73\u7d30\u88dc\u5b8c\u6e08\u307f\u6570"
     }
   },
   "required": [

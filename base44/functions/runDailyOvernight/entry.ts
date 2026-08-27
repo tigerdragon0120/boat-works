@@ -1,0 +1,135 @@
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { VENUE_NAMES, parseDailyVenueList, parseDaySchedule, parseRacelist, fetchWithRetry, sleep } from "../../shared/scraper.js";
+
+// BOAT WORKS 日次夜間一括処理（ワークフロー用・サービスロール実行）
+// 1. 翌日の開催場一覧取得
+// 2. 各場のスケジュール取得 → Race保存
+// 3. 各レースの出走表取得 → RaceEntry保存（オッズなし・pre分析用）
+// 4. analyzeAllRacesForDate(tomorrow, stage=pre) 呼出で一括分析・Alert生成
+//
+// ワークフローから呼ばれるためユーザー認証不要。HTTP手動実行は管理者のみ。
+
+const BASE = "https://boatrace.jp/owpc/pc/race";
+const INDEX_URL = "https://boatrace.jp/owpc/pc/race/index";
+
+function tomorrowStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    let user = null;
+    try { user = await base44.auth.me(); } catch {}
+    if (user && user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
+
+    const t0 = Date.now();
+    const raceDate = tomorrowStr();
+    const hd = raceDate.replace(/-/g, "");
+
+    // === 1. 開催場一覧取得 ===
+    const indexRes = await fetchWithRetry(`${INDEX_URL}?hd=${hd}`, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+    const indexHtml = await indexRes.text();
+    const jcds = parseDailyVenueList(indexHtml);
+    if (jcds.length === 0) {
+      return Response.json({ status: "no_venues", race_date: raceDate, elapsed_ms: Date.now() - t0 });
+    }
+
+    let totalRaces = 0, totalEntries = 0, fetchErrors = 0;
+    const raceList = []; // {jcd, race_number, race_id}
+
+    // === 2-3. 各場のスケジュール + 出走表取得 ===
+    for (const jcd of jcds) {
+      // スケジュール取得
+      const schedUrl = `${BASE}/raceindex?jcd=${jcd}&hd=${hd}`;
+      let schedule = [];
+      try {
+        const sRes = await fetchWithRetry(schedUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+        const sHtml = await sRes.text();
+        schedule = parseDaySchedule(sHtml, raceDate);
+      } catch { fetchErrors++; continue; }
+      if (schedule.length === 0) continue;
+
+      const venueName = VENUE_NAMES[jcd] || jcd;
+      const now = new Date().toISOString();
+
+      // 既存Race取得（upsert）
+      const existingRaces = await base44.asServiceRole.entities.Race.filter({ race_date: raceDate, venue_code: jcd, data_source: "official" });
+      const raceMap = {};
+      for (const r of existingRaces) raceMap[r.race_number] = r;
+
+      // Race保存
+      const savedRaces = {};
+      for (const s of schedule) {
+        const raceData = {
+          race_date: raceDate, venue_code: jcd, venue_name: venueName,
+          race_number: s.race_number, deadline: s.deadline,
+          status: "scheduled", data_source: "official", last_updated: now,
+        };
+        let r;
+        if (raceMap[s.race_number]) {
+          r = await base44.asServiceRole.entities.Race.update(raceMap[s.race_number].id, raceData);
+        } else {
+          r = await base44.asServiceRole.entities.Race.create(raceData);
+        }
+        savedRaces[s.race_number] = r;
+        raceList.push({ jcd, race_number: s.race_number, race_id: r.id });
+        totalRaces++;
+      }
+      await sleep(400);
+
+      // 出走表取得（5レース並列バッチ）
+      const races = schedule.map(s => ({ ...s, race_id: savedRaces[s.race_number].id }));
+      for (let i = 0; i < races.length; i += 5) {
+        const batch = races.slice(i, i + 5);
+        await Promise.all(batch.map(async (s) => {
+          try {
+            const rlUrl = `${BASE}/racelist?rno=${s.race_number}&jcd=${jcd}&hd=${hd}`;
+            const rlRes = await fetchWithRetry(rlUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+            const rlHtml = await rlRes.text();
+            const parsed = parseRacelist(rlHtml, s.race_number, raceDate);
+            if (!parsed.entries.length || parsed.entries.length < 6) return;
+            // Race更新（race_name, deadline, entries_fetched_at）
+            await base44.asServiceRole.entities.Race.update(s.race_id, {
+              race_name: parsed.raceName, deadline: parsed.deadline, entries_fetched_at: new Date().toISOString(),
+            });
+            // RaceEntry再保存
+            await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: s.race_id });
+            const records = parsed.entries.map(e => ({
+              ...e, race_id: s.race_id, race_date: raceDate, venue_code: jcd, race_number: s.race_number,
+            }));
+            await base44.asServiceRole.entities.RaceEntry.bulkCreate(records);
+            totalEntries += records.length;
+          } catch { fetchErrors++; }
+        }));
+        await sleep(400);
+      }
+    }
+
+    // === 4. 一括事前分析実行 ===
+    let analysisResult = null;
+    try {
+      const anRes = await base44.asServiceRole.functions.invoke("analyzeAllRacesForDate", {
+        race_date: raceDate, stage: "pre",
+      });
+      analysisResult = anRes?.data || anRes;
+    } catch (e) {
+      analysisResult = { status: "error", message: e.message };
+    }
+
+    return Response.json({
+      status: "success",
+      race_date: raceDate,
+      venues: jcds.length,
+      races: totalRaces,
+      entries: totalEntries,
+      fetch_errors: fetchErrors,
+      analysis: analysisResult,
+      elapsed_ms: Date.now() - t0,
+    });
+  } catch (error) {
+    return Response.json({ status: "error", message: error.message }, { status: 500 });
+  }
+}

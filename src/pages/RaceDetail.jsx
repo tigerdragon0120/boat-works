@@ -8,9 +8,10 @@ import BuyReasonCard from "@/components/BuyReasonCard";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
 import {
-  getSettings, getEntries, getLatestOdds, getOddsHistory, analyzeRaceWithSimilar, fetchOfficialRace,
+  getSettings, getEntries, getLatestOdds, getOddsHistory, fetchOfficialRace,
   getBoat1TrustScore,
 } from "@/lib/boatService";
+import { getCachedAnalysesForRace, analyzeRaceFinal } from "@/lib/analysisCache";
 import { base44 } from "@/api/base44Client";
 import {
   UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, minutesUntilDeadline,
@@ -35,38 +36,81 @@ export default function RaceDetail() {
   const [fetchMsg, setFetchMsg] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [racerOpen, setRacerOpen] = useState(false);
+  const [preAnalysis, setPreAnalysis] = useState(null);
+
+  // キャッシュ済みUichiAnalysis → 表示用オブジェクト変換
+  const cachedToObjects = (cached, s) => {
+    if (!cached) return { analysis: null, trust: null };
+    const trust = {
+      score: cached.boat1_trust_score,
+      reliability: cached.reliability,
+      reasons: cached.reasons || [],
+      concerns: cached.concerns || [],
+      condition_match: { score: cached.condition_match_score, conditions: cached.condition_matches || [] },
+      components: cached.trust_components || [],
+      sample_size: (cached.total_pool || 0),
+    };
+    const analysis = {
+      judgment: cached.judgment,
+      appearance_rate: cached.appearance_rate,
+      similar_count: cached.similar_count,
+      uichi_hits: cached.uichi_hits,
+      synthetic_odds: cached.synthetic_odds,
+      expected_value: cached.expected_value,
+      boat1_grade: cached.boat1_grade,
+      data_sufficiency: cached.data_sufficiency,
+      reliability: cached.reliability,
+      min_similar_ok: cached.min_similar_ok,
+      is_reference: (cached.data_sufficiency ?? 0) < 0.5 || (cached.similar_count || 0) < (s?.min_buy_sample || 100),
+      boat1_trust: trust,
+      total_pool: cached.total_pool,
+      valid_pool: cached.valid_pool,
+      stage: cached.stage,
+      pre_grade: cached.pre_grade,
+    };
+    return { analysis, trust };
+  };
 
   const loadAll = async () => {
     setLoading(true);
     setError(null);
     setAnalysis(null);
+    setTrust(null);
+    setPreAnalysis(null);
     try {
       const s = await getSettings();
       const r = await base44.entities.Race.get(id);
       setSettings(s);
       setRace(r);
-      const [ents, latestOdds, hist] = await Promise.all([
-        getEntries(id), getLatestOdds(id), getOddsHistory(id),
+      const [ents, latestOdds, hist, byStage] = await Promise.all([
+        getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
       ]);
       setEntries(ents);
       setOdds(latestOdds);
       setOddsHistory(hist);
       setLoading(false);
 
-      // Background analysis (getAllResults不使用・類似候補をDB側で絞り取得)
-      try {
-        const a = await analyzeRaceWithSimilar(r, ents, latestOdds, s, latestOdds ? "day" : "pre");
-        setAnalysis(a);
-      } catch {
-        setAnalysis(null);
+      // 保存済み分析を使用（再分析なし）
+      const within5 = canFinalJudge(r.deadline);
+      const finalCached = byStage.final;
+      const preCached = byStage.pre;
+      const chosen = (within5 && finalCached) ? finalCached : (finalCached || preCached);
+      if (preCached) setPreAnalysis(preCached);
+      if (chosen) {
+        const { analysis, trust } = cachedToObjects(chosen, s);
+        setAnalysis(analysis);
+        setTrust(trust);
+      } else {
+        // キャッシュ欠損時のみフォールバック（個別取得）
+        try {
+          const t = await getBoat1TrustScore(id);
+          if (t?.status === "success") setTrust(t);
+        } catch {}
       }
 
-      // 1号艇信頼スコア（フル版・バックエンドでDB履歴データを使用）
-      try {
-        const t = await getBoat1TrustScore(id);
-        if (t?.status === "success") setTrust(t);
-      } catch {
-        setTrust(null);
+      // 締切5分前でfinal未分析時は直前分析をバックグラウンド実行
+      if (within5 && !finalCached) {
+        analyzeRaceFinal(id, r.race_date).then(() => setReloadKey(k => k + 1)).catch(() => {});
       }
     } catch (e) {
       setError(e.message || "データ取得失敗");
@@ -214,6 +258,39 @@ export default function RaceDetail() {
           </div>
         )}
       </div>
+
+      {/* 前日→直前 比較 */}
+      {preAnalysis && analysis?.stage === "final" && (
+        <div className="rounded-2xl bg-card border border-border p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <History className="w-4 h-4 text-muted-foreground" />
+            <h3 className="text-sm font-bold">前日→直前 評価比較</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-background/50 p-3">
+              <div className="text-[10px] text-muted-foreground tracking-wider mb-1">前日評価 (pre)</div>
+              <div className="flex items-center gap-2">
+                <span className={cn("text-base font-bold px-2 py-0.5 rounded border", GRADE_STYLE[preAnalysis.pre_grade])}>{preAnalysis.pre_grade || "—"}</span>
+                <span className="text-xs text-muted-foreground">出現率 {fmtPct(preAnalysis.appearance_rate, 1)}</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1 tabular-nums">信頼 {preAnalysis.boat1_trust_score ?? "—"} / 条件 {preAnalysis.condition_match_score ?? "—"}%</div>
+            </div>
+            <div className="rounded-xl bg-background/50 p-3">
+              <div className="text-[10px] text-muted-foreground tracking-wider mb-1">直前評価 (final)</div>
+              <div className="flex items-center gap-2">
+                <JudgmentBadge judgment={analysis.judgment} size="sm" />
+                <span className="text-xs text-muted-foreground">EV {fmtNum(analysis.expected_value, 0)}%</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1 tabular-nums">信頼 {analysis.boat1_trust?.score ?? "—"} / オッズ {fmtNum(analysis.synthetic_odds, 2)}倍</div>
+            </div>
+          </div>
+          {analysis.judgment === "BUY" && preAnalysis.pre_grade && (preAnalysis.pre_grade === "B" || preAnalysis.pre_grade === "C") && (
+            <div className="mt-2 text-xs text-emerald-600 font-semibold flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5" /> 前日→直前で評価上昇（オッズ改善・条件一致度上昇の可能性）
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Big 3 stats */}
       <div className="grid grid-cols-3 gap-3">

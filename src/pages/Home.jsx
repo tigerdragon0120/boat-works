@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Bell, Loader2, AlertCircle, CalendarClock, CheckCircle2 } from "lucide-react";
 import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
-  getAlerts, analyzeRaceWithSimilar, autoFetchTodayRaces, invalidateCache,
+  getAlerts, autoFetchTodayRaces, invalidateCache,
   getBackfillProgressLight,
 } from "@/lib/boatService";
+import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [autoFetchState, setAutoFetchState] = useState(null);
   const [backfillProgress, setBackfillProgress] = useState(null);
+  const [cacheHitRate, setCacheHitRate] = useState(null);
 
   useEffect(() => {
     let m = true;
@@ -47,11 +50,16 @@ export default function Home() {
         // バックフィル進捗（軽量・非ブロッキング）
         getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
-        const [rs, al] = await Promise.all([getRacesByDate(date), getAlerts(date)]);
+        // キャッシュ済み分析を先に取得（高速・再分析なし）
+        const [rs, al, cachedAn] = await Promise.all([
+          getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date),
+        ]);
         if (!m) return;
         setRaces(rs);
         setAlerts(al);
-        console.log(`[Home] Race+Alert取得: ${Math.round(performance.now() - t0)}ms`);
+        setAnalyses(cachedAn);
+        setCacheHitRate(computeCacheHitRate(rs, cachedAn));
+        console.log(`[Home] Race+Alert+分析キャッシュ取得: ${Math.round(performance.now() - t0)}ms`);
 
         const [ents, om] = await Promise.all([
           base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 600),
@@ -63,7 +71,7 @@ export default function Home() {
         setEntriesByRace(byRace);
         setOddsMap(om);
         setLoading(false);
-        console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms`);
+        console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms (キャッシュヒット ${Math.round(computeCacheHitRate(rs, cachedAn)*100)}%)`);
 
         // 本日開催データ自動取得（非同期・非ブロッキング）
         if (tab === "today") {
@@ -81,22 +89,8 @@ export default function Home() {
             if (m) setAutoFetchState("error");
           }
         }
-
-        // Phase 2: バックグラウンド分析（getAllResults不使用・類似候補をDB側で絞り取得）
-        const tAnalysis = performance.now();
-        const an = {};
-        for (const r of rs) {
-          if (!m) return;
-          try {
-            const within5 = canFinalJudge(r.deadline);
-            const stage = tab === "today" ? (within5 ? "final" : "day") : "pre";
-            an[r.id] = await analyzeRaceWithSimilar(r, byRace[r.id] || [], om[r.id], s, om[r.id] ? stage : "pre");
-            if (m) setAnalyses({ ...an });
-          } catch {
-            an[r.id] = null;
-          }
-        }
-        console.log(`[Home] 分析データ取得: ${Math.round(performance.now() - tAnalysis)}ms`);
+        // ※ 再分析は行わない。前夜の一括分析（analyzeAllRacesForDate）でUichiAnalysis保存済み。
+        // キャッシュ欠損レースはnullのまま表示（RaceCardがPENDING表示）。
       } catch (err) {
         if (m) setError(err.message || "データ取得失敗");
         if (m) setLoading(false);
@@ -132,6 +126,13 @@ export default function Home() {
     for (const a of alerts) m[a.race_id] = a;
     return m;
   }, [alerts]);
+
+  // 候補ランキング（保存済み分析のweighted_probability順・全場横断）
+  const rankedRaces = useMemo(() => {
+    return sortedRaces
+      .filter(r => analyses[r.id] && analyses[r.id].appearance_rate != null)
+      .sort((a, b) => (analyses[b.id]?.weighted_probability || 0) - (analyses[a.id]?.weighted_probability || 0));
+  }, [sortedRaces, analyses]);
 
   if (loading) {
     return (
@@ -192,6 +193,53 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      {/* キャッシュヒット率 */}
+      {cacheHitRate != null && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+          <span className={cn("inline-block w-2 h-2 rounded-full", cacheHitRate >= 0.95 ? "bg-emerald-400" : "bg-amber-400")} />
+          <span>分析キャッシュヒット率 <span className={cn("font-semibold tabular-nums", cacheHitRate >= 0.95 ? "text-emerald-600" : "text-amber-600")}>{Math.round(cacheHitRate * 100)}%</span></span>
+        </div>
+      )}
+
+      {/* 候補ランキング（保存済み分析から全場横断） */}
+      {rankedRaces.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-base">🏆</span>
+            <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日の候補ランキング" : "明日の候補ランキング"}</h2>
+            <span className="ml-auto text-xs text-muted-foreground">上位{Math.min(rankedRaces.length, 5)}件</span>
+          </div>
+          <div className="space-y-2">
+            {rankedRaces.slice(0, 5).map((r, i) => {
+              const a = analyses[r.id];
+              return (
+                <Link key={r.id} to={`/race/${r.id}`} className="flex items-center gap-3 rounded-2xl bg-card border border-border p-3 hover:border-primary/40">
+                  <span className="text-lg font-bold w-7 text-center shrink-0">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm truncate">{r.venue_name} {r.race_number}R</div>
+                    <div className="text-[11px] text-muted-foreground tabular-nums">総合出現率 {fmtPct(a?.appearance_rate, 1)}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs text-muted-foreground">1号艇信頼</div>
+                    <div className={cn("text-lg font-bold tabular-nums leading-none",
+                      a?.boat1_trust_score >= 75 ? "text-emerald-600" :
+                      a?.boat1_trust_score >= 60 ? "text-sky-600" :
+                      a?.boat1_trust_score >= 45 ? "text-amber-600" : "text-rose-600"
+                    )}>{a?.boat1_trust_score ?? "—"}</div>
+                  </div>
+                  {a?.condition_match_score != null && (
+                    <div className="text-right shrink-0">
+                      <div className="text-xs text-muted-foreground">条件一致</div>
+                      <div className="text-lg font-bold tabular-nums leading-none text-primary">{a.condition_match_score}%</div>
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Alert section */}
       <section>

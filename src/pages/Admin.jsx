@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
 import ErrorRetryPanel from "@/components/ErrorRetryPanel";
 import BackfillStatusBanner from "@/components/BackfillStatusBanner";
+import BatchAnalysisPanel from "@/components/BatchAnalysisPanel";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -36,6 +37,7 @@ export default function Admin() {
     setSaved(false);
     try {
       await updateSettings(settings.id, {
+        settings_version: (Number(settings.settings_version) || 1) + 1,
         buy_threshold: Number(settings.buy_threshold),
         watch_threshold: Number(settings.watch_threshold),
         pre_alert_rate: Number(settings.pre_alert_rate),
@@ -74,6 +76,8 @@ export default function Admin() {
       </div>
 
       <BackfillStatusBanner />
+
+      <BatchAnalysisPanel />
 
       <HistoricalFetchPanel />
 
