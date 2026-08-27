@@ -277,15 +277,15 @@ export async function fetchDaySchedule(raceDate, jcd) {
   return res.data;
 }
 
-// 本日の開催データを自動取得・キャッシュ（公式サイト）
-// 1. fetchDailyVenues で本日の開催場一覧を取得
-// 2. 各場の fetchDaySchedule でレース一覧（番号・締切）を取得してRace保存
-// 3. 出走表・オッズは個別レース画面でon-demand取得
-export async function autoFetchTodayRaces() {
-  const today = todayStr(0);
+// 指定日の開催データを自動取得・キャッシュ（公式サイト）
+// Raceがまだ無い日（主に翌日）の軽量初期化用。
+// 1. fetchDailyVenues で開催場一覧を取得
+// 2. 各場の fetchDaySchedule でレース一覧（番号・締切）をRace保存
+// 出走表はHome側の欠損補修で必要なレースだけ取得する。
+export async function autoFetchRacesForDate(raceDate) {
   let activeJcds = [];
   try {
-    activeJcds = await getDailyVenues(today);
+    activeJcds = await getDailyVenues(raceDate);
   } catch {
     return { status: "error", message: "開催場一覧取得失敗", venues: 0, races: 0 };
   }
@@ -294,21 +294,29 @@ export async function autoFetchTodayRaces() {
   const allVenues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
   let totalRaces = 0;
   const results = [];
-  for (const jcd of activeJcds) {
-    const v = allVenues.find((x) => x.jcd === jcd);
-    try {
-      const res = await fetchDaySchedule(today, jcd);
-      if (res?.status === "success") {
-        totalRaces += res.races || 0;
-        results.push({ jcd, name: v?.name || jcd, status: "success", races: res.races });
-      } else {
-        results.push({ jcd, name: v?.name || jcd, status: res?.status || "skip", races: 0 });
+  // 公式サイト負荷を抑えつつ、3場ずつ処理して待ち時間を短縮。
+  for (let i = 0; i < activeJcds.length; i += 3) {
+    const batch = activeJcds.slice(i, i + 3);
+    const batchResults = await Promise.all(batch.map(async (jcd) => {
+      const v = allVenues.find((x) => x.jcd === jcd);
+      try {
+        const res = await fetchDaySchedule(raceDate, jcd);
+        return { jcd, name: v?.name || jcd, status: res?.status || "skip", races: res?.races || 0 };
+      } catch (e) {
+        return { jcd, name: v?.name || jcd, status: "error", races: 0 };
       }
-    } catch (e) {
-      results.push({ jcd, name: v?.name || jcd, status: "error", races: 0 });
+    }));
+    for (const r of batchResults) {
+      if (r.status === "success") totalRaces += r.races;
+      results.push(r);
     }
   }
+  invalidateCache(`races_${raceDate}`);
   return { status: "success", venues: activeJcds.length, races: totalRaces, results };
+}
+
+export async function autoFetchTodayRaces() {
+  return autoFetchRacesForDate(todayStr(0));
 }
 
 // 公式サイト実データ取得（バックエンド関数経由）
