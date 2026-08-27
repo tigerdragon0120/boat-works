@@ -1,13 +1,13 @@
 {
   "name": "Daily Overnight Analysis",
-  "description": "\u6bce\u666923\u6642\u306b\u7fcc\u65e5\u306e\u51fa\u8d70\u8868\u3092\u53d6\u5f97\u3057\u3001\u5168\u5834\u5168\u30ec\u30fc\u30b9\u3092\u4e00\u62ec\u4e8b\u524d\u5206\u6790\u3057\u3066UichiAnalysis\u30fbAlert\u3092\u4fdd\u5b58\u3059\u308b\u3002\u7fcc\u671dHome/Alerts\u306f\u4fdd\u5b58\u6e08\u307f\u7d50\u679c\u3092\u5373\u8868\u793a\u3002",
+  "description": "\u6bce\u65e518\u6642\u304b\u308923\u6642\u307e\u3067\u6bce\u6642\u3001\u7fcc\u65e5\u306e\u51fa\u8d70\u8868\u516c\u958b\u3092\u78ba\u8a8d\u3057\u3001\u516c\u958b\u6e08\u307f\u306a\u3089\u5168\u5834\u5168\u30ec\u30fc\u30b9\u3092\u4e00\u62ec\u4e8b\u524d\u5206\u6790\u3057\u3066UichiAnalysis\u30fbAlert\u3092\u4fdd\u5b58\u3059\u308b\u3002\u7fcc\u671dHome/Alerts\u306f\u4fdd\u5b58\u6e08\u307f\u7d50\u679c\u3092\u5373\u8868\u793a\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "0 23 * * *",
+      "cron_expression": "0 18-23 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
