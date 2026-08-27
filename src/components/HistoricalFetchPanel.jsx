@@ -12,7 +12,10 @@ export default function HistoricalFetchPanel() {
   const yesterday = (() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0, 10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   })();
   const [startDate, setStartDate] = useState("2026-02-01");
   const [endDate, setEndDate] = useState(yesterday);
@@ -206,12 +209,29 @@ export default function HistoricalFetchPanel() {
             <Square className="w-4 h-4" /> 停止
           </button>
         ) : (
-          <button onClick={run} disabled={!startDate || !endDate || enriching}
+          <button onClick={run} disabled={!startDate || !endDate || enriching || foundationRunning}
             className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50">
             <Play className="w-4 h-4" /> 第1段階:結果取得
           </button>
         )}
+        <button onClick={handleCompleteFoundation} disabled={running || enriching || foundationRunning}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+          {foundationRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+          過去データ基盤完成
+        </button>
       </div>
+
+      {foundationStatus && (
+        <div className={cn("rounded-xl border px-3 py-2 text-sm font-semibold",
+          foundationStatus === "過去データ基盤 完成"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : foundationStatus.startsWith("要確認") || foundationStatus.includes("エラー")
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : "bg-sky-50 border-sky-200 text-sky-700"
+        )}>
+          {foundationStatus}
+        </div>
+      )}
 
       {/* Heartbeat status - DB基準で処理生存判定 */}
       {running && (() => {
