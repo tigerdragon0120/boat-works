@@ -121,11 +121,50 @@ export default async function(req) {
       }
     }
 
-    // === 4. 一括事前分析実行 ===
+    // === 4. RaceEntry完全性チェック + 欠損だけ再取得 ===
+    // 6艇揃っていないレースを分析へ流さない。欠損分だけ最大1回補修する。
+    const allEntriesAfterFetch = await base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, "boat_number", 3000);
+    const entryCountByRace = {};
+    for (const e of allEntriesAfterFetch) entryCountByRace[e.race_id] = (entryCountByRace[e.race_id] || 0) + 1;
+
+    const incomplete = raceList.filter(r => (entryCountByRace[r.race_id] || 0) < 6);
+    let repairedEntries = 0;
+    for (let i = 0; i < incomplete.length; i += 3) {
+      const batch = incomplete.slice(i, i + 3);
+      await Promise.all(batch.map(async (r) => {
+        try {
+          const rlUrl = `${BASE}/racelist?rno=${r.race_number}&jcd=${r.jcd}&hd=${hd}`;
+          const rlRes = await fetchWithRetry(rlUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
+          const rlHtml = await rlRes.text();
+          const parsed = parseRacelist(rlHtml, r.race_number, raceDate);
+          if (!parsed.entries || parsed.entries.length < 6) { fetchErrors++; return; }
+          await base44.asServiceRole.entities.Race.update(r.race_id, {
+            race_name: parsed.raceName,
+            deadline: parsed.deadline,
+            entries_fetched_at: new Date().toISOString(),
+          });
+          await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.race_id });
+          const records = parsed.entries.map(e => ({
+            ...e, race_id: r.race_id, race_date: raceDate, venue_code: r.jcd, race_number: r.race_number,
+          }));
+          await base44.asServiceRole.entities.RaceEntry.bulkCreate(records);
+          repairedEntries += records.length;
+        } catch { fetchErrors++; }
+      }));
+      await sleep(300);
+    }
+
+    // 補修後に6艇揃ったレースIDだけを分析する。
+    const finalEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, "boat_number", 3000);
+    const finalCountByRace = {};
+    for (const e of finalEntries) finalCountByRace[e.race_id] = (finalCountByRace[e.race_id] || 0) + 1;
+    const completeRaceIds = raceList.filter(r => (finalCountByRace[r.race_id] || 0) >= 6).map(r => r.race_id);
+
+    // === 5. 完全なレースだけ一括事前分析実行 ===
     let analysisResult = null;
     try {
       const anRes = await base44.asServiceRole.functions.invoke("analyzeAllRacesForDate", {
-        race_date: raceDate, stage: "pre",
+        race_date: raceDate, stage: "pre", race_ids: completeRaceIds,
       });
       analysisResult = anRes?.data || anRes;
     } catch (e) {
