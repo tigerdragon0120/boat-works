@@ -59,6 +59,10 @@ export default function Admin() {
         trust_weight_weather: Number(settings.trust_weight_weather ?? 10),
         trust_strong_threshold: Number(settings.trust_strong_threshold ?? 85),
         trust_buy_threshold: Number(settings.trust_buy_threshold ?? 75),
+        notify_min_ev: Number(settings.notify_min_ev ?? 110),
+        notify_min_trust_score: Number(settings.notify_min_trust_score ?? 0),
+        notify_only_strong: settings.notify_only_strong ?? false,
+        notify_watch: settings.notify_watch ?? false,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -118,7 +122,17 @@ export default function Admin() {
         <h3 className="text-sm font-bold text-muted-foreground tracking-wider">データ・更新</h3>
         <NumField label="データ分析期間（月）" value={settings.analysis_period_months} onChange={(v) => set("analysis_period_months", v)} />
         <NumField label="オッズ更新間隔（秒）" value={settings.odds_update_interval} onChange={(v) => set("odds_update_interval", v)} />
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">プッシュ通知条件</h3>
         <ToggleField label="通知ON/OFF" value={settings.notification_on} onChange={(v) => set("notification_on", v)} />
+        <div className="border-t border-border pt-3 space-y-4">
+          <NumField label="通知する最低期待値指数（%）" value={settings.notify_min_ev ?? 110} onChange={(v) => set("notify_min_ev", v)} />
+          <NumField label="通知する最低信頼スコア（0=无条件）" value={settings.notify_min_trust_score ?? 0} onChange={(v) => set("notify_min_trust_score", v)} />
+          <ToggleField label="STRONG BUYのみ通知" value={settings.notify_only_strong ?? false} onChange={(v) => set("notify_only_strong", v)} />
+          <ToggleField label="WATCH判定も通知" value={settings.notify_watch ?? false} onChange={(v) => set("notify_watch", v)} />
+        </div>
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4">

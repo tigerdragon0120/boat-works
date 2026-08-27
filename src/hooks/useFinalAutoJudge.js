@@ -40,8 +40,9 @@ export function useFinalAutoJudge(races, analyses, onAnalysisUpdated, enabled = 
         const byStage = await getCachedAnalysesForRace(raceId);
         if (byStage.final) {
           onUpdatedRef.current(raceId, byStage.final);
-          // BUY判定時にプッシュ通知送信（失敗は非クリティカル）
-          if (byStage.final.judgment === "BUY") {
+          // BUY/WATCH判定時にプッシュ通知送信（失敗は非クリティカル）
+          // 通知条件のフィルタリングは notifyBuyAlert 側で AppSettings を参照して行う
+          if (byStage.final.judgment === "BUY" || byStage.final.judgment === "WATCH") {
             try {
               await base44.functions.invoke("notifyBuyAlert", {
                 race_id: raceId,
