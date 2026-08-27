@@ -9,6 +9,7 @@ import {
   getBackfillProgressLight,
 } from "@/lib/boatService";
 import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
+import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,12 @@ export default function Home() {
   const [settings, setSettings] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [analyses, setAnalyses] = useState({});
+  const finalStatusMap = useFinalAutoJudge(
+    tab === "today" ? races : [],
+    analyses,
+    (raceId, finalAn) => setAnalyses(prev => ({ ...prev, [raceId]: finalAn })),
+    tab === "today"
+  );
   const [tick, setTick] = useState(0);
   const [backfillProgress, setBackfillProgress] = useState(null);
   const [cacheHitRate, setCacheHitRate] = useState(null);
@@ -102,7 +109,11 @@ export default function Home() {
     return sortedRaces.filter((r) => {
       const a = analyses[r.id];
       if (tab === "today") {
-        return canFinalJudge(r.deadline) && (a?.judgment === "BUY" || a?.judgment === "WATCH");
+        if (canFinalJudge(r.deadline)) {
+          return a?.judgment === "BUY" || a?.judgment === "WATCH";
+        }
+        // 締切5分前までは事前評価S/Aを候補表示
+        return a?.pre_grade === "S" || a?.pre_grade === "A";
       }
       // tomorrow: from alerts
       return alerts.some((al) => al.race_id === r.id);
@@ -226,7 +237,7 @@ export default function Home() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {alertRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} />
+              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} />
             ))}
           </div>
         )}
@@ -246,7 +257,7 @@ export default function Home() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {sortedRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} />
+              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} />
             ))}
           </div>
         )}

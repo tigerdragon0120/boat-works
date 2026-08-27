@@ -14,7 +14,7 @@ import {
 import { getCachedAnalysesForRace, analyzeRaceFinal } from "@/lib/analysisCache";
 import { base44 } from "@/api/base44Client";
 import {
-  UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, minutesUntilDeadline,
+  UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline,
   canFinalJudge, JUDGMENT_STYLE, reliabilityGrade, trustScoreColor,
 } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -67,6 +67,7 @@ export default function RaceDetail() {
       valid_pool: cached.valid_pool,
       stage: cached.stage,
       pre_grade: cached.pre_grade,
+      captured_at: cached.captured_at,
     };
     return { analysis, trust };
   };
@@ -243,19 +244,26 @@ export default function RaceDetail() {
         </div>
       )}
 
-      {/* Final judgment */}
+      {/* 判定表示: final > 事前評価 > 未作成 */}
       <div className="rounded-2xl bg-card border border-border p-5 text-center">
-        <div className="text-xs text-muted-foreground tracking-wider mb-2">最終判定</div>
-        {within5 && analysis?.judgment && analysis.judgment !== "PENDING" ? (
-          <JudgmentBadge judgment={analysis.judgment} size="xl" />
-        ) : (
-          <div className="space-y-1">
-            <JudgmentBadge judgment="PENDING" size="lg" />
-            {mins != null && mins > 0 && (
-              <div className="text-sm text-muted-foreground">最終判定まで <span className="text-foreground font-bold tabular-nums">{mins}分</span></div>
+        {analysis?.stage === "final" && analysis.judgment && analysis.judgment !== "PENDING" ? (
+          <>
+            <div className="text-xs text-muted-foreground tracking-wider mb-2">最終判定</div>
+            <JudgmentBadge judgment={analysis.judgment} size="xl" />
+            {analysis.captured_at && (
+              <div className="text-[11px] text-muted-foreground mt-2">最終オッズ取得 <span className="tabular-nums">{fmtTimeSec(analysis.captured_at)}</span></div>
             )}
-            <div className="text-[11px] text-muted-foreground">締切5分前から判定表示</div>
-          </div>
+          </>
+        ) : analysis ? (
+          <>
+            <div className="text-xs text-muted-foreground tracking-wider mb-2">事前評価</div>
+            <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
+            {mins != null && mins > 0 && (
+              <div className="text-sm text-muted-foreground mt-2">最終判定まで <span className="text-foreground font-bold tabular-nums">{mins}分</span></div>
+            )}
+          </>
+        ) : (
+          <div className="text-sm text-muted-foreground">分析データ未作成</div>
         )}
       </div>
 

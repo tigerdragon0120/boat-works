@@ -1,28 +1,37 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock, ChevronRight } from "lucide-react";
+import { Clock, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 import JudgmentBadge from "./JudgmentBadge";
 import RacerPhoto from "./RacerPhoto";
 import RacerDetailDialog from "./RacerDetailDialog";
-import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, canFinalJudge, minutesUntilDeadline, trustScoreColor, trustScoreLabel } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline, trustScoreColor } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
-// race: Race, analysis: 分析結果, mode: today|tomorrow, preGrade: 前日評価(S/A/B/C)
-export default function RaceCard({ race, analysis, mode = "today", preGrade }) {
+// race: Race, analysis: UichiAnalysis（cached）, mode: today|tomorrow, finalStatus: {status: fetching|failed|done}
+export default function RaceCard({ race, analysis, mode = "today", preGrade, finalStatus }) {
   const [racerOpen, setRacerOpen] = useState(false);
-  const within5 = canFinalJudge(race.deadline);
-  const canJudge = mode === "today" && within5 && analysis?.judgment && analysis.judgment !== "PENDING";
-  const showOdds = mode === "today" && within5 && analysis?.synthetic_odds > 0;
   const mins = minutesUntilDeadline(race.deadline);
-  const boat1 = analysis?.boat1;
-  const trust = analysis?.boat1_trust;
+
+  const hasFinal = analysis?.stage === "final";
+  const hasPre = analysis && !hasFinal;
+  const effectivePreGrade = analysis?.pre_grade || preGrade;
+
+  const racerName = analysis?.boat1_racer_name;
+  const regNum = analysis?.boat1_registration_number;
+  const gradeClass = analysis?.boat1_grade_class;
+  const trustScore = analysis?.boat1_trust_score;
+  const conditionMatch = analysis?.condition_match_score;
+
+  const dialogEntry = analysis ? { registration_number: regNum, racer_name: racerName, grade_class: gradeClass } : null;
+  const dialogTrust = analysis ? { score: trustScore, reasons: analysis.reasons, concerns: analysis.concerns, condition_match: { score: conditionMatch, conditions: analysis.condition_matches } } : null;
+
+  const finalJudgeAt = race.deadline ? new Date(new Date(race.deadline).getTime() - 5 * 60000) : null;
+  const isFetching = finalStatus?.status === "fetching";
+  const isFailed = finalStatus?.status === "failed";
 
   return (
     <>
-      <Link
-        to={`/race/${race.id}`}
-        className="block rounded-2xl bg-card border border-border p-4 hover:border-primary/40 transition-colors group"
-      >
+      <Link to={`/race/${race.id}`} className="block rounded-2xl bg-card border border-border p-4 hover:border-primary/40 transition-colors group">
         {/* header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -33,11 +42,6 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade }) {
             ) : (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-300">SAMPLE</span>
             )}
-            {analysis?.boat1_grade && (
-              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded border", GRADE_STYLE[analysis.boat1_grade])}>
-                1号 {analysis.boat1_grade}
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="w-3.5 h-3.5" />
@@ -45,103 +49,124 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade }) {
           </div>
         </div>
 
-        {/* judgment row */}
-        <div className="flex items-center gap-3 mb-3">
-          {canJudge ? (
-            <JudgmentBadge judgment={analysis.judgment} size="md" />
-          ) : mode === "tomorrow" && preGrade ? (
+        {hasFinal ? (
+          /* === 最終判定 === */
+          <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">前日評価</span>
-              <span className={cn("text-lg font-bold px-2 py-0.5 rounded border", GRADE_STYLE[preGrade])}>{preGrade}</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <JudgmentBadge judgment="PENDING" size="sm" />
-              {mins != null && mins > 0 && (
-                <span className="text-xs text-muted-foreground">最終判定まで <span className="text-foreground font-semibold tabular-nums">{mins}分</span></span>
+              <JudgmentBadge judgment={analysis.judgment} size="md" />
+              {analysis.expected_value != null && (
+                <span className="text-xs text-muted-foreground">EV <span className="text-foreground font-bold tabular-nums">{fmtNum(analysis.expected_value, 0)}%</span></span>
               )}
             </div>
-          )}
-          {showOdds && analysis.expected_value != null && (
-            <span className="ml-auto text-[11px] text-muted-foreground">EV <span className="text-foreground font-semibold tabular-nums">{fmtNum(analysis.expected_value, 0)}%</span></span>
-          )}
-        </div>
-
-        {/* big stats */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-background/50 px-3 py-2">
-            <div className="text-[10px] text-muted-foreground tracking-wider">出現率</div>
-            <div className="text-xl font-bold tabular-nums text-foreground">{fmtPct(analysis?.appearance_rate, 1)}</div>
-            {analysis?.similar_count != null && (
-              <div className="text-[10px] text-muted-foreground tabular-nums">n={analysis.similar_count}</div>
-            )}
-          </div>
-          <div className="rounded-xl bg-background/50 px-3 py-2">
-            <div className="text-[10px] text-muted-foreground tracking-wider">合成オッズ</div>
-            <div className="text-xl font-bold tabular-nums text-primary">{showOdds ? fmtNum(analysis.synthetic_odds, 2) : "—"}</div>
-          </div>
-          <div className="rounded-xl bg-background/50 px-3 py-2">
-            <div className="text-[10px] text-muted-foreground tracking-wider">期待値</div>
-            <div className="text-xl font-bold tabular-nums text-emerald-600">{showOdds ? fmtNum(analysis.expected_value, 0) + "%" : "—"}</div>
-          </div>
-        </div>
-
-        {/* 1号艇選手ブロック: 写真 + 名前 + 信頼スコア */}
-        {(boat1 || trust) && (
-          <div className="mt-2 flex items-center gap-3 rounded-xl bg-background/50 px-3 py-2.5">
-            <RacerPhoto
-              registrationNumber={boat1?.registration_number}
-              racerName={boat1?.racer_name}
-              size="sm"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRacerOpen(true); }}
-              className="cursor-pointer hover:opacity-80 transition-opacity shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-sm truncate">{boat1?.racer_name || "1号艇"}</div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                {boat1?.grade_class && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{boat1.grade_class}</span>
-                )}
-                {boat1?.registration_number && (
-                  <span className="text-[10px] text-muted-foreground tabular-nums">#{boat1.registration_number}</span>
-                )}
-              </div>
+            <div className="grid grid-cols-3 gap-2">
+              <CardStat label="ういち率" value={fmtPct(analysis.appearance_rate, 1)} sub={`n=${analysis.similar_count ?? "—"}`} />
+              <CardStat label="合成オッズ" value={fmtNum(analysis.synthetic_odds, 2)} unit="倍" accent="primary" />
+              <CardStat label="期待値" value={fmtNum(analysis.expected_value, 0) + "%"} accent="emerald" />
             </div>
-            {trust && (
-              <div className="text-right shrink-0">
-                <div className="text-[10px] text-muted-foreground tracking-wider">1号艇信頼</div>
-                <div className={cn("text-2xl font-bold tabular-nums leading-none", trustScoreColor(trust.score))}>{trust.score}</div>
-                <div className="flex items-center gap-1 mt-0.5 justify-end">
-                  {trust.reasons?.length > 0 && <span className="text-[10px] text-emerald-600 font-semibold">材料{trust.reasons.length}</span>}
-                  {trust.concerns?.length > 0 && <span className="text-[10px] text-amber-600 font-semibold">注意{trust.concerns.length}</span>}
-                </div>
-              </div>
+            {racerName && (
+              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} onPhotoClick={() => setRacerOpen(true)} />
+            )}
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>最終オッズ取得 <span className="tabular-nums">{fmtTimeSec(analysis.captured_at)}</span></span>
+              <span className="text-primary/70 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">詳細 <ChevronRight className="w-3 h-3" /></span>
+            </div>
+          </div>
+        ) : hasPre ? (
+          /* === 事前評価 === */
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">事前評価</span>
+              <span className={cn("text-lg font-bold px-2 py-0.5 rounded border", GRADE_STYLE[effectivePreGrade] || GRADE_STYLE.D)}>{effectivePreGrade || "—"}</span>
+              {isFetching && (
+                <span className="flex items-center gap-1 text-xs text-primary font-semibold">
+                  <Loader2 className="w-3 h-3 animate-spin" /> 最新オッズ取得中…
+                </span>
+              )}
+              {isFailed && (
+                <span className="flex items-center gap-1 text-xs text-amber-600 font-semibold">
+                  <AlertCircle className="w-3 h-3" /> オッズ取得失敗
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <CardStat label="ういち出現率" value={fmtPct(analysis.appearance_rate, 1)} sub={`n=${analysis.similar_count ?? "—"}`} />
+              <CardStat label="1号艇信頼" value={trustScore ?? "—"} accent={trustScore >= 75 ? "emerald" : trustScore >= 60 ? "sky" : "amber"} />
+              <CardStat label="条件一致" value={conditionMatch != null ? conditionMatch + "%" : "—"} accent="primary" />
+            </div>
+            {racerName && (
+              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} onPhotoClick={() => setRacerOpen(true)} />
+            )}
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>最終判定予定 <span className="tabular-nums">{finalJudgeAt ? fmtTime(finalJudgeAt.toISOString()) : "—"}</span></span>
+              <span className="text-primary/70 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">詳細 <ChevronRight className="w-3 h-3" /></span>
+            </div>
+          </div>
+        ) : (
+          /* === 分析データ未作成 === */
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {isFetching ? (
+                <><Loader2 className="w-4 h-4 animate-spin text-primary" /> 最新オッズ取得中…</>
+              ) : (
+                <><AlertCircle className="w-4 h-4" /> 分析データ未作成</>
+              )}
+            </div>
+            {finalJudgeAt && !isFetching && (
+              <div className="text-[11px] text-muted-foreground">最終判定予定 <span className="tabular-nums">{fmtTime(finalJudgeAt.toISOString())}</span></div>
             )}
           </div>
         )}
-
-        <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            類似 {analysis?.similar_count ?? "—"}件 / 的中 {analysis?.uichi_hits ?? "—"}件
-            {analysis?.reliability && (
-              <span className={cn(
-                "px-1.5 py-0.5 rounded text-[10px] font-bold",
-                analysis.reliability === "A" ? "bg-emerald-100 text-emerald-700" :
-                analysis.reliability === "B" ? "bg-sky-100 text-sky-700" :
-                analysis.reliability === "C" ? "bg-amber-100 text-amber-700" :
-                "bg-rose-100 text-rose-700"
-              )}>
-                {analysis.reliability}
-              </span>
-            )}
-            {analysis?.is_reference && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">参考値</span>
-            )}
-          </span>
-          <span className="text-primary/70 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">詳細 <ChevronRight className="w-3 h-3" /></span>
-        </div>
       </Link>
-      <RacerDetailDialog open={racerOpen} onOpenChange={setRacerOpen} entry={boat1} trust={trust} />
+      <RacerDetailDialog open={racerOpen} onOpenChange={setRacerOpen} entry={dialogEntry} trust={dialogTrust} />
     </>
+  );
+}
+
+function CardStat({ label, value, sub, unit, accent }) {
+  const accentColor = {
+    primary: "text-primary",
+    emerald: "text-emerald-600",
+    sky: "text-sky-600",
+    amber: "text-amber-600",
+  };
+  return (
+    <div className="rounded-xl bg-background/50 px-3 py-2">
+      <div className="text-[10px] text-muted-foreground tracking-wider">{label}</div>
+      <div className={cn("text-xl font-bold tabular-nums", accent ? accentColor[accent] : "text-foreground")}>
+        {value}{unit && <span className="text-xs ml-0.5">{unit}</span>}
+      </div>
+      {sub && <div className="text-[10px] text-muted-foreground tabular-nums">{sub}</div>}
+    </div>
+  );
+}
+
+function RacerBlock({ racerName, regNum, gradeClass, trustScore, reasons, concerns, onPhotoClick }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-background/50 px-3 py-2.5">
+      <RacerPhoto
+        registrationNumber={regNum}
+        racerName={racerName}
+        size="sm"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPhotoClick(); }}
+        className="cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-sm truncate">{racerName || "1号艇"}</div>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {gradeClass && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{gradeClass}</span>}
+          {regNum && <span className="text-[10px] text-muted-foreground tabular-nums">#{regNum}</span>}
+        </div>
+      </div>
+      {trustScore != null && (
+        <div className="text-right shrink-0">
+          <div className="text-[10px] text-muted-foreground tracking-wider">1号艇信頼</div>
+          <div className={cn("text-2xl font-bold tabular-nums leading-none", trustScoreColor(trustScore))}>{trustScore}</div>
+          <div className="flex items-center gap-1 mt-0.5 justify-end">
+            {reasons?.length > 0 && <span className="text-[10px] text-emerald-600 font-semibold">材料{reasons.length}</span>}
+            {concerns?.length > 0 && <span className="text-[10px] text-amber-600 font-semibold">注意{concerns.length}</span>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

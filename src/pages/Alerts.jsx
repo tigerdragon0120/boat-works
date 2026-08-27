@@ -1,13 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Loader2, Clock } from "lucide-react";
+import { Bell, Loader2, Clock, AlertCircle } from "lucide-react";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
 import { getAlerts, getSettings, getRacesByDate, getLatestOddsByDate } from "@/lib/boatService";
 import { getCachedAnalysesByDate } from "@/lib/analysisCache";
+import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { base44 } from "@/api/base44Client";
-import { GRADE_STYLE, fmtPct, fmtTime, fmtNum, canFinalJudge, minutesUntilDeadline } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtTime, fmtTimeSec, fmtNum, canFinalJudge, minutesUntilDeadline } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 function dateStr(offset = 0) {
@@ -22,6 +23,7 @@ export default function Alerts() {
   const [tomorrowAlerts, setTomorrowAlerts] = useState([]);
   const [todayRaces, setTodayRaces] = useState([]);
   const [analyses, setAnalyses] = useState({});
+  const finalStatusMap = useFinalAutoJudge(todayRaces, analyses, (raceId, finalAn) => setAnalyses(prev => ({ ...prev, [raceId]: finalAn })));
   const [tick, setTick] = useState(0);
   const [racerDialog, setRacerDialog] = useState(null);
   const [tomorrowEntries, setTomorrowEntries] = useState({});
@@ -50,8 +52,14 @@ export default function Alerts() {
         for (const e of tomEnts) (tomByRace[e.race_id] = tomByRace[e.race_id] || []).push(e);
         if (m) setTomorrowEntries(tomByRace);
 
-        // today alerts = BUY/WATCH within 5min (保存済み分析から・再分析なし)
-        const ta = todayR.filter((r) => canFinalJudge(r.deadline) && (cachedAn[r.id]?.judgment === "BUY" || cachedAn[r.id]?.judgment === "WATCH"));
+        // today alerts: 5分前は事前評価S/A候補、5分以降はfinal BUY/WATCH
+        const ta = todayR.filter((r) => {
+          const a = cachedAn[r.id];
+          if (canFinalJudge(r.deadline)) {
+            return a?.judgment === "BUY" || a?.judgment === "WATCH";
+          }
+          return a?.pre_grade === "S" || a?.pre_grade === "A";
+        });
         if (m) setTodayAlerts(ta);
       } catch {
         if (m) setLoading(false);
@@ -90,12 +98,31 @@ export default function Alerts() {
                 <Link key={r.id} to={`/race/${r.id}`} className="rounded-2xl bg-card border border-border p-4 hover:border-primary/40">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-bold">{r.venue_name} {r.race_number}R</span>
-                    <JudgmentBadge judgment={a?.judgment || "PENDING"} size="md" />
+                    {a?.stage === "final" ? (
+                      <JudgmentBadge judgment={a.judgment} size="md" />
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">事前評価</span>
+                        <span className={cn("text-base font-bold px-2 py-0.5 rounded border", GRADE_STYLE[a?.pre_grade] || GRADE_STYLE.D)}>{a?.pre_grade || "—"}</span>
+                        {finalStatusMap[r.id]?.status === "fetching" && <Loader2 className="w-3 h-3 animate-spin text-primary" />}
+                        {finalStatusMap[r.id]?.status === "failed" && <AlertCircle className="w-3 h-3 text-amber-600" />}
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <Mini label="出現率" value={fmtPct(a?.appearance_rate, 1)} sub={`n=${a?.similar_count ?? "—"}`} />
-                    <Mini label="合成オッズ" value={fmtNum(a?.synthetic_odds, 2)} />
-                    <Mini label="期待値" value={fmtNum(a?.expected_value, 0) + "%"} />
+                    {a?.stage === "final" ? (
+                      <>
+                        <Mini label="ういち率" value={fmtPct(a?.appearance_rate, 1)} sub={`n=${a?.similar_count ?? "—"}`} />
+                        <Mini label="合成オッズ" value={fmtNum(a?.synthetic_odds, 2)} />
+                        <Mini label="期待値" value={fmtNum(a?.expected_value, 0) + "%"} />
+                      </>
+                    ) : (
+                      <>
+                        <Mini label="ういち率" value={fmtPct(a?.appearance_rate, 1)} sub={`n=${a?.similar_count ?? "—"}`} />
+                        <Mini label="1号艇信頼" value={a?.boat1_trust_score ?? "—"} />
+                        <Mini label="条件一致" value={a?.condition_match_score != null ? a.condition_match_score + "%" : "—"} />
+                      </>
+                    )}
                   </div>
                   {(a?.boat1_registration_number || a?.boat1_trust_score != null) && (
                     <div className="mt-2 flex items-center gap-3 rounded-lg bg-background/50 px-3 py-2">
@@ -129,7 +156,7 @@ export default function Alerts() {
                   )}
                   <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" />締切 {fmtTime(r.deadline)}</span>
-                    <span className="tabular-nums">{mins > 0 ? `あと${mins}分` : "締切"}</span>
+                    <span className="tabular-nums">{a?.stage === "final" ? `オッズ ${fmtTimeSec(a.captured_at)}` : mins > 0 ? `あと${mins}分` : "締切"}</span>
                   </div>
                 </Link>
               );
