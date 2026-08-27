@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Loader2, AlertCircle, CalendarClock, CheckCircle2 } from "lucide-react";
+import { Bell, Loader2, AlertCircle, CalendarClock } from "lucide-react";
 import RaceCard from "@/components/RaceCard";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
-  getAlerts, autoFetchTodayRaces, invalidateCache,
+  getAlerts,
   getBackfillProgressLight,
 } from "@/lib/boatService";
 import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
@@ -30,7 +30,6 @@ export default function Home() {
   const [alerts, setAlerts] = useState([]);
   const [analyses, setAnalyses] = useState({});
   const [tick, setTick] = useState(0);
-  const [autoFetchState, setAutoFetchState] = useState(null);
   const [backfillProgress, setBackfillProgress] = useState(null);
   const [cacheHitRate, setCacheHitRate] = useState(null);
 
@@ -73,22 +72,8 @@ export default function Home() {
         setLoading(false);
         console.log(`[Home] 初期表示完了: ${Math.round(performance.now() - t0)}ms (キャッシュヒット ${Math.round(computeCacheHitRate(rs, cachedAn)*100)}%)`);
 
-        // 本日開催データ自動取得（非同期・非ブロッキング）
-        if (tab === "today") {
-          setAutoFetchState("loading");
-          try {
-            const af = await autoFetchTodayRaces();
-            if (!m) return;
-            setAutoFetchState(af.status === "success" ? "done" : af.status);
-            if (af.status === "success") {
-              invalidateCache(`races_${date}`);
-              const newRs = await getRacesByDate(date);
-              if (m) setRaces(newRs);
-            }
-          } catch {
-            if (m) setAutoFetchState("error");
-          }
-        }
+        // Home表示時には外部データ自動取得を開始しない。
+        // データ収集は日次処理・管理画面側で行い、Homeは保存済みデータを読むだけにする。
         // ※ 再分析は行わない。前夜の一括分析（analyzeAllRacesForDate）でUichiAnalysis保存済み。
         // キャッシュ欠損レースはnullのまま表示（RaceCardがPENDING表示）。
       } catch (err) {
@@ -106,8 +91,11 @@ export default function Home() {
   }, []);
 
   const sortedRaces = useMemo(() => {
-    return [...races].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-  }, [races]);
+    const now = Date.now();
+    return [...races]
+      .filter((r) => tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > now)
+      .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+  }, [races, tab, tick]);
 
   // alert races (today: BUY judged; tomorrow: pre-grade A/S)
   const alertRaces = useMemo(() => {
@@ -147,23 +135,6 @@ export default function Home() {
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-600">
           <AlertCircle className="w-4 h-4" /> データ取得失敗：{error}
-        </div>
-      )}
-
-      {/* 本日開催データ自動取得状況 */}
-      {autoFetchState === "loading" && (
-        <div className="flex items-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-700">
-          <Loader2 className="w-4 h-4 animate-spin" /> 本日の開催データを自動取得中…
-        </div>
-      )}
-      {autoFetchState === "done" && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          <CheckCircle2 className="w-4 h-4" /> 本日の開催データを取得・キャッシュしました
-        </div>
-      )}
-      {(autoFetchState === "error" || autoFetchState === "no_venues") && (
-        <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          <AlertCircle className="w-4 h-4" /> {autoFetchState === "no_venues" ? "本日は開催がありません" : "開催データ自動取得に失敗しました（再読込で再試行）"}
         </div>
       )}
 
