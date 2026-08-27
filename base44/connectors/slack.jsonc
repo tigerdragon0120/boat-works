@@ -3,6 +3,7 @@
   "scopes": [
     "chat:write",
     "users:read.email",
-    "users:read"
+    "users:read",
+    "channels:read"
   ]
 }
