@@ -5,15 +5,23 @@ import { base44 } from "@/api/base44Client";
 const ANALYSIS_VERSION = "v3";
 
 // 指定日のUichiAnalysisを一括取得（race_id→analysis のマップ）
-// stage指定時はそのstageのみ。未指定時は final > day > pre の優先順位で最新を採用。
-const STAGE_PRIORITY = { final: 3, day: 2, pre: 1 };
+// stage指定時はそのstageのみ。
+// 未指定時は「確定したfinal > day > pre > PENDING final」の順で採用する。
+// finalがPENDINGの間はpre評価を隠さないことが重要。
+function effectivePriority(a) {
+  if (a?.stage === "final" && a?.judgment && a.judgment !== "PENDING") return 4;
+  if (a?.stage === "day") return 3;
+  if (a?.stage === "pre") return 2;
+  if (a?.stage === "final") return 1;
+  return 0;
+}
 export async function getCachedAnalysesByDate(dateStr, stage = null) {
   const query = stage ? { race_date: dateStr, stage, analysis_version: ANALYSIS_VERSION } : { race_date: dateStr, analysis_version: ANALYSIS_VERSION };
   const list = await base44.entities.UichiAnalysis.filter(query, "-captured_at", 500);
   const map = {};
   for (const a of list) {
     const cur = map[a.race_id];
-    if (!cur || (STAGE_PRIORITY[a.stage] || 0) > (STAGE_PRIORITY[cur.stage] || 0)) {
+    if (!cur || effectivePriority(a) > effectivePriority(cur)) {
       map[a.race_id] = a;
     }
   }
