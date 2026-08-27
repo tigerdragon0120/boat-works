@@ -823,9 +823,10 @@ export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, ab
   };
 
   let current = 0, total = pending.length, enriched = 0, errors = 0;
+  let totalHttpFetches = 0, totalCacheCompletes = 0;
 
   for (let i = 0; i < pending.length; i += venueConcurrency) {
-    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors };
+    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes };
 
     adjustConcurrency();
     const batch = pending.slice(i, i + venueConcurrency);
@@ -837,16 +838,20 @@ export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, ab
       status: "loading", enriched, errors,
       venueConcurrency, raceConcurrency: 3,
       startTime, pendingCount: total - current,
+      httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes,
     });
 
     const results = await Promise.allSettled(batch.map(async (p) => {
       try {
         const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12 });
         recordResult(true);
-        return { enriched: res?.enriched || 0, errors: res?.errors || 0 };
+        return {
+          enriched: res?.enriched || 0, errors: res?.errors || 0,
+          http_fetches: res?.http_fetches || 0, cache_completes: res?.cache_completes || 0,
+        };
       } catch (e) {
         recordResult(false);
-        return { enriched: 0, errors: 1 };
+        return { enriched: 0, errors: 1, http_fetches: 0, cache_completes: 0 };
       }
     }));
 
@@ -854,21 +859,27 @@ export async function enrichBoat1DetailsBatch(startDate, endDate, onProgress, ab
       if (result.status === "fulfilled") {
         enriched += result.value.enriched;
         errors += result.value.errors;
+        totalHttpFetches += result.value.http_fetches;
+        totalCacheCompletes += result.value.cache_completes;
       } else {
         errors++;
       }
       current++;
     }
 
+    const totalProcessed = enriched + errors;
+    const cacheHitRate = totalProcessed > 0 ? Math.round((totalCacheCompletes / totalProcessed) * 100) : 0;
+
     if (onProgress) onProgress({
       current, total, venue: batchNames, date: batchDates,
       status: "done", enriched, errors,
       venueConcurrency, raceConcurrency: 3,
       startTime, pendingCount: total - current,
+      httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes, cacheHitRate,
     });
   }
 
-  return { current, total, enriched, errors };
+  return { current, total, enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes };
 }
 
 // 1号艇詳細エラー専用再取得（低速安全モード）
@@ -886,20 +897,25 @@ export async function enrichBoat1DetailsErrors(startDate, endDate, onProgress, a
   candidates.sort((a, b) => a.race_date.localeCompare(b.race_date));
 
   let current = 0, total = candidates.length, enriched = 0, errors = 0;
+  let totalHttpFetches = 0, totalCacheCompletes = 0;
   for (const p of candidates) {
-    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors };
-    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "loading", enriched, errors });
+    if (abortRef?.aborted) return { aborted: true, current, total, enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes };
+    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "loading", enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes });
     try {
       const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12, error_mode: true });
       enriched += res?.enriched || 0;
       errors += res?.errors || 0;
+      totalHttpFetches += res?.http_fetches || 0;
+      totalCacheCompletes += res?.cache_completes || 0;
     } catch {
       errors++;
     }
     current++;
-    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "done", enriched, errors });
+    const totalProcessed = enriched + errors;
+    const cacheHitRate = totalProcessed > 0 ? Math.round((totalCacheCompletes / totalProcessed) * 100) : 0;
+    if (onProgress) onProgress({ current, total, venue: p.venue_name, date: p.race_date, status: "done", enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes, cacheHitRate });
   }
-  return { current, total, enriched, errors };
+  return { current, total, enriched, errors, httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes };
 }
 
 // 期間サマリー（FetchProgressから集計・2段階対応）

@@ -131,7 +131,7 @@ export default function HistoricalFetchPanel() {
     setEnriching(true);
     setEnrichSpeed(null);
     enrichSpeedRef.current = [];
-    setEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0, venueConcurrency: 2, raceConcurrency: 3, startTime: Date.now(), pendingCount: 0 });
+    setEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0, venueConcurrency: 2, raceConcurrency: 3, startTime: Date.now(), pendingCount: 0, httpFetches: 0, cacheCompletes: 0, cacheHitRate: 0 });
     try {
       await enrichBoat1DetailsBatch(startDate, endDate, (p) => {
         setEnrichProgress({
@@ -142,6 +142,9 @@ export default function HistoricalFetchPanel() {
           raceConcurrency: p.raceConcurrency || 3,
           startTime: p.startTime || Date.now(),
           pendingCount: p.pendingCount || 0,
+          httpFetches: p.httpFetches || 0,
+          cacheCompletes: p.cacheCompletes || 0,
+          cacheHitRate: p.cacheHitRate || 0,
         });
         if (p.enriched > 0) recordEnrichSpeed(p.enriched);
       }, enrichAbortRef);
@@ -156,13 +159,16 @@ export default function HistoricalFetchPanel() {
   const handleEnrichErrors = async () => {
     errorEnrichAbortRef.current.aborted = false;
     setErrorEnriching(true);
-    setErrorEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0 });
+    setErrorEnrichProgress({ current: 0, total: 0, venue: "", date: "", status: "start", enriched: 0, errors: 0, httpFetches: 0, cacheCompletes: 0, cacheHitRate: 0 });
     try {
       await enrichBoat1DetailsErrors(startDate, endDate, (p) => {
         setErrorEnrichProgress({
           current: p.current, total: p.total, venue: p.venue || "",
           date: p.date || "", status: p.status,
           enriched: p.enriched, errors: p.errors,
+          httpFetches: p.httpFetches || 0,
+          cacheCompletes: p.cacheCompletes || 0,
+          cacheHitRate: p.cacheHitRate || 0,
         });
       }, errorEnrichAbortRef);
       await loadSummary();
@@ -459,6 +465,15 @@ export default function HistoricalFetchPanel() {
               {enrichSpeed != null && <span>速度 <span className="text-primary font-semibold tabular-nums">{enrichSpeed}</span>件/分</span>}
               {enrichETA != null && <span>推定残り <span className="text-primary font-semibold">約{enrichETA}分</span></span>}
             </div>
+            {/* HTTP access stats */}
+            {(enrichProgress.httpFetches > 0 || enrichProgress.cacheCompletes > 0) && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <DetailStat label="HTTP取得回数" value={enrichProgress.httpFetches} accent="amber" />
+                <DetailStat label="キャッシュ補完件数" value={enrichProgress.cacheCompletes} accent="emerald" />
+                <DetailStat label="HTTP回避件数" value={enrichProgress.cacheCompletes} accent="primary" />
+                <DetailStat label="キャッシュヒット率" value={`${enrichProgress.cacheHitRate || 0}%`} accent="emerald" />
+              </div>
+            )}
           </div>
         )}
 
@@ -477,6 +492,9 @@ export default function HistoricalFetchPanel() {
             <div className="flex gap-4 text-xs text-muted-foreground">
               <span>成功 <span className="text-emerald-600 font-semibold tabular-nums">{errorEnrichProgress.enriched}</span></span>
               <span>再失敗 <span className="text-rose-600 font-semibold tabular-nums">{errorEnrichProgress.errors}</span></span>
+              <span>HTTP <span className="text-amber-600 font-semibold tabular-nums">{errorEnrichProgress.httpFetches || 0}</span></span>
+              <span>キャッシュ <span className="text-emerald-600 font-semibold tabular-nums">{errorEnrichProgress.cacheCompletes || 0}</span></span>
+              <span>ヒット率 <span className="text-emerald-600 font-semibold tabular-nums">{errorEnrichProgress.cacheHitRate || 0}%</span></span>
             </div>
           </div>
         )}

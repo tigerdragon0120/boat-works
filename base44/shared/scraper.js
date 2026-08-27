@@ -210,6 +210,44 @@ export function parseDaySchedule(html, raceDate) {
   return races;
 }
 
+// raceindexページの早見テーブルをパース（全レース全選手の登録番号・名前・級別を抽出）
+// 1HTTPアクセスで1日分の全レース全選手の担当艇番号と登録番号が分かる
+// 戻り値: { [raceNumber]: [{ boat_number, registration_number, racer_name, grade_class }, ...6艇] }
+export function parseRaceIndexHayami(html) {
+  const races = {};
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+  let rowMatch;
+  while ((rowMatch = rowRe.exec(html)) !== null) {
+    const row = rowMatch[1];
+    const rnoMatch = row.match(/racelist\?rno=(\d+)/);
+    if (!rnoMatch) continue;
+    const raceNumber = parseInt(rnoMatch[1], 10);
+    if (races[raceNumber]) continue;
+
+    // 各選手のプロフィールリンクを抽出（boat順）
+    const racerRe = /racersearch\/profile\?toban=(\d+)[^>]*>([\s\S]*?)<\/a>/g;
+    const racers = [];
+    let racerMatch;
+    while ((racerMatch = racerRe.exec(row)) !== null && racers.length < 6) {
+      const regNum = racerMatch[1];
+      const name = stripTags(racerMatch[2]);
+      // 級別: リンク直後の <br> の後にある (例: B1, A2)
+      const afterLink = row.substring(racerMatch.index + racerMatch[0].length);
+      const gradeMatch = afterLink.match(/^\s*(?:<br\s*\/?>)?\s*([A-Z]\d)/);
+      racers.push({
+        boat_number: racers.length + 1,
+        registration_number: regNum,
+        racer_name: name,
+        grade_class: gradeMatch ? gradeMatch[1] : null,
+      });
+    }
+    if (racers.length === 6) {
+      races[raceNumber] = racers;
+    }
+  }
+  return races;
+}
+
 // 結果一覧ページパース（1日1場分の全レース結果）
 // 3連単組合わせと払戻金を抽出
 export function parseResultList(html) {
