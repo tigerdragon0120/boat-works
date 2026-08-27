@@ -118,6 +118,13 @@ export default function RaceDetail() {
             const fetched = await fetchOfficialRace(r.race_date, r.venue_code, r.race_number);
             if (fetched?.status !== "success") throw new Error(fetched?.message || "最新オッズ取得失敗");
             await analyzeRaceFinal(id, r.race_date);
+            // 最新オッズとfinal分析を即画面へ反映する。
+            const [freshOdds, freshHist] = await Promise.all([
+              getLatestOdds(id),
+              getOddsHistory(id),
+            ]);
+            setOdds(freshOdds);
+            setOddsHistory(freshHist);
             setReloadKey(k => k + 1);
           } catch (e) {
             console.error("[RaceDetail] 最終判定失敗", e);
