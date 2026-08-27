@@ -1,0 +1,39 @@
+{
+  "name": "AggregationMeta",
+  "type": "object",
+  "properties": {
+    "config_id": {
+      "type": "string",
+      "description": "\u5e38\u306bmain"
+    },
+    "last_aggregated_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "stats_version": {
+      "type": "number",
+      "description": "\u96c6\u8a08\u30ed\u30b8\u30c3\u30af\u30d0\u30fc\u30b8\u30e7\u30f3"
+    },
+    "total_races_processed": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "building",
+        "error"
+      ]
+    },
+    "error_msg": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "config_id"
+  ]
+}

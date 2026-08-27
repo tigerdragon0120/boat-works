@@ -1,0 +1,58 @@
+{
+  "name": "RacerVenueStats",
+  "type": "object",
+  "properties": {
+    "registration_number": {
+      "type": "string"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "races": {
+      "type": "number",
+      "description": "\u5f53\u5730\u51fa\u8d70\u6570"
+    },
+    "boat1_races": {
+      "type": "number",
+      "description": "\u5f53\u57301\u53f7\u8247\u51fa\u8d70\u6570"
+    },
+    "boat1_wins": {
+      "type": "number",
+      "description": "\u5f53\u57301\u53f7\u82471\u7740\u6570"
+    },
+    "boat1_win_rate": {
+      "type": "number",
+      "description": "\u5f53\u57301\u53f7\u82471\u7740\u7387(0-1)"
+    },
+    "uichi_hits": {
+      "type": "number",
+      "description": "\u5f53\u5730\u3046\u3044\u3061\u7684\u4e2d\u6570"
+    },
+    "uichi_rate": {
+      "type": "number",
+      "description": "\u5f53\u5730\u3046\u3044\u3061\u51fa\u73fe\u7387(0-1)"
+    },
+    "avg_st": {
+      "type": "number",
+      "description": "\u5f53\u57301\u53f7\u8247\u5e73\u5747ST"
+    },
+    "st_count": {
+      "type": "number",
+      "description": "ST\u96c6\u8a08\u30b5\u30f3\u30d7\u30eb\u6570(\u5185\u90e8\u7528)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stats_version": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "registration_number",
+    "venue_code"
+  ]
+}

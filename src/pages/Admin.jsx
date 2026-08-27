@@ -7,6 +7,7 @@ import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
 import ErrorRetryPanel from "@/components/ErrorRetryPanel";
 import BackfillStatusBanner from "@/components/BackfillStatusBanner";
 import BatchAnalysisPanel from "@/components/BatchAnalysisPanel";
+import AggregationPanel from "@/components/AggregationPanel";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -76,6 +77,8 @@ export default function Admin() {
       </div>
 
       <BackfillStatusBanner />
+
+      <AggregationPanel />
 
       <BatchAnalysisPanel />
 

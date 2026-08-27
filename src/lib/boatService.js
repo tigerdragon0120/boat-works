@@ -555,6 +555,24 @@ export async function recalcVenueStats() {
   return res.data;
 }
 
+// 集計DB初期構築（全RaceResultから集計Entity構築・管理者専用・一回限り）
+export async function buildAggregates() {
+  const res = await base44.functions.invoke("buildAggregates", {});
+  return res.data;
+}
+
+// 日次差分集計更新（指定日のRaceResultから集計Entityに差分マージ）
+export async function updateDailyAggregates(raceDate) {
+  const res = await base44.functions.invoke("updateDailyAggregates", { race_date: raceDate });
+  return res.data;
+}
+
+// 集計メタ情報取得
+export async function getAggregationMeta() {
+  const list = await base44.entities.AggregationMeta.filter({ config_id: "main" });
+  return list[0] || null;
+}
+
 // 1日分の全24場取得（逐次・公式サイト負荷配慮）
 export async function fetchHistoricalDay(raceDate, onProgress) {
   const venues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
@@ -1238,7 +1256,13 @@ export async function dailyRefresh(onProgress) {
   try { await recalcVenueStats(); } catch {}
   if (onProgress) onProgress({ phase: "venuestats", status: "done" });
 
-  return { date: yStr, ...dayResult, enriched, errors };
+  // 集計DB差分更新
+  if (onProgress) onProgress({ phase: "aggregates", status: "loading", date: yStr });
+  let aggResult = null;
+  try { aggResult = await updateDailyAggregates(yStr); } catch {}
+  if (onProgress) onProgress({ phase: "aggregates", status: "done", date: yStr, aggResult });
+
+  return { date: yStr, ...dayResult, enriched, errors, aggResult };
 }
 
 // 過去データ取得のサマリー

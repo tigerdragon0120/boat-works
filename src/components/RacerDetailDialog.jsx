@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import RacerPhoto from "./RacerPhoto";
+import RacerAggregateStats from "./RacerAggregateStats";
 import { fmtNum, trustScoreColor, trustScoreLabel } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
@@ -86,15 +87,8 @@ export default function RacerDetailDialog({ open, onOpenChange, entry, trust }) 
               </div>
             )}
 
-            {/* Future extension placeholders */}
-            <div className="space-y-2">
-              <div className="text-xs font-bold text-muted-foreground tracking-wider">詳細分析（今後拡張予定）</div>
-              <div className="grid grid-cols-3 gap-2">
-                <FutureStat label="得意場" />
-                <FutureStat label="1号艇成績" />
-                <FutureStat label="天候別" />
-              </div>
-            </div>
+            {/* 得意場ランキング + 天候相性（集計DBから） */}
+            <RacerAggregateStats registrationNumber={entry.registration_number} />
           </div>
         ) : (
           <div className="py-8 text-center text-sm text-muted-foreground">選手データがありません</div>
@@ -109,15 +103,6 @@ function StatRow({ label, value }) {
     <div className="flex items-center justify-between rounded-lg bg-background/50 px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="font-bold tabular-nums text-sm">{value}</span>
-    </div>
-  );
-}
-
-function FutureStat({ label }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border p-3 text-center">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-[10px] text-muted-foreground/60 mt-0.5">準備中</div>
     </div>
   );
 }

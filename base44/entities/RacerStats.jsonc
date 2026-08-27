@@ -1,0 +1,83 @@
+{
+  "name": "RacerStats",
+  "type": "object",
+  "properties": {
+    "registration_number": {
+      "type": "string",
+      "description": "\u9078\u624b\u767b\u9332\u756a\u53f7"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "total_races": {
+      "type": "number",
+      "description": "\u5168\u51fa\u8d70\u6570"
+    },
+    "boat1_races": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u51fa\u8d70\u6570"
+    },
+    "boat1_wins": {
+      "type": "number",
+      "description": "1\u53f7\u82471\u7740\u6570"
+    },
+    "boat1_2nd": {
+      "type": "number",
+      "description": "1\u53f7\u82472\u7740\u6570"
+    },
+    "boat1_3rd": {
+      "type": "number",
+      "description": "1\u53f7\u82473\u7740\u6570"
+    },
+    "boat1_win_rate": {
+      "type": "number",
+      "description": "1\u53f7\u82471\u7740\u7387(0-1)"
+    },
+    "boat1_2rate": {
+      "type": "number",
+      "description": "1\u53f7\u82472\u9023\u7387(0-1)"
+    },
+    "boat1_3rate": {
+      "type": "number",
+      "description": "1\u53f7\u82473\u9023\u7387(0-1)"
+    },
+    "avg_st": {
+      "type": "number",
+      "description": "1\u53f7\u8247\u5e73\u5747ST"
+    },
+    "st_count": {
+      "type": "number",
+      "description": "ST\u96c6\u8a08\u30b5\u30f3\u30d7\u30eb\u6570(\u5185\u90e8\u7528)"
+    },
+    "uichi_count": {
+      "type": "number",
+      "description": "\u3046\u3044\u3061\u7684\u4e2d\u6570(1\u53f7\u82471\u7740\u6642)"
+    },
+    "f_count": {
+      "type": "number",
+      "description": "F\u6570\u7d2f\u8a08"
+    },
+    "l_count": {
+      "type": "number",
+      "description": "L\u6570\u7d2f\u8a08"
+    },
+    "recent_results": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u76f4\u8fd120\u8d70(\u65b0\u3057\u3044\u9806)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stats_version": {
+      "type": "number",
+      "description": "\u96c6\u8a08\u30ed\u30b8\u30c3\u30af\u30d0\u30fc\u30b8\u30e7\u30f3"
+    }
+  },
+  "required": [
+    "registration_number"
+  ]
+}

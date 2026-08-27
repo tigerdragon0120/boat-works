@@ -1,10 +1,12 @@
-// BOAT WORKS 共通分析ロジック（一括分析・単レース分析で共有）
-// メモリ上の履歴データを受け取り、レース分析・信頼スコア・判定を計算する。
+// BOAT WORKS 共通分析ロジック（集計Entityベース・v3）
+// RaceResult全件を読まず、RacerStats/RacerVenueStats/VenueRaceStats等の集計済みEntityから分析する。
+// データ量が増えても分析時間は増えない。
 
 import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.js";
+import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v2";
+export const ANALYSIS_VERSION = "v3";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -46,22 +48,6 @@ function judgeWithSample(ev, similarCount, settings) {
   return "SKIP";
 }
 
-// 詳細類似度スコア（boatService.analyzeRacePureと同一ロジック）
-function detailedSimilarityScore(target, past) {
-  let s = 0;
-  if (past.venue_code === target.venue_code) s += 25;
-  if (past.boat1_grade_class && past.boat1_grade_class === target.boat1_grade_class) s += 15;
-  s += 15 * (1 - Math.abs((target.national_win_rate || 0) - (past.boat1_national_win_rate || 0)) / 8);
-  s += 10 * (1 - Math.abs((target.local_win_rate || 0) - (past.boat1_local_win_rate || 0)) / 8);
-  s += 10 * (1 - Math.abs((target.avg_st || 0.2) - (past.boat1_avg_st || 0.2)) / 0.15);
-  const fDiff = Math.abs((target.f_count || 0) - (past.boat1_f_count || 0));
-  s += 5 * Math.max(0, 1 - fDiff / 3);
-  s += 10 * (1 - Math.abs((target.motor_2rate || 35) - (past.boat1_motor_2rate || 35)) / 30);
-  s += 10 * (1 - Math.abs((target.motor_3rate || 50) - (past.boat1_motor_3rate || 50)) / 30);
-  return s;
-}
-
-// 条件一致度計算（getBoat1TrustScoreと同一ロジック）
 function computeConditionMatch(boat1, venueWinRate, venueTotal, overallWinRate, overallTotal) {
   const conditions = [];
   let matched = 0, total = 0;
@@ -110,10 +96,11 @@ function computeConditionMatch(boat1, venueWinRate, venueTotal, overallWinRate, 
   return { score, matched, total, conditions };
 }
 
-// 1号艇信頼スコア（履歴データから計算・getBoat1TrustScoreと同一ロジック）
-// venueResults: この場・この選手の過去RaceResult[]
-// overallResults: 全場・この選手の過去RaceResult[]
-export function computeTrustScoreFromHistory(boat1, venueResults, overallResults, settings, venueName) {
+// 1号艇信頼スコア（集計Entityから計算）
+// racerVenueStat: RacerVenueStats record (この場の1号艇成績)
+// racerStat: RacerStats record (全体1号艇成績)
+// weatherStat: RacerWeatherStats record (天候一致・n>=5時のみ)
+export function computeTrustScoreFromAggregates(boat1, racerVenueStat, racerStat, settings, venueName, weatherStat) {
   if (!boat1) return null;
   const w = {
     basic: settings?.trust_weight_basic ?? 20,
@@ -121,14 +108,15 @@ export function computeTrustScoreFromHistory(boat1, venueResults, overallResults
     venue: settings?.trust_weight_venue ?? 15,
     st: settings?.trust_weight_st ?? 10,
     motor: settings?.trust_weight_motor ?? 10,
+    weather: settings?.trust_weight_weather ?? 10,
   };
 
-  const venueTotal = venueResults.length;
-  const venueWins = venueResults.filter(r => r.result_1 === 1).length;
-  const venueWinRate = venueTotal > 0 ? venueWins / venueTotal : null;
-  const overallTotal = overallResults.length;
-  const overallWins = overallResults.filter(r => r.result_1 === 1).length;
-  const overallWinRate = overallTotal > 0 ? overallWins / overallTotal : null;
+  const venueWinRate = racerVenueStat?.boat1_win_rate ?? null;
+  const venueTotal = racerVenueStat?.boat1_races ?? 0;
+  const venueWins = racerVenueStat?.boat1_wins ?? 0;
+  const overallWinRate = racerStat?.boat1_win_rate ?? null;
+  const overallTotal = racerStat?.boat1_races ?? 0;
+  const overallWins = racerStat?.boat1_wins ?? 0;
 
   const components = [];
   const reasons = [];
@@ -151,16 +139,16 @@ export function computeTrustScoreFromHistory(boat1, venueResults, overallResults
       if (gs != null && gs >= 0.8 && boat1.grade_class) reasons.push({ label: `級別 ${boat1.grade_class}`, strength: Math.round(gs * max * 0.3) });
     }
   }
-  // B. 1コース信頼性
+  // B. 1コース信頼性（集計データ優先）
   {
     const max = w.lane1;
     let s = 0, wt = 0, evaluated = false;
     if (venueWinRate != null && venueTotal >= 5) {
       s += clamp(venueWinRate / 0.7, 0, 1) * 45; wt += 45; evaluated = true;
-      reasons.push({ label: `${venueName || ""}1号艇で過去${venueTotal}走 1着率${(venueWinRate * 100).toFixed(0)}%`, strength: Math.round(clamp(venueWinRate / 0.7, 0, 1) * max * 0.45) });
+      reasons.push({ label: `${venueName || ""}1号艇 過去${venueTotal}走 1着${venueWins}回 (${(venueWinRate * 100).toFixed(0)}%)`, strength: Math.round(clamp(venueWinRate / 0.7, 0, 1) * max * 0.45) });
     } else if (overallWinRate != null && overallTotal >= 10) {
       s += clamp(overallWinRate / 0.7, 0, 1) * 35; wt += 35; evaluated = true;
-      reasons.push({ label: `1号艇過去${overallTotal}走 1着率${(overallWinRate * 100).toFixed(0)}%`, strength: Math.round(clamp(overallWinRate / 0.7, 0, 1) * max * 0.35) });
+      reasons.push({ label: `1号艇 過去${overallTotal}走 1着${overallWins}回 (${(overallWinRate * 100).toFixed(0)}%)`, strength: Math.round(clamp(overallWinRate / 0.7, 0, 1) * max * 0.35) });
     }
     const c1 = boat1.c1_win_rate, c12 = boat1.c1_2rate;
     if (c1 != null) { s += clamp(c1 / 70, 0, 1) * 35; wt += 35; evaluated = true; }
@@ -212,6 +200,25 @@ export function computeTrustScoreFromHistory(boat1, venueResults, overallResults
       if (m2r != null && m2r >= 40) reasons.push({ label: `モーター2連率 ${fmtNum(m2r, 1)}%`, strength: points });
     }
   }
+  // F. 天候相性（集計データ・n>=5時のみ評価対象）
+  if (weatherStat && weatherStat.races >= 5) {
+    const max = w.weather;
+    const wr = weatherStat.win_rate;
+    const points = Math.round(clamp(wr / 0.7, 0, 1) * max);
+    const wlabel = `${weatherStat.weather || ""} ${weatherStat.wind_speed_group || ""}m`;
+    components.push({ key: "weather", label: `天候相性(${wlabel})`, points, max, evaluated: true, sample: weatherStat.races });
+    rawScore += points; rawMax += max;
+    if (wr >= 0.6) reasons.push({ label: `${wlabel}時 1号艇${weatherStat.races}走 1着${weatherStat.wins}回 (${(wr * 100).toFixed(0)}%)`, strength: points });
+  }
+  // G. 直近調子（recent_resultsから・理由表示のみ）
+  if (racerStat?.recent_results?.length >= 5) {
+    const recent = racerStat.recent_results.slice(0, 10);
+    const rWins = recent.filter(r => r.won).length;
+    const rRate = rWins / recent.length;
+    if (rRate >= 0.5) {
+      reasons.push({ label: `直近${recent.length}走で${rWins}勝 (${(rRate * 100).toFixed(0)}%)`, strength: Math.round(rRate * 10) });
+    }
+  }
   // H. リスク減点
   {
     const fc = boat1.f_count || 0;
@@ -252,33 +259,39 @@ export function computeTrustScoreFromHistory(boat1, venueResults, overallResults
   };
 }
 
-// レース完全分析（メモリ上の履歴インデックスを使用）
-// history: { byVenue: {venue_code: RaceResult[]}, byRegVenue: {"venue_reg": []}, byReg: {reg: []}, totalDone, totalAll }
-export function computeRaceAnalysis(race, entries, odds, history, settings, stage) {
+// レース完全分析（集計Entityベース）
+// stats: { venueRaceStats, racerStats, racerVenueStats, racerWeatherStats, venueStats, totalRaces }
+export function computeRaceAnalysis(race, entries, odds, stats, settings, stage) {
   const boat1 = entries.find(e => e.boat_number === 1);
   const boat1Grade = gradeBoat1(boat1);
+  const reg = boat1?.registration_number;
+  const venue = race.venue_code;
+  const rnum = race.race_number;
 
-  const venueResults = history.byVenue[race.venue_code] || [];
-  const target = {
-    venue_code: race.venue_code,
-    boat1_grade_class: boat1?.grade_class,
-    national_win_rate: boat1?.national_win_rate,
-    local_win_rate: boat1?.local_win_rate,
-    avg_st: boat1?.avg_st,
-    f_count: boat1?.f_count,
-    motor_2rate: boat1?.motor_2rate,
-    motor_3rate: boat1?.motor_3rate,
-  };
-  const similar = venueResults.filter(p => {
-    if (p.data_source && p.data_source !== "official") return false;
-    if (p.boat1_detail_status && p.boat1_detail_status !== "done") return false;
-    if (!p.boat1_detail_status && !p.boat1_racer_name) return false;
-    return detailedSimilarityScore(target, p) >= 55;
-  });
-  const similarCount = similar.length;
-  const uichiHits = similar.filter(p => p.is_uichi).length;
-  const appearanceRate = similarCount > 0 ? uichiHits / similarCount : 0;
+  // 集計データルックアップ
+  const vrs = stats.venueRaceStats?.[venue]?.[rnum];
+  const vs = stats.venueStats?.[venue];
+  const rvst = reg ? stats.racerVenueStats?.[reg]?.[venue] : null;
+  const rst = reg ? stats.racerStats?.[reg] : null;
 
+  // ういち出現率計算（レーサー調整済み）
+  // P(uichi) = P(boat1 wins) × P(uichi | boat1 wins)
+  const baseUichiRate = vrs?.uichi_rate ?? vs?.uichi_rate ?? 0;
+  const venueBoat1WinRate = vrs?.boat1_win_rate ?? (vs?.c1_win_rate ? vs.c1_win_rate / 100 : 0.5);
+  const racerBoat1WinRate = rvst?.boat1_win_rate ?? rst?.boat1_win_rate ?? venueBoat1WinRate;
+
+  let appearanceRate;
+  if (venueBoat1WinRate > 0.05 && (rvst || rst)) {
+    appearanceRate = racerBoat1WinRate * (baseUichiRate / venueBoat1WinRate);
+  } else {
+    appearanceRate = baseUichiRate;
+  }
+  appearanceRate = clamp(appearanceRate, 0, 0.95);
+
+  const similarCount = vrs?.total_races ?? 0;
+  const uichiHits = vrs?.uichi_hits ?? 0;
+
+  // オッズ + EV
   let synthOdds = 0, oddsValues = [];
   if (odds && stage !== "pre") {
     oddsValues = UICHI_COMBOS.map(c => odds["odds_" + c.replace(/-/g, "_")]);
@@ -287,22 +300,26 @@ export function computeRaceAnalysis(race, entries, odds, history, settings, stag
   const ev = stage === "pre" ? null : expectedValue(appearanceRate, synthOdds);
   const minOk = similarCount >= (settings?.min_similar_races || 30);
 
-  // 信頼スコア
-  const regNum = boat1?.registration_number;
-  const trustVenueResults = regNum ? (history.byRegVenue[`${race.venue_code}_${regNum}`] || []) : [];
-  const trustOverallResults = regNum ? (history.byReg[regNum] || []) : [];
-  const trust = computeTrustScoreFromHistory(boat1, trustVenueResults, trustOverallResults, settings, race.venue_name);
+  // 天候一致stat検索
+  let weatherStat = null;
+  if (reg && race.weather) {
+    const wsg = windSpeedGroup(race.wind_speed);
+    const wList = stats.racerWeatherStats?.[reg]?.[venue];
+    if (wList) weatherStat = wList.find(w => w.weather === race.weather && w.wind_speed_group === wsg);
+  }
 
-  const totalPool = history.totalAll || 0;
-  const validPool = history.totalDone || 0;
-  const sufficiency = totalPool > 0 ? validPool / totalPool : 0;
+  // 信頼スコア
+  const trust = computeTrustScoreFromAggregates(boat1, rvst, rst, settings, race.venue_name, weatherStat);
+
+  const totalPool = stats.totalRaces ?? 0;
+  const validPool = totalPool;
+  const sufficiency = totalPool > 0 ? 1 : 0;
   const reliability = reliabilityGradeFromSample(similarCount, settings);
 
   let judgment = "PENDING";
   if (stage === "pre") judgment = "PENDING";
   else if (minOk) judgment = judgeWithSample(ev, similarCount, settings);
 
-  // 前日評価等級
   let preGrade = null;
   if (stage === "pre") {
     const ar = appearanceRate * 100;

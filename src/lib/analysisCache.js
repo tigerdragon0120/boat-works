@@ -2,11 +2,13 @@
 // Home/Alerts/RaceDetailは保存済みUichiAnalysisを読むだけ（再分析しない）
 import { base44 } from "@/api/base44Client";
 
+const ANALYSIS_VERSION = "v3";
+
 // 指定日のUichiAnalysisを一括取得（race_id→analysis のマップ）
 // stage指定時はそのstageのみ。未指定時は final > day > pre の優先順位で最新を採用。
 const STAGE_PRIORITY = { final: 3, day: 2, pre: 1 };
 export async function getCachedAnalysesByDate(dateStr, stage = null) {
-  const query = stage ? { race_date: dateStr, stage } : { race_date: dateStr };
+  const query = stage ? { race_date: dateStr, stage, analysis_version: ANALYSIS_VERSION } : { race_date: dateStr, analysis_version: ANALYSIS_VERSION };
   const list = await base44.entities.UichiAnalysis.filter(query, "-captured_at", 500);
   const map = {};
   for (const a of list) {
@@ -20,7 +22,7 @@ export async function getCachedAnalysesByDate(dateStr, stage = null) {
 
 // 指定レースの全stage分析を取得（pre + final比較用）
 export async function getCachedAnalysesForRace(raceId) {
-  const list = await base44.entities.UichiAnalysis.filter({ race_id: raceId }, "-captured_at", 10);
+  const list = await base44.entities.UichiAnalysis.filter({ race_id: raceId, analysis_version: ANALYSIS_VERSION }, "-captured_at", 10);
   const byStage = {};
   for (const a of list) {
     if (!byStage[a.stage]) byStage[a.stage] = a;
@@ -62,8 +64,8 @@ export async function getBatchAnalysisHistory(days = 7) {
   const results = [];
   for (const date of dates) {
     const [preList, finalList] = await Promise.all([
-      base44.entities.UichiAnalysis.filter({ race_date: date, stage: "pre" }, "-captured_at", 500),
-      base44.entities.UichiAnalysis.filter({ race_date: date, stage: "final" }, "-captured_at", 500),
+      base44.entities.UichiAnalysis.filter({ race_date: date, stage: "pre", analysis_version: ANALYSIS_VERSION }, "-captured_at", 500),
+      base44.entities.UichiAnalysis.filter({ race_date: date, stage: "final", analysis_version: ANALYSIS_VERSION }, "-captured_at", 500),
     ]);
     const preGrades = preList.filter(a => a.pre_grade === "S" || a.pre_grade === "A").length;
     const finalBuys = finalList.filter(a => a.judgment === "BUY").length;

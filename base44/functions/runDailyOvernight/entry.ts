@@ -26,6 +26,19 @@ export default async function(req) {
     if (user && user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
 
     const t0 = Date.now();
+
+    // 前日の結果で集計DBを差分更新（結果があれば）
+    let aggregateUpdate = null;
+    try {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yStr = yesterday.toISOString().slice(0, 10);
+      const aggRes = await base44.asServiceRole.functions.invoke("updateDailyAggregates", { race_date: yStr });
+      aggregateUpdate = aggRes?.data || aggRes;
+    } catch (e) {
+      aggregateUpdate = { status: "error", message: e.message };
+    }
+
     const raceDate = tomorrowStr();
     const hd = raceDate.replace(/-/g, "");
 
@@ -126,6 +139,7 @@ export default async function(req) {
       races: totalRaces,
       entries: totalEntries,
       fetch_errors: fetchErrors,
+      aggregate_update: aggregateUpdate,
       analysis: analysisResult,
       elapsed_ms: Date.now() - t0,
     });

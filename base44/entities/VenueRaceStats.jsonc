@@ -1,0 +1,39 @@
+{
+  "name": "VenueRaceStats",
+  "type": "object",
+  "properties": {
+    "venue_code": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "total_races": {
+      "type": "number",
+      "description": "\u8a72\u5f53R\u7dcf\u6570"
+    },
+    "uichi_hits": {
+      "type": "number",
+      "description": "\u3046\u3044\u3061\u7684\u4e2d\u6570"
+    },
+    "uichi_rate": {
+      "type": "number",
+      "description": "\u3046\u3044\u3061\u51fa\u73fe\u7387(0-1)"
+    },
+    "boat1_win_rate": {
+      "type": "number",
+      "description": "1\u53f7\u82471\u7740\u7387(0-1)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stats_version": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "venue_code",
+    "race_number"
+  ]
+}
