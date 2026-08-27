@@ -322,8 +322,10 @@ export default async function(req) {
       }
     }
 
-    // === Step 5: キャッシュミスのレースを3件ずつ並列racelist取得 ===
-    const raceConcurrency = 3;
+    // === Step 5: キャッシュミスのレースをracelist取得 ===
+    // ハイブリッド方式: 最初の3件は並列取得（キャッシュ構築）、以降は1件ずつ（キャッシュ最大化）
+    let firstBatchDone = false;
+
     while (remaining.length > 0) {
       // 前回のfetchでキャッシュ追加された可能性があるので再確認
       const stillNeedHttp = [];
@@ -336,13 +338,53 @@ export default async function(req) {
 
       if (remaining.length === 0) break;
 
-      // 3件ずつ並列取得
-      const batch = remaining.slice(0, raceConcurrency);
-      const batchResults = await Promise.allSettled(batch.map(async (r) => {
-        const racelistUrl = `${RACELIST_BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
-        let lastError = null;
-        let parsed = null;
+      if (!firstBatchDone) {
+        // 最初の3件を並列取得（キャッシュを素早く構築）
+        const batch = remaining.slice(0, 3);
+        const batchResults = await Promise.allSettled(batch.map(async (r) => {
+          const racelistUrl = `${RACELIST_BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
+          let parsed = null;
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+              const rcRes = await fetchWithTimeout(racelistUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, fetchTimeoutMs);
+              if (rcRes.ok) {
+                const rcHtml = await rcRes.text();
+                parsed = parseRacelist(rcHtml, r.race_number, raceDate);
+                break;
+              }
+            } catch (e) {}
+            if (attempt < maxRetries) await sleep(retryDelayMs);
+          }
+          return { r, parsed };
+        }));
 
+        for (const result of batchResults) {
+          if (result.status !== "fulfilled") continue;
+          const { r, parsed } = result.value;
+          httpFetches++;
+          if (!parsed || !parsed.entries || parsed.entries.length === 0) {
+            toUpdate.push({ id: r.id, boat1_detail_status: "error" });
+            errors++;
+            continue;
+          }
+          for (const entry of parsed.entries) cacheEntry(entry);
+          const b1 = parsed.entries.find(e => e.boat_number === 1);
+          if (b1) {
+            toUpdate.push(buildUpdateFromEntry(r.id, b1));
+            enriched++;
+          } else {
+            toUpdate.push({ id: r.id, boat1_detail_status: "error" });
+            errors++;
+          }
+        }
+        remaining = remaining.slice(batch.length);
+        firstBatchDone = true;
+        if (remaining.length > 0) await sleep(groupDelayMs);
+      } else {
+        // 以降は1件ずつ取得（各取得後にキャッシュ再確認でHTTP削減最大化）
+        const r = remaining[0];
+        const racelistUrl = `${RACELIST_BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
+        let parsed = null;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
             const rcRes = await fetchWithTimeout(racelistUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, fetchTimeoutMs);
@@ -351,33 +393,17 @@ export default async function(req) {
               parsed = parseRacelist(rcHtml, r.race_number, raceDate);
               break;
             }
-            lastError = `HTTP ${rcRes.status}`;
-          } catch (e) {
-            lastError = e.message;
-          }
+          } catch (e) {}
           if (attempt < maxRetries) await sleep(retryDelayMs);
         }
-
-        return { r, parsed, lastError };
-      }));
-
-      for (const result of batchResults) {
-        if (result.status !== "fulfilled") continue;
-        const { r, parsed, lastError } = result.value;
         httpFetches++;
-
         if (!parsed || !parsed.entries || parsed.entries.length === 0) {
           toUpdate.push({ id: r.id, boat1_detail_status: "error" });
           errors++;
+          remaining = remaining.slice(1);
           continue;
         }
-
-        // 6艇全員をキャッシュ
-        for (const entry of parsed.entries) {
-          cacheEntry(entry);
-        }
-
-        // 現在のレースを補完
+        for (const entry of parsed.entries) cacheEntry(entry);
         const b1 = parsed.entries.find(e => e.boat_number === 1);
         if (b1) {
           toUpdate.push(buildUpdateFromEntry(r.id, b1));
@@ -386,13 +412,8 @@ export default async function(req) {
           toUpdate.push({ id: r.id, boat1_detail_status: "error" });
           errors++;
         }
-      }
-
-      remaining = remaining.slice(batch.length);
-
-      // 次のバッチ前に待機
-      if (remaining.length > 0) {
-        await sleep(groupDelayMs);
+        remaining = remaining.slice(1);
+        if (remaining.length > 0) await sleep(groupDelayMs);
       }
     }
 
