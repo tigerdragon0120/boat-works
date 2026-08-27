@@ -152,6 +152,17 @@ export default async function(req) {
           if (shouldGenerateAlert(a, settings, stage)) {
             alertCandidates++;
             await ensureAlert(base44, r, a, stage, settings, alertByRace);
+
+            // 翌日preのS/A候補はSlackへ1回だけ通知。
+            // Slack側の重複防止はnotifySlackAlertのslack_pre_notifiedで管理する。
+            if (stage === "pre" && settings.slack_notification_on !== false && settings.slack_pre_notify !== false) {
+              try {
+                await base44.asServiceRole.functions.invoke("notifySlackAlert", {
+                  race_id: r.id,
+                  stage: "pre",
+                });
+              } catch (_) { /* Slack失敗で分析本体を止めない */ }
+            }
           }
         } catch (e) { errors++; }
       }));
