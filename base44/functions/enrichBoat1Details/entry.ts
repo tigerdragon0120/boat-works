@@ -322,10 +322,8 @@ export default async function(req) {
       }
     }
 
-    // === Step 5: キャッシュミスのレースをracelist取得 ===
-    // ハイブリッド方式: 最初の3件は並列取得（キャッシュ構築）、以降は1件ずつ（キャッシュ最大化）
-    let firstBatchDone = false;
-
+    // === Step 5: キャッシュミスのレースを3件ずつ並列racelist取得 ===
+    const raceConcurrency = 3;
     while (remaining.length > 0) {
       // 前回のfetchでキャッシュ追加された可能性があるので再確認
       const stillNeedHttp = [];
@@ -338,51 +336,9 @@ export default async function(req) {
 
       if (remaining.length === 0) break;
 
-      if (!firstBatchDone) {
-        // 最初の3件を並列取得（キャッシュを素早く構築）
-        const batch = remaining.slice(0, 3);
-        const batchResults = await Promise.allSettled(batch.map(async (r) => {
-          const racelistUrl = `${RACELIST_BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
-          let parsed = null;
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              const rcRes = await fetchWithTimeout(racelistUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, fetchTimeoutMs);
-              if (rcRes.ok) {
-                const rcHtml = await rcRes.text();
-                parsed = parseRacelist(rcHtml, r.race_number, raceDate);
-                break;
-              }
-            } catch (e) {}
-            if (attempt < maxRetries) await sleep(retryDelayMs);
-          }
-          return { r, parsed };
-        }));
-
-        for (const result of batchResults) {
-          if (result.status !== "fulfilled") continue;
-          const { r, parsed } = result.value;
-          httpFetches++;
-          if (!parsed || !parsed.entries || parsed.entries.length === 0) {
-            toUpdate.push({ id: r.id, boat1_detail_status: "error" });
-            errors++;
-            continue;
-          }
-          for (const entry of parsed.entries) cacheEntry(entry);
-          const b1 = parsed.entries.find(e => e.boat_number === 1);
-          if (b1) {
-            toUpdate.push(buildUpdateFromEntry(r.id, b1));
-            enriched++;
-          } else {
-            toUpdate.push({ id: r.id, boat1_detail_status: "error" });
-            errors++;
-          }
-        }
-        remaining = remaining.slice(batch.length);
-        firstBatchDone = true;
-        if (remaining.length > 0) await sleep(groupDelayMs);
-      } else {
-        // 以降は1件ずつ取得（各取得後にキャッシュ再確認でHTTP削減最大化）
-        const r = remaining[0];
+      // 3件ずつ並列取得
+      const batch = remaining.slice(0, raceConcurrency);
+      const batchResults = await Promise.allSettled(batch.map(async (r) => {
         const racelistUrl = `${RACELIST_BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
         let parsed = null;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -396,11 +352,16 @@ export default async function(req) {
           } catch (e) {}
           if (attempt < maxRetries) await sleep(retryDelayMs);
         }
+        return { r, parsed };
+      }));
+
+      for (const result of batchResults) {
+        if (result.status !== "fulfilled") continue;
+        const { r, parsed } = result.value;
         httpFetches++;
         if (!parsed || !parsed.entries || parsed.entries.length === 0) {
           toUpdate.push({ id: r.id, boat1_detail_status: "error" });
           errors++;
-          remaining = remaining.slice(1);
           continue;
         }
         for (const entry of parsed.entries) cacheEntry(entry);
@@ -412,9 +373,9 @@ export default async function(req) {
           toUpdate.push({ id: r.id, boat1_detail_status: "error" });
           errors++;
         }
-        remaining = remaining.slice(1);
-        if (remaining.length > 0) await sleep(groupDelayMs);
       }
+      remaining = remaining.slice(batch.length);
+      if (remaining.length > 0) await sleep(groupDelayMs);
     }
 
     // === Step 6: 一括書き込み ===
