@@ -5,6 +5,7 @@ import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 import HistoricalFetchPanel from "@/components/HistoricalFetchPanel";
 import ErrorRetryPanel from "@/components/ErrorRetryPanel";
+import BackfillStatusBanner from "@/components/BackfillStatusBanner";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -39,6 +40,10 @@ export default function Admin() {
         watch_threshold: Number(settings.watch_threshold),
         pre_alert_rate: Number(settings.pre_alert_rate),
         min_similar_races: Number(settings.min_similar_races),
+        min_buy_sample: Number(settings.min_buy_sample ?? 100),
+        reliability_a_threshold: Number(settings.reliability_a_threshold ?? 500),
+        reliability_b_threshold: Number(settings.reliability_b_threshold ?? 250),
+        reliability_c_threshold: Number(settings.reliability_c_threshold ?? 100),
         analysis_period_months: Number(settings.analysis_period_months),
         odds_update_interval: Number(settings.odds_update_interval),
         notification_on: settings.notification_on,
@@ -60,6 +65,8 @@ export default function Admin() {
         <h1 className="text-xl font-bold">管理設定</h1>
       </div>
 
+      <BackfillStatusBanner />
+
       <HistoricalFetchPanel />
 
       <ErrorRetryPanel />
@@ -70,6 +77,14 @@ export default function Admin() {
         <NumField label="WATCH判定期待値（%）" value={settings.watch_threshold} onChange={(v) => set("watch_threshold", v)} />
         <NumField label="前日アラート出現率（%）" value={settings.pre_alert_rate} onChange={(v) => set("pre_alert_rate", v)} />
         <NumField label="類似レース最低件数" value={settings.min_similar_races} onChange={(v) => set("min_similar_races", v)} />
+        <NumField label="BUY判定最低サンプル数" value={settings.min_buy_sample ?? 100} onChange={(v) => set("min_buy_sample", v)} />
+      </div>
+
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">分析信頼度しきい値</h3>
+        <NumField label="信頼度A（n ≥ ）" value={settings.reliability_a_threshold ?? 500} onChange={(v) => set("reliability_a_threshold", v)} />
+        <NumField label="信頼度B（n ≥ ）" value={settings.reliability_b_threshold ?? 250} onChange={(v) => set("reliability_b_threshold", v)} />
+        <NumField label="信頼度C（n ≥ ）" value={settings.reliability_c_threshold ?? 100} onChange={(v) => set("reliability_c_threshold", v)} />
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">

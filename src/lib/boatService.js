@@ -1,7 +1,7 @@
 // BOAT WORKS データサービス層
 // UIとデータ取得を分離。本番運用：officialデータのみ使用・sampleデータは除外・自動生成停止。
 import { base44 } from "@/api/base44Client";
-import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, gradeBoat1 } from "./boat";
+import { VENUES, UICHI_COMBOS, syntheticOdds, expectedValue, judgeFromEV, judgeFromEVWithSample, reliabilityGrade, dataSufficiencyRate, gradeBoat1 } from "./boat";
 
 // 短時間キャッシュ（同一画面内の重複DBクエリ防止・ページ遷移時の再取得削減）
 const _cache = new Map();
@@ -41,6 +41,10 @@ export async function seedIfNeeded() {
         watch_threshold: 100,
         pre_alert_rate: 15,
         min_similar_races: 30,
+        min_buy_sample: 100,
+        reliability_a_threshold: 500,
+        reliability_b_threshold: 250,
+        reliability_c_threshold: 100,
         analysis_period_months: 6,
         odds_update_interval: 60,
         notification_on: true,
@@ -57,7 +61,9 @@ export function getSettings() {
     if (list.length > 0) return list[0];
     return {
       buy_threshold: 110, watch_threshold: 100, pre_alert_rate: 15,
-      min_similar_races: 30, analysis_period_months: 6, odds_update_interval: 60,
+      min_similar_races: 30, min_buy_sample: 100,
+      reliability_a_threshold: 500, reliability_b_threshold: 250, reliability_c_threshold: 100,
+      analysis_period_months: 6, odds_update_interval: 60,
       notification_on: true, venues_enabled: VENUES.map((v) => v.code),
     };
   });
@@ -100,12 +106,24 @@ export function getAlerts(dateStr) {
 
 // 純粋関数版（過去結果を外部から渡す・バッチ計算用）
 // pastResults は official のみを使用（data_source === "official" のみ類似判定）
+// 1号艇詳細が必要な類似判定は boat1_detail_status === "done" のみ使用
+// 未補完レコードは分析に混ぜない（null/0として扱わない）
 export function analyzeRacePure(race, entries, odds, pastResults, settings, stage = "day") {
   const boat1 = entries.find((e) => e.boat_number === 1);
   const boat1Grade = gradeBoat1(boat1);
 
+  // 全プール数と有効（done）プール数を計算
+  const totalPool = pastResults.length;
+  const validPool = pastResults.filter((p) =>
+    p.boat1_detail_status === "done" || (!p.boat1_detail_status && p.boat1_racer_name)
+  ).length;
+
+  // 類似判定はdone済みレコードのみ対象
   const similar = pastResults.filter((p) => {
     if (p.data_source && p.data_source !== "official") return false;
+    // 1号艇詳細未補完は類似判定から除外
+    if (p.boat1_detail_status && p.boat1_detail_status !== "done") return false;
+    if (!p.boat1_detail_status && !p.boat1_racer_name) return false;
     let s = 0;
     if (p.venue_code === race.venue_code) s += 25;
     if (p.boat1_grade_class && p.boat1_grade_class === boat1?.grade_class) s += 15;
@@ -121,10 +139,10 @@ export function analyzeRacePure(race, entries, odds, pastResults, settings, stag
     s += 10 * (1 - Math.abs((boat1?.motor_3rate || 50) - (p.boat1_motor_3rate || 50)) / 30);
     return s >= 55;
   });
-  return _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Grade);
+  return _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Grade, totalPool, validPool);
 }
 
-function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Grade) {
+function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Grade, totalPool = 0, validPool = 0) {
   const boat1 = entries.find((e) => e.boat_number === 1);
   const similarCount = similar.length;
   const uichiHits = similar.filter((p) => p.is_uichi).length;
@@ -139,11 +157,17 @@ function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Gra
   const ev = stage === "pre" ? null : expectedValue(appearanceRate, synthOdds);
   const minOk = similarCount >= (settings.min_similar_races || 30);
 
+  // データ充足率と信頼度
+  const sufficiency = totalPool > 0 ? validPool / totalPool : 0;
+  const reliability = reliabilityGrade(similarCount, settings);
+  const isReference = sufficiency < 0.5 || similarCount < (settings.min_buy_sample || 100);
+
   let judgment = "PENDING";
   if (stage === "pre") {
     judgment = "PENDING";
   } else if (minOk) {
-    judgment = judgeFromEV(ev, settings);
+    // サンプル数を考慮した判定（BUY制限付き）
+    judgment = judgeFromEVWithSample(ev, similarCount, settings);
   }
 
   return {
@@ -156,12 +180,19 @@ function _finishAnalysis(race, entries, odds, similar, stage, settings, boat1Gra
     expected_value: ev,
     judgment,
     min_similar_ok: minOk,
+    // データ品質指標
+    total_pool: totalPool,
+    valid_pool: validPool,
+    data_sufficiency: sufficiency,
+    reliability,
+    is_reference: isReference,
     boat1,
     odds_values: oddsValues,
   };
 }
 
 // 1件分（DBから過去結果を取得・officialのみ）
+// ※ getAllResultsは全件取得のため重い。analyzeRaceWithSimilarを使用推奨
 export async function analyzeRace(race, entries, odds, settings, stage = "day") {
   const past = await getAllResults();
   return analyzeRacePure(race, entries, odds, past, settings, stage);
@@ -1012,6 +1043,183 @@ function enumerateDates(start, end) {
 // 過去データ取得進捗を取得
 export async function getFetchProgress() {
   return base44.entities.FetchProgress.list("-processed_at", 5000);
+}
+
+// === 段階バックフィル方式（P1: 直近30日 / P2: 31-90日 / P3: 91-180日） ===
+
+// バックフィル状況取得（サーバー側集計・3階層の補完率を返す）
+export function getBackfillStatus() {
+  return cached("backfillStatus", 60000, async () => {
+    const res = await base44.functions.invoke("getBackfillStatus", {});
+    return res.data;
+  });
+}
+
+// Home用軽量バックフィル進捗（全体の補完率のみ・5分キャッシュ）
+export async function getBackfillProgressLight() {
+  return cached("backfillProgressLight", 300000, async () => {
+    try {
+      const res = await base44.functions.invoke("getBackfillStatus", {});
+      return res.data;
+    } catch {
+      return null;
+    }
+  });
+}
+
+// 昨日基準の日付範囲を計算
+function getPriorityDateRanges() {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yStr = yesterday.toISOString().slice(0, 10);
+
+  function daysAgoStr(n) {
+    const d = new Date(yesterday);
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  return {
+    yesterday: yStr,
+    p1: { start: daysAgoStr(29), end: yStr, name: "直近30日" },
+    p2: { start: daysAgoStr(89), end: daysAgoStr(30), name: "31-90日前" },
+    p3: { start: daysAgoStr(179), end: daysAgoStr(90), name: "91日-6か月前" },
+  };
+}
+
+// 段階別1号艇詳細補完（P1→P2→P3の順・新しい日から処理）
+// priority: 1 = 直近30日のみ, 2 = 31-90日のみ, 3 = 91-180日のみ, "all" = P1→P2→P3
+// 並列: 最大2場 × 3レース = 最大6同時アクセス（維持）
+export async function enrichBoat1DetailsPriority(priority, onProgress, abortRef) {
+  const ranges = getPriorityDateRanges();
+  const tiers = [];
+  if (priority === 1 || priority === "all") tiers.push({ ...ranges.p1, priority: 1 });
+  if (priority === 2 || priority === "all") tiers.push({ ...ranges.p2, priority: 2 });
+  if (priority === 3 || priority === "all") tiers.push({ ...ranges.p3, priority: 3 });
+
+  let totalEnriched = 0, totalErrors = 0, totalHttpFetches = 0, totalCacheCompletes = 0;
+  let totalProcessed = 0, totalPending = 0;
+
+  for (const tier of tiers) {
+    if (abortRef?.aborted) break;
+
+    // この期間のFetchProgressを取得
+    const allProgress = await base44.entities.FetchProgress.list("-processed_at", 5000);
+    const inRange = allProgress.filter((p) =>
+      p.race_date >= tier.start && p.race_date <= tier.end && p.venue_code !== "00"
+    );
+    const doneResults = inRange.filter((p) =>
+      p.result_fetch_status === "done" || (!p.result_fetch_status && p.status === "done")
+    );
+    let pending = doneResults.filter((p) =>
+      p.detail_fetch_status !== "done" && p.detail_fetch_status !== "skip"
+    );
+
+    // 新しい日から処理（降順）
+    pending.sort((a, b) => b.race_date.localeCompare(a.race_date));
+    totalPending += pending.length;
+
+    if (onProgress) onProgress({
+      phase: "tier_start", tier: tier.name, priority: tier.priority,
+      pendingCount: pending.length, totalEnriched, totalErrors,
+    });
+
+    // 2場並列で処理
+    const venueConcurrency = 2;
+    let tierEnriched = 0, tierErrors = 0;
+
+    for (let i = 0; i < pending.length; i += venueConcurrency) {
+      if (abortRef?.aborted) break;
+
+      const batch = pending.slice(i, i + venueConcurrency);
+      const batchNames = batch.map(p => p.venue_name || p.venue_code).join(" / ");
+      const batchDates = batch.map(p => p.race_date).join(" / ");
+
+      if (onProgress) onProgress({
+        phase: "loading", tier: tier.name, priority: tier.priority,
+        venue: batchNames, date: batchDates,
+        current: i, total: pending.length,
+        enriched: totalEnriched, errors: totalErrors,
+        pendingCount: pending.length - i,
+      });
+
+      const results = await Promise.allSettled(batch.map(async (p) => {
+        try {
+          const res = await enrichBoat1Details(p.race_date, p.venue_code, { limit: 12 });
+          return {
+            enriched: res?.enriched || 0, errors: res?.errors || 0,
+            http_fetches: res?.http_fetches || 0, cache_completes: res?.cache_completes || 0,
+          };
+        } catch (e) {
+          return { enriched: 0, errors: 1, http_fetches: 0, cache_completes: 0 };
+        }
+      }));
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          totalEnriched += result.value.enriched;
+          totalErrors += result.value.errors;
+          totalHttpFetches += result.value.http_fetches;
+          totalCacheCompletes += result.value.cache_completes;
+          tierEnriched += result.value.enriched;
+          tierErrors += result.value.errors;
+        } else {
+          totalErrors++;
+          tierErrors++;
+        }
+        totalProcessed++;
+      }
+
+      if (onProgress) onProgress({
+        phase: "done", tier: tier.name, priority: tier.priority,
+        venue: batchNames, date: batchDates,
+        current: Math.min(i + venueConcurrency, pending.length), total: pending.length,
+        enriched: totalEnriched, errors: totalErrors,
+        httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes,
+        pendingCount: pending.length - i - venueConcurrency,
+      });
+    }
+
+    if (onProgress) onProgress({
+      phase: "tier_complete", tier: tier.name, priority: tier.priority,
+      tierEnriched, tierErrors, totalEnriched, totalErrors,
+    });
+  }
+
+  return {
+    enriched: totalEnriched, errors: totalErrors,
+    httpFetches: totalHttpFetches, cacheCompletes: totalCacheCompletes,
+    totalPending, totalProcessed,
+  };
+}
+
+// 毎日の新規RaceResult即時詳細化（前日分の結果取得→詳細補完→VenueStats更新）
+export async function dailyRefresh(onProgress) {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yStr = yesterday.toISOString().slice(0, 10);
+
+  if (onProgress) onProgress({ phase: "results", status: "loading", date: yStr });
+  const dayResult = await fetchHistoricalDay(yStr);
+  if (onProgress) onProgress({ phase: "results", status: "done", date: yStr, ...dayResult });
+
+  if (onProgress) onProgress({ phase: "details", status: "loading", date: yStr });
+  const venues = VENUES.map((v, i) => ({ jcd: String(i + 1).padStart(2, "0"), name: v.name }));
+  let enriched = 0, errors = 0;
+  for (const v of venues) {
+    try {
+      const res = await enrichBoat1Details(yStr, v.jcd, { limit: 12 });
+      enriched += res?.enriched || 0;
+      errors += res?.errors || 0;
+    } catch {}
+  }
+  if (onProgress) onProgress({ phase: "details", status: "done", date: yStr, enriched, errors });
+
+  if (onProgress) onProgress({ phase: "venuestats", status: "loading" });
+  try { await recalcVenueStats(); } catch {}
+  if (onProgress) onProgress({ phase: "venuestats", status: "done" });
+
+  return { date: yStr, ...dayResult, enriched, errors };
 }
 
 // 過去データ取得のサマリー

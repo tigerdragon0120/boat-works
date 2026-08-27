@@ -36,18 +36,24 @@ export default async function(req) {
     for (const c of UICHI_COMBOS) byCombo[c] = { count: 0, sumPayout: 0 };
 
     let total = 0;
+    let totalWithDetails = 0;
     let uichiHits = 0;
     const raceResultMap = {};
 
     for (const r of allResults) {
       total++;
+      const hasDetail = r.boat1_detail_status === "done" || (!r.boat1_detail_status && r.boat1_racer_name);
+      if (hasDetail) totalWithDetails++;
       if (r.is_uichi) uichiHits++;
       raceResultMap[r.race_id] = r;
 
-      const g = r.boat1_grade_class || "不明";
-      if (!byGrade[g]) byGrade[g] = { total: 0, hits: 0 };
-      byGrade[g].total++;
-      if (r.is_uichi) byGrade[g].hits++;
+      // 級別集計は1号艇詳細が補完済みのレースのみ対象
+      if (hasDetail) {
+        const g = r.boat1_grade_class || "不明";
+        if (!byGrade[g]) byGrade[g] = { total: 0, hits: 0 };
+        byGrade[g].total++;
+        if (r.is_uichi) byGrade[g].hits++;
+      }
 
       const n = r.race_number;
       if (byRaceNum[n]) {
@@ -87,9 +93,13 @@ export default async function(req) {
     const buyHitRate = buyCount > 0 ? buyHits / buyCount : 0;
     const buyRecovery = buyCount > 0 ? buyPayoutSum / (buyCount * 600) : 0;
 
+    const dataSufficiencyRate = total > 0 ? totalWithDetails / total : 0;
+
     return Response.json({
       status: "success",
       total,
+      totalWithDetails,
+      dataSufficiencyRate,
       uichiHits,
       byGrade,
       byRaceNum,

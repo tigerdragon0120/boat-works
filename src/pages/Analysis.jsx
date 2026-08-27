@@ -63,6 +63,11 @@ export default function Analysis() {
         <Card label="出現率" value={fmtPct(stats.rate, 2)} accent="primary" />
         <Card label="BUY判定数" value={stats.buyCount} accent="emerald" />
       </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card label="1号艇詳細補完済み" value={stats.totalWithDetails ?? "—"} />
+        <Card label="データ充足率" value={fmtPct(stats.dataSufficiencyRate, 0)} accent="primary" />
+        <Card label="BUY的中率" value={fmtPct(stats.buyHitRate, 1)} accent="emerald" />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Card label="BUY的中率" value={fmtPct(stats.buyHitRate, 1)} accent="emerald" />
         <Card label="BUY回収率" value={fmtNum(stats.buyRecovery * 100, 0) + "%"} accent="amber" />

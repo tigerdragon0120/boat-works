@@ -5,6 +5,7 @@ import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate, getLatestOddsByDate,
   getAlerts, analyzeRaceWithSimilar, autoFetchTodayRaces, invalidateCache,
+  getBackfillProgressLight,
 } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
@@ -28,6 +29,7 @@ export default function Home() {
   const [analyses, setAnalyses] = useState({});
   const [tick, setTick] = useState(0);
   const [autoFetchState, setAutoFetchState] = useState(null);
+  const [backfillProgress, setBackfillProgress] = useState(null);
 
   useEffect(() => {
     let m = true;
@@ -41,6 +43,9 @@ export default function Home() {
         const s = await getSettings();
         if (!m) return;
         setSettings(s);
+
+        // バックフィル進捗（軽量・非ブロッキング）
+        getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         const [rs, al] = await Promise.all([getRacesByDate(date), getAlerts(date)]);
         if (!m) return;
@@ -158,6 +163,17 @@ export default function Home() {
       {(autoFetchState === "error" || autoFetchState === "no_venues") && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           <AlertCircle className="w-4 h-4" /> {autoFetchState === "no_venues" ? "本日は開催がありません" : "開催データ自動取得に失敗しました（再読込で再試行）"}
+        </div>
+      )}
+
+      {/* バックフィル進捗（小さな表示） */}
+      {backfillProgress && backfillProgress.overall && backfillProgress.overall.rate < 0.99 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+          <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          <span>過去6か月データ補完中 {Math.round((backfillProgress.overall.rate || 0) * 100)}%</span>
+          {backfillProgress.p1 && backfillProgress.p1.rate < 0.95 && (
+            <span className="text-emerald-600 font-semibold">直近30日 {Math.round((backfillProgress.p1.rate || 0) * 100)}%</span>
+          )}
         </div>
       )}
 

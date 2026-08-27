@@ -9,7 +9,7 @@ import {
 import { base44 } from "@/api/base44Client";
 import {
   UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, minutesUntilDeadline,
-  canFinalJudge, JUDGMENT_STYLE,
+  canFinalJudge, JUDGMENT_STYLE, reliabilityGrade,
 } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
@@ -207,6 +207,36 @@ export default function RaceDetail() {
         <StatTile label="合成オッズ" value={within5 && odds ? fmtNum(analysis?.synthetic_odds, 2) : "—"} accent="emerald" unit={within5 && odds ? "倍" : ""} />
         <StatTile label="期待値指数" value={within5 && odds ? fmtNum(analysis?.expected_value, 0) + "%" : "—"} accent="amber" />
       </div>
+
+      {/* データ品質指標 */}
+      {analysis && (
+        <div className="rounded-xl bg-card border border-border p-3">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div className="text-[10px] text-muted-foreground tracking-wider">有効サンプル</div>
+              <div className="text-lg font-bold tabular-nums">n={analysis.similar_count ?? "—"}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground tracking-wider">データ充足率</div>
+              <div className="text-lg font-bold tabular-nums text-primary">{fmtPct(analysis.data_sufficiency, 0)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground tracking-wider">分析信頼度</div>
+              <div className={cn("text-lg font-bold",
+                analysis.reliability === "A" ? "text-emerald-600" :
+                analysis.reliability === "B" ? "text-sky-600" :
+                analysis.reliability === "C" ? "text-amber-600" :
+                "text-rose-600"
+              )}>{analysis.reliability || "—"}</div>
+            </div>
+          </div>
+          {analysis.is_reference && (
+            <div className="mt-2 text-center text-xs text-amber-600 font-semibold">
+              ※ データ不足のため参考値として表示中
+            </div>
+          )}
+        </div>
+      )}
 
       {!analysis?.min_similar_ok && analysis && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700 flex items-center gap-2">

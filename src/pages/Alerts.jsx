@@ -97,7 +97,7 @@ export default function Alerts() {
                     <JudgmentBadge judgment={a?.judgment || "PENDING"} size="md" />
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <Mini label="出現率" value={fmtPct(a?.appearance_rate, 1)} />
+                    <Mini label="出現率" value={fmtPct(a?.appearance_rate, 1)} sub={`n=${a?.similar_count ?? "—"}`} />
                     <Mini label="合成オッズ" value={fmtNum(a?.synthetic_odds, 2)} />
                     <Mini label="期待値" value={fmtNum(a?.expected_value, 0) + "%"} />
                   </div>
@@ -147,11 +147,12 @@ export default function Alerts() {
   );
 }
 
-function Mini({ label, value }) {
+function Mini({ label, value, sub }) {
   return (
     <div className="rounded-lg bg-background/50 py-2">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className="font-bold tabular-nums">{value}</div>
+      {sub && <div className="text-[9px] text-muted-foreground tabular-nums">{sub}</div>}
     </div>
   );
 }

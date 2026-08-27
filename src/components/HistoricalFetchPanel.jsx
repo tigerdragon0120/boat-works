@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Database, Loader2, Play, Square, CheckCircle, AlertCircle, RefreshCw, BarChart3, Zap, Clock, Gauge } from "lucide-react";
 import {
   fetchHistoricalRange, getRangeSummary, getBoat1DetailStats,
-  recalcVenueStats, enrichBoat1DetailsBatch, enrichBoat1DetailsErrors, getImportHeartbeat,
-  retryErrorFetches,
+  recalcVenueStats, enrichBoat1DetailsBatch, enrichBoat1DetailsErrors, enrichBoat1DetailsPriority,
+  getImportHeartbeat, retryErrorFetches,
 } from "@/lib/boatService";
 import { fmtPct } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,9 @@ export default function HistoricalFetchPanel() {
   const [errorEnriching, setErrorEnriching] = useState(false);
   const [errorEnrichProgress, setErrorEnrichProgress] = useState(null);
   const errorEnrichAbortRef = useRef({ aborted: false });
+  const [priorityEnriching, setPriorityEnriching] = useState(false);
+  const [priorityProgress, setPriorityProgress] = useState(null);
+  const priorityAbortRef = useRef({ aborted: false });
 
   const loadSummary = useCallback(async () => {
     try {
@@ -178,6 +181,30 @@ export default function HistoricalFetchPanel() {
   };
 
   const stopEnrichErrors = () => { errorEnrichAbortRef.current.aborted = true; };
+
+  const handlePriorityEnrich = async (priority) => {
+    priorityAbortRef.current.aborted = false;
+    setPriorityEnriching(true);
+    setPriorityProgress({ phase: "start", tier: "", current: 0, total: 0, enriched: 0, errors: 0, pendingCount: 0, httpFetches: 0, cacheCompletes: 0 });
+    try {
+      await enrichBoat1DetailsPriority(priority, (p) => {
+        setPriorityProgress({
+          phase: p.phase, tier: p.tier || "", priority: p.priority,
+          venue: p.venue || "", date: p.date || "",
+          current: p.current || 0, total: p.total || 0,
+          enriched: p.enriched || 0, errors: p.errors || 0,
+          pendingCount: p.pendingCount || 0,
+          httpFetches: p.httpFetches || 0, cacheCompletes: p.cacheCompletes || 0,
+          tierEnriched: p.tierEnriched, tierErrors: p.tierErrors,
+        });
+      }, priorityAbortRef);
+      await loadSummary();
+    } finally {
+      setPriorityEnriching(false);
+    }
+  };
+
+  const stopPriorityEnrich = () => { priorityAbortRef.current.aborted = true; };
 
   const handleRecalc = async () => {
     setRecalcState("loading");
@@ -423,11 +450,94 @@ export default function HistoricalFetchPanel() {
         </div>
       )}
 
+      {/* Priority-based backfill buttons */}
+      <div className="rounded-xl bg-emerald-50/50 border border-emerald-200 p-3 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Zap className="w-4 h-4 text-emerald-600" />
+          <h4 className="text-sm font-bold text-emerald-800">段階バックフィル（実用開始優先）</h4>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {priorityEnriching ? (
+            <button onClick={stopPriorityEnrich} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white">
+              <Square className="w-4 h-4" /> 停止
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => handlePriorityEnrich(1)}
+                disabled={enriching || errorEnriching || foundationRunning}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {priorityEnriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                直近30日を最優先完成
+              </button>
+              <button
+                onClick={() => handlePriorityEnrich("all")}
+                disabled={enriching || errorEnriching || foundationRunning}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {priorityEnriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                バックフィル開始（全期間）
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Priority progress */}
+        {priorityProgress && priorityProgress.phase !== "start" && (
+          <div className="space-y-2">
+            {priorityProgress.tier && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className={cn(
+                  "rounded-md px-2 py-0.5 font-bold",
+                  priorityProgress.priority === 1 ? "bg-emerald-200 text-emerald-800" :
+                  priorityProgress.priority === 2 ? "bg-sky-200 text-sky-800" :
+                  "bg-slate-200 text-slate-700"
+                )}>
+                  {priorityProgress.tier}
+                </span>
+                {priorityProgress.phase === "loading" && (
+                  <span className="text-muted-foreground">{priorityProgress.date} {priorityProgress.venue} 補完中…</span>
+                )}
+                {priorityProgress.phase === "tier_complete" && (
+                  <span className="text-emerald-600 font-semibold">
+                    {priorityProgress.tier}完了: +{priorityProgress.tierEnriched}件
+                  </span>
+                )}
+              </div>
+            )}
+            {priorityProgress.total > 0 && (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{priorityProgress.tier || ""} 進捗</span>
+                  <span className="tabular-nums font-semibold">{priorityProgress.current}/{priorityProgress.total}場</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-background overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{
+                    width: `${priorityProgress.total > 0 ? Math.round((priorityProgress.current / priorityProgress.total) * 100) : 0}%`
+                  }} />
+                </div>
+              </>
+            )}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>補完数 <span className="text-foreground font-semibold tabular-nums">{priorityProgress.enriched}</span></span>
+              <span>エラー <span className="text-rose-600 font-semibold tabular-nums">{priorityProgress.errors}</span></span>
+              {priorityProgress.httpFetches > 0 && (
+                <span>HTTP <span className="text-amber-600 font-semibold tabular-nums">{priorityProgress.httpFetches}</span></span>
+              )}
+              {priorityProgress.cacheCompletes > 0 && (
+                <span>キャッシュ <span className="text-emerald-600 font-semibold tabular-nums">{priorityProgress.cacheCompletes}</span></span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Stage 2: Detail enrichment */}
       <div className="rounded-xl bg-background/50 border border-border/50 p-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Zap className="w-4 h-4 text-amber-500" />
-          <h4 className="text-sm font-bold">第2段階: 1号艇詳細補完</h4>
+          <h4 className="text-sm font-bold">第2段階: 1号艇詳細補完（期間指定）</h4>
           {detailStats && (
             <span className="ml-auto text-xs text-muted-foreground">
               補完済み <span className="text-foreground font-semibold tabular-nums">{detailStats.enriched}</span> / {detailStats.total}

@@ -78,6 +78,39 @@ export function judgeFromEV(ev, settings) {
   return "SKIP";
 }
 
+// サンプル数を考慮した判定（BUY制限付き）
+// n < min_buy_sample の場合、BUYを禁止しWATCHまたはSKIPにする
+export function judgeFromEVWithSample(ev, similarCount, settings) {
+  if (ev == null) return "PENDING";
+  const minBuy = settings?.min_buy_sample || 100;
+  if (similarCount < minBuy) {
+    // サンプル不足 → BUY禁止
+    if (ev >= (settings?.buy_threshold || 110)) return "WATCH";
+    if (ev >= (settings?.watch_threshold || 100)) return "WATCH";
+    return "SKIP";
+  }
+  if (ev >= (settings?.buy_threshold || 110)) return "BUY";
+  if (ev >= (settings?.watch_threshold || 100)) return "WATCH";
+  return "SKIP";
+}
+
+// 信頼度ランク（A/B/C/D）を返す
+export function reliabilityGrade(n, settings) {
+  const a = settings?.reliability_a_threshold || 500;
+  const b = settings?.reliability_b_threshold || 250;
+  const c = settings?.reliability_c_threshold || 100;
+  if (n >= a) return "A";
+  if (n >= b) return "B";
+  if (n >= c) return "C";
+  return "D";
+}
+
+// データ充足率を計算（validCount / totalCount）
+export function dataSufficiencyRate(validCount, totalCount) {
+  if (!totalCount || totalCount === 0) return 0;
+  return validCount / totalCount;
+}
+
 // 締切までの残り時間（分）
 export function minutesUntilDeadline(deadlineIso) {
   if (!deadlineIso) return null;

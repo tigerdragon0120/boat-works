@@ -31,6 +31,22 @@
     },
     "is_active_config": {
       "type": "boolean"
+    },
+    "min_buy_sample": {
+      "type": "number",
+      "description": "BUY\u5224\u5b9a\u306b\u5fc5\u8981\u306a\u6700\u4f4e\u6709\u52b9\u30b5\u30f3\u30d7\u30eb\u6570\u3002\u672a\u6e80\u306e\u5834\u5408\u306fBUY\u3092\u51fa\u3055\u306a\u3044"
+    },
+    "reliability_a_threshold": {
+      "type": "number",
+      "description": "\u4fe1\u983c\u5ea6A\u306e\u6700\u4f4e\u30b5\u30f3\u30d7\u30eb\u6570"
+    },
+    "reliability_b_threshold": {
+      "type": "number",
+      "description": "\u4fe1\u983c\u5ea6B\u306e\u6700\u4f4e\u30b5\u30f3\u30d7\u30eb\u6570"
+    },
+    "reliability_c_threshold": {
+      "type": "number",
+      "description": "\u4fe1\u983c\u5ea6C\u306e\u6700\u4f4e\u30b5\u30f3\u30d7\u30eb\u6570"
     }
   },
   "required": []

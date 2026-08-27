@@ -65,6 +65,9 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
         <div className="rounded-xl bg-background/50 px-3 py-2">
           <div className="text-[10px] text-muted-foreground tracking-wider">出現率</div>
           <div className="text-xl font-bold tabular-nums text-foreground">{fmtPct(analysis?.appearance_rate, 1)}</div>
+          {analysis?.similar_count != null && (
+            <div className="text-[10px] text-muted-foreground tabular-nums">n={analysis.similar_count}</div>
+          )}
         </div>
         <div className="rounded-xl bg-background/50 px-3 py-2">
           <div className="text-[10px] text-muted-foreground tracking-wider">合成オッズ</div>
@@ -77,7 +80,23 @@ export default function RaceCard({ race, analysis, countdownMin, mode = "today",
       </div>
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>類似 {analysis?.similar_count ?? "—"}件 / 的中 {analysis?.uichi_hits ?? "—"}件</span>
+        <span className="flex items-center gap-1.5">
+          類似 {analysis?.similar_count ?? "—"}件 / 的中 {analysis?.uichi_hits ?? "—"}件
+          {analysis?.reliability && (
+            <span className={cn(
+              "px-1.5 py-0.5 rounded text-[10px] font-bold",
+              analysis.reliability === "A" ? "bg-emerald-100 text-emerald-700" :
+              analysis.reliability === "B" ? "bg-sky-100 text-sky-700" :
+              analysis.reliability === "C" ? "bg-amber-100 text-amber-700" :
+              "bg-rose-100 text-rose-700"
+            )}>
+              {analysis.reliability}
+            </span>
+          )}
+          {analysis?.is_reference && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">参考値</span>
+          )}
+        </span>
         <span className="text-primary/70 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">詳細 <ChevronRight className="w-3 h-3" /></span>
       </div>
     </Link>
