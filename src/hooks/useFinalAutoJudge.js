@@ -43,12 +43,19 @@ export function useFinalAutoJudge(races, analyses, onAnalysisUpdated, enabled = 
           // BUY/WATCH判定時にプッシュ通知送信（失敗は非クリティカル）
           // 通知条件のフィルタリングは notifyBuyAlert 側で AppSettings を参照して行う
           if (byStage.final.judgment === "BUY" || byStage.final.judgment === "WATCH") {
+            // スマホPushとSlackを独立して通知。どちらかが失敗しても最終判定は維持する。
             try {
               await base44.functions.invoke("notifyBuyAlert", {
                 race_id: raceId,
                 deadline: race.deadline,
               });
-            } catch (e) { /* 通知失敗は無視 */ }
+            } catch (e) { /* Push通知失敗は非クリティカル */ }
+            try {
+              await base44.functions.invoke("notifySlackAlert", {
+                race_id: raceId,
+                stage: "final",
+              });
+            } catch (e) { /* Slack通知失敗は非クリティカル */ }
           }
         }
         setStatusMap(prev => ({ ...prev, [raceId]: { status: "done" } }));
