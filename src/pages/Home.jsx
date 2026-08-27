@@ -8,7 +8,7 @@ import {
   getAlerts,
   getBackfillProgressLight,
 } from "@/lib/boatService";
-import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
+import { getCachedAnalysesByDate, computeCacheHitRate, analyzeAllRacesForDate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { base44 } from "@/api/base44Client";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, GRADE_STYLE } from "@/lib/boat";
@@ -66,6 +66,24 @@ export default function Home() {
         setAnalyses(cachedAn);
         setCacheHitRate(computeCacheHitRate(rs, cachedAn));
         console.log(`[Home] Race+Alert+分析キャッシュ取得: ${Math.round(performance.now() - t0)}ms`);
+
+        // キャッシュが無い「これからのレース」だけを1回だけ事前分析して保存する。
+        // 外部サイト取得は行わず、既存DBデータだけでUichiAnalysis(pre)を作成する。
+        const nowMs = Date.now();
+        const missingRaceIds = rs
+          .filter((r) => (tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > nowMs) && !cachedAn[r.id])
+          .map((r) => r.id);
+        if (missingRaceIds.length > 0) {
+          analyzeAllRacesForDate(date, { stage: "pre", race_ids: missingRaceIds, force: false })
+            .then(async () => {
+              if (!m) return;
+              const refreshed = await getCachedAnalysesByDate(date);
+              if (!m) return;
+              setAnalyses(refreshed);
+              setCacheHitRate(computeCacheHitRate(rs, refreshed));
+            })
+            .catch(() => {});
+        }
 
         const [ents, om] = await Promise.all([
           base44.entities.RaceEntry.filter({ race_date: date }, "boat_number", 600),
