@@ -17,6 +17,7 @@ import RaceDetail from '@/pages/RaceDetail';
 import Alerts from '@/pages/Alerts';
 import Analysis from '@/pages/Analysis';
 import Admin from '@/pages/Admin';
+import Performance from '@/pages/Performance';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -56,6 +57,7 @@ const AuthenticatedApp = () => {
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/analysis" element={<Analysis />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/performance" element={<Performance />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
