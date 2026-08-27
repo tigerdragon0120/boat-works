@@ -317,8 +317,15 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const reliability = reliabilityGradeFromSample(similarCount, settings);
 
   let judgment = "PENDING";
-  if (stage === "pre") judgment = "PENDING";
-  else if (minOk) judgment = judgeWithSample(ev, similarCount, settings);
+  if (stage === "pre") {
+    judgment = "PENDING";
+  } else if (minOk) {
+    judgment = judgeWithSample(ev, similarCount, settings);
+  } else {
+    // final/day判定時に必要サンプル数へ届かない場合でもPENDINGを残さない。
+    // データ不足のため安全側にSKIP確定とする。
+    judgment = "SKIP";
+  }
 
   let preGrade = null;
   if (stage === "pre") {
