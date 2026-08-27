@@ -5,6 +5,8 @@ import JudgmentBadge from "@/components/JudgmentBadge";
 import StatTile from "@/components/StatTile";
 import TrustScoreCard from "@/components/TrustScoreCard";
 import BuyReasonCard from "@/components/BuyReasonCard";
+import RacerPhoto from "@/components/RacerPhoto";
+import RacerDetailDialog from "@/components/RacerDetailDialog";
 import {
   getSettings, getEntries, getLatestOdds, getOddsHistory, analyzeRaceWithSimilar, fetchOfficialRace,
   getBoat1TrustScore,
@@ -12,7 +14,7 @@ import {
 import { base44 } from "@/api/base44Client";
 import {
   UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, minutesUntilDeadline,
-  canFinalJudge, JUDGMENT_STYLE, reliabilityGrade,
+  canFinalJudge, JUDGMENT_STYLE, reliabilityGrade, trustScoreColor,
 } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ export default function RaceDetail() {
   const [fetching, setFetching] = useState(null);
   const [fetchMsg, setFetchMsg] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [racerOpen, setRacerOpen] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
@@ -256,34 +259,73 @@ export default function RaceDetail() {
         </div>
       )}
 
+      {/* 1号艇選手（写真 + 詳細 + 信頼スコア） */}
+      <div className="rounded-2xl bg-card border border-border p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Gauge className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-bold">1号艇選手</h3>
+        </div>
+        <div className="flex items-start gap-4">
+          <div className="relative shrink-0">
+            <RacerPhoto
+              registrationNumber={boat1?.registration_number}
+              racerName={boat1?.racer_name}
+              size="xl"
+              lazy={false}
+              onClick={() => setRacerOpen(true)}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+            />
+            {analysis?.boat1_grade && (
+              <span className={cn("absolute -bottom-1 -right-1 text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full border-2 border-card", GRADE_STYLE[analysis.boat1_grade])}>
+                {analysis.boat1_grade}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 space-y-2">
+            <div>
+              <div className="text-xl font-bold">{boat1?.racer_name || "—"}</div>
+              <div className="text-sm text-muted-foreground tabular-nums">登録番号 {boat1?.registration_number || "—"}</div>
+              <div className="flex items-center gap-2 mt-1">
+                {boat1?.grade_class && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{boat1.grade_class}</span>
+                )}
+                {boat1?.branch && <span className="text-xs text-muted-foreground">{boat1.branch}支部</span>}
+              </div>
+            </div>
+            {(trust || analysis?.boat1_trust) && (
+              <div className="flex items-center gap-3 rounded-lg bg-background/50 px-3 py-2">
+                <div>
+                  <div className="text-[10px] text-muted-foreground tracking-wider">1号艇信頼</div>
+                  <div className={cn("text-xl font-bold tabular-nums", trustScoreColor((trust || analysis?.boat1_trust)?.score))}>
+                    {(trust || analysis?.boat1_trust)?.score ?? "—"}
+                  </div>
+                </div>
+                {trust?.condition_match && (
+                  <div>
+                    <div className="text-[10px] text-muted-foreground tracking-wider">条件一致度</div>
+                    <div className="text-xl font-bold tabular-nums">{trust.condition_match.score}%</div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <Stat label="全国勝率" value={fmtNum(boat1?.national_win_rate, 2)} />
+              <Stat label="当地勝率" value={fmtNum(boat1?.local_win_rate, 2)} />
+              <Stat label="平均ST" value={fmtNum(boat1?.avg_st, 2)} />
+              <Stat label="1C 1着率" value={fmtNum(boat1?.c1_win_rate, 1) + "%"} />
+              <Stat label="1C 2連率" value={fmtNum(boat1?.c1_2rate, 1) + "%"} />
+              <Stat label="F数" value={boat1?.f_count ?? "—"} />
+              <Stat label="展示" value={fmtNum(boat1?.exhibition_time, 2)} />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 1号艇信頼スコア（フル版・DB履歴データ使用） */}
       <TrustScoreCard trust={trust || analysis?.boat1_trust} />
 
       {/* 買える理由カード + 不安材料 */}
       <BuyReasonCard trust={trust || analysis?.boat1_trust} />
-
-      {/* 1号艇評価 */}
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Gauge className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-bold">1号艇基本データ</h3>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className={cn("text-5xl font-bold w-16 h-16 flex items-center justify-center rounded-2xl border-2", GRADE_STYLE[analysis?.boat1_grade || "D"])}>
-            {analysis?.boat1_grade || "—"}
-          </div>
-          <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <Stat label="級別" value={boat1?.grade_class || "—"} />
-            <Stat label="全国勝率" value={fmtNum(boat1?.national_win_rate, 2)} />
-            <Stat label="当地勝率" value={fmtNum(boat1?.local_win_rate, 2)} />
-            <Stat label="平均ST" value={fmtNum(boat1?.avg_st, 2)} />
-            <Stat label="1C 1着率" value={fmtNum(boat1?.c1_win_rate, 1) + "%"} />
-            <Stat label="1C 2連率" value={fmtNum(boat1?.c1_2rate, 1) + "%"} />
-            <Stat label="F数" value={boat1?.f_count ?? "—"} />
-            <Stat label="展示" value={fmtNum(boat1?.exhibition_time, 2)} />
-          </div>
-        </div>
-      </div>
 
       {/* 6点オッズ */}
       <div className="rounded-2xl bg-card border border-border p-4">
@@ -338,6 +380,8 @@ export default function RaceDetail() {
           ))}
         </div>
       </div>
+
+      <RacerDetailDialog open={racerOpen} onOpenChange={setRacerOpen} entry={boat1} trust={trust || analysis?.boat1_trust} />
     </div>
   );
 }
