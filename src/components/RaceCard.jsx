@@ -4,7 +4,7 @@ import { Clock, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 import JudgmentBadge from "./JudgmentBadge";
 import RacerPhoto from "./RacerPhoto";
 import RacerDetailDialog from "./RacerDetailDialog";
-import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline, trustScoreColor } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline, trustScoreColor, finalJudgeTime } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 // race: Race, analysis: UichiAnalysis（cached）, mode: today|tomorrow, finalStatus: {status: fetching|failed|done}
@@ -25,7 +25,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
   const dialogEntry = analysis ? { registration_number: regNum, racer_name: racerName, grade_class: gradeClass } : null;
   const dialogTrust = analysis ? { score: trustScore, reasons: analysis.reasons, concerns: analysis.concerns, condition_match: { score: conditionMatch, conditions: analysis.condition_matches } } : null;
 
-  const finalJudgeAt = race.deadline ? new Date(new Date(race.deadline).getTime() - 5 * 60000) : null;
+  const finalJudgeAt = finalJudgeTime(race.deadline);
   const isFetching = finalStatus?.status === "fetching";
   const isFailed = finalStatus?.status === "failed";
 

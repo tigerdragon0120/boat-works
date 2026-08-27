@@ -124,6 +124,13 @@ export function canFinalJudge(deadlineIso) {
   return m != null && m <= 5;
 }
 
+// 最終判定予定時刻（締切-5分）。getTimeベースで計算するためタイムゾーン影響なし
+export function finalJudgeTime(deadlineIso) {
+  if (!deadlineIso) return null;
+  const deadline = new Date(deadlineIso);
+  return new Date(deadline.getTime() - 5 * 60 * 1000);
+}
+
 export function fmtTime(iso) {
   if (!iso) return "--:--";
   const d = new Date(iso);

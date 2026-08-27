@@ -8,7 +8,7 @@ import { getAlerts, getSettings, getRacesByDate, getLatestOddsByDate } from "@/l
 import { getCachedAnalysesByDate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { base44 } from "@/api/base44Client";
-import { GRADE_STYLE, fmtPct, fmtTime, fmtTimeSec, fmtNum, canFinalJudge, minutesUntilDeadline } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtTime, fmtTimeSec, fmtNum, canFinalJudge, minutesUntilDeadline, finalJudgeTime } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 function dateStr(offset = 0) {
@@ -175,7 +175,7 @@ export default function Alerts() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {tomorrowAlerts.map((al) => {
-              const finalJudgeAt = new Date(new Date(al.deadline).getTime() - 5 * 60000);
+              const finalJudgeAt = finalJudgeTime(al.deadline);
               return (
                 <Link key={al.id} to={`/race/${al.race_id}`} className="rounded-2xl bg-card border border-border p-4 hover:border-primary/40">
                   <div className="flex items-center justify-between mb-2">

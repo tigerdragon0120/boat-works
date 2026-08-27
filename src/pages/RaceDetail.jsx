@@ -15,7 +15,7 @@ import { getCachedAnalysesForRace, analyzeRaceFinal } from "@/lib/analysisCache"
 import { base44 } from "@/api/base44Client";
 import {
   UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline,
-  canFinalJudge, JUDGMENT_STYLE, reliabilityGrade, trustScoreColor,
+  canFinalJudge, JUDGMENT_STYLE, reliabilityGrade, trustScoreColor, finalJudgeTime,
 } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
@@ -259,7 +259,10 @@ export default function RaceDetail() {
             <div className="text-xs text-muted-foreground tracking-wider mb-2">事前評価</div>
             <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
             {mins != null && mins > 0 && (
-              <div className="text-sm text-muted-foreground mt-2">最終判定まで <span className="text-foreground font-bold tabular-nums">{mins}分</span></div>
+              <div className="text-sm text-muted-foreground mt-2">
+                最終判定予定 <span className="text-foreground font-bold tabular-nums">{fmtTime(finalJudgeTime(race.deadline))}</span>
+                <span className="ml-1.5">（あと{mins}分）</span>
+              </div>
             )}
           </>
         ) : (
