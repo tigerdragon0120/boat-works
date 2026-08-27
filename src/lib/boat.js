@@ -331,3 +331,13 @@ export function computeTrustScoreLite(entry, settings) {
     total_components: 5,
   };
 }
+
+// === 公式選手写真URL生成 ===
+// BOAT RACE公式サイトの選手写真URL規則: https://www.boatrace.jp/racerphoto/{登録番号4桁}.jpg
+// 登録番号のみをキーに使用（選手名・支部・級別は不使用・同姓同名問題回避）
+export function getOfficialRacerPhotoUrl(registrationNumber) {
+  if (!registrationNumber) return null;
+  const reg = String(registrationNumber).trim();
+  if (!/^\d{4}$/.test(reg)) return null;
+  return `https://www.boatrace.jp/racerphoto/${reg}.jpg`;
+}
