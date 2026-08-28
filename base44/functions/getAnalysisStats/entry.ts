@@ -8,8 +8,19 @@ import { UICHI_COMBOS } from "../../shared/uichi.js";
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ status: "error", message: "認証が必要です" }, { status: 401 });
+    let user = null;
+    try { user = await base44.auth.me(); } catch {}
+    if (user && user.role !== "admin") {
+      // 一般ユーザーは読み取り可。force_refreshだけ管理者/サービスロールに限定する。
+    }
+    const body = await req.json().catch(() => ({}));
+    const forceRefresh = body.force_refresh === true;
+    const cacheKey = "analysis_stats_v1";
+
+    if (!forceRefresh) {
+      const cached = await base44.asServiceRole.entities.AnalyticsCache.filter({ cache_key: cacheKey }, "-updated_at", 1).catch(() => []);
+      if (cached[0]?.payload) return Response.json({ ...cached[0].payload, cached: true, cache_updated_at: cached[0].updated_at });
+    }
 
     // 全 official RaceResult を取得（ページネーション）
     let allResults = [];
@@ -95,7 +106,7 @@ export default async function(req) {
 
     const dataSufficiencyRate = total > 0 ? totalWithDetails / total : 0;
 
-    return Response.json({
+    const payload = {
       status: "success",
       total,
       totalWithDetails,
@@ -107,7 +118,18 @@ export default async function(req) {
       buyCount,
       buyHitRate,
       buyRecovery,
-    });
+      cached: false,
+    };
+
+    const now = new Date().toISOString();
+    const existingCache = await base44.asServiceRole.entities.AnalyticsCache.filter({ cache_key: cacheKey }, "-updated_at", 1).catch(() => []);
+    if (existingCache[0]) {
+      await base44.asServiceRole.entities.AnalyticsCache.update(existingCache[0].id, { payload, updated_at: now, source_max_date: allResults[0]?.race_date || null });
+    } else {
+      await base44.asServiceRole.entities.AnalyticsCache.create({ cache_key: cacheKey, payload, updated_at: now, source_max_date: allResults[0]?.race_date || null });
+    }
+
+    return Response.json(payload);
   } catch (error) {
     return Response.json({ status: "error", message: error.message }, { status: 500 });
   }

@@ -1,0 +1,25 @@
+{
+  "name": "AnalyticsCache",
+  "type": "object",
+  "properties": {
+    "cache_key": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_max_date": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "cache_key",
+    "payload",
+    "updated_at"
+  ]
+}
