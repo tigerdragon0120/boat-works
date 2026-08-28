@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { Waves, Bell, BarChart3, Settings, Home, TrendingUp, LineChart } from "lucide-react";
+import { Waves, Bell, BarChart3, Settings, Home, CheckCircle2, LineChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Layout() {
@@ -9,7 +9,7 @@ export default function Layout() {
     { to: "/alerts", label: "アラート", icon: Bell },
     { to: "/analysis", label: "分析", icon: BarChart3 },
     { to: "/trends", label: "傾向", icon: LineChart },
-    { to: "/performance", label: "実績", icon: TrendingUp },
+    { to: "/verification", label: "検証", icon: CheckCircle2 },
     { to: "/admin", label: "設定", icon: Settings },
   ];
   const isActive = (to) => (to === "/" ? location.pathname === "/" : location.pathname.startsWith(to));
