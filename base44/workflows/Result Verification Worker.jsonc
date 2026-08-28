@@ -1,0 +1,45 @@
+{
+  "name": "Result Verification Worker",
+  "description": "10\u5206\u3054\u3068\u306b\u3001\u7de0\u520725\u5206\u5f8c\u3092\u904e\u304e\u305f\u672a\u7d50\u679c\u30ec\u30fc\u30b9\u306e\u958b\u50ac\u5834\u3060\u3051\u516c\u5f0f\u7d50\u679c\u3092\u518d\u53d6\u5f97\u3057\u3001Alert\u3092resolved\u3078\u66f4\u65b0\u3059\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/10 7-23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "result_verification_worker",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_result_verification": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runResultVerificationWorker",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u516c\u5f0f\u7d50\u679c\u306e\u81ea\u52d5\u7b54\u3048\u5408\u308f\u305b",
+            "description": "\u516c\u5f0f\u7d50\u679c\u53d6\u5f97\u2192\u7684\u4e2d/\u30cf\u30ba\u30ec\u691c\u8a3c\u2192Alert\u5b8c\u4e86"
+          }
+        }
+      }
+    ]
+  }
+}
