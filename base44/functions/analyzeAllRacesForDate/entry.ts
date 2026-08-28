@@ -128,6 +128,7 @@ export default async function(req) {
             race_id: r.id, race_date: r.race_date, venue_code: r.venue_code, venue_name: r.venue_name,
             race_number: r.race_number, stage,
             similar_count: a.similar_count, uichi_hits: a.uichi_hits, appearance_rate: a.appearance_rate,
+            ura_uichi_hits: a.ura_uichi_hits, ura_uichi_rate: a.ura_uichi_rate,
             synthetic_odds: a.synthetic_odds, expected_value: a.expected_value, judgment: a.judgment,
             boat1_grade: a.boat1_grade, boat1_score: a.boat1?.national_win_rate || 0, min_similar_ok: a.min_similar_ok,
             captured_at: now, analyzed_at: now,
