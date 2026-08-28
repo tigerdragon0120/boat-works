@@ -85,38 +85,26 @@ export default function Home() {
   const sortedRaces = useMemo(() => {
     const now = Date.now();
     return [...races]
-      .filter((r) => tab !== "today" || !r.deadline || new Date(r.deadline).getTime() > now)
-      .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-  }, [races, tab, tick]);
-
-  // 締切後15分だけ残す「直近の最終判定」。通常の全レース一覧には戻さない。
-  const recentFinalRaces = useMemo(() => {
-    if (tab !== "today") return [];
-    const now = Date.now();
-    const keepMs = 15 * 60 * 1000;
-    return races
       .filter((r) => {
-        if (!r.deadline) return false;
-        const deadlineMs = new Date(r.deadline).getTime();
-        if (deadlineMs > now || now - deadlineMs > keepMs) return false;
-        const a = analyses[r.id];
-        return a?.stage === "final" && a?.judgment && a.judgment !== "PENDING";
+        if (tab !== "today") return true;
+        if (!r.deadline) return true;
+        if (new Date(r.deadline).getTime() > now) return true;
+        // アラート対象レースは、公式結果取得でAlertがresolvedになるまでHomeに残す。
+        const al = alerts.find((x) => x.race_id === r.id);
+        return !!al && al.status !== "resolved";
       })
-      .sort((a, b) => new Date(b.deadline) - new Date(a.deadline));
-  }, [races, analyses, tab, tick]);
+      .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+  }, [races, alerts, tab, tick]);
 
-  // alert races (today: BUY judged; tomorrow: pre-grade A/S)
+  // alert races: 一度アラート対象になったレースは、BUY/WATCH/SKIPに関係なく結果確定まで表示する。
   const alertRaces = useMemo(() => {
     return sortedRaces.filter((r) => {
-      const a = analyses[r.id];
       if (tab === "today") {
-        if (canFinalJudge(r.deadline)) {
-          return a?.judgment === "BUY" || a?.judgment === "WATCH";
-        }
-        // 締切5分前までは事前評価S/Aを候補表示
+        const al = alerts.find((x) => x.race_id === r.id);
+        if (al && al.status !== "resolved") return true;
+        const a = analyses[r.id];
         return a?.pre_grade === "S" || a?.pre_grade === "A";
       }
-      // tomorrow: from alerts
       return alerts.some((al) => al.race_id === r.id);
     });
   }, [sortedRaces, analyses, alerts, tab]);
@@ -231,9 +219,12 @@ export default function Home() {
           <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日のういち買いアラート" : "前日ういち買いアラート候補"}</h2>
           <span className="ml-auto text-xs text-muted-foreground">{alertRaces.length}件</span>
         </div>
+        {tab === "today" && (
+          <div className="text-[11px] text-muted-foreground mb-2">アラート対象は結果確定まで表示します。終了後の結果は下メニューの「検証」で確認できます。</div>
+        )}
         {alertRaces.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {tab === "today" ? "現在BUY/WATCH候補はありません" : "前日出現率の高いレースはありません"}
+            {tab === "today" ? "現在アラート対象レースはありません" : "前日出現率の高いレースはありません"}
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -244,39 +235,6 @@ export default function Home() {
         )}
       </section>
 
-      {/* 締切後15分だけ表示する直近の最終判定 */}
-      {tab === "today" && recentFinalRaces.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarClock className="w-4 h-4 text-sky-600" />
-            <h2 className="text-sm font-bold tracking-wide">直近の最終判定</h2>
-            <span className="ml-auto text-xs text-muted-foreground">締切後15分で自動非表示</span>
-          </div>
-          <div className="space-y-2">
-            {recentFinalRaces.map((r) => {
-              const a = analyses[r.id];
-              return (
-                <Link key={r.id} to={`/race/${r.id}`} className="flex items-center gap-3 rounded-2xl bg-card border border-border p-3 hover:border-primary/40">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold text-sm">{r.venue_name} {r.race_number}R</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                      最終判定 {fmtTime(finalJudgeTime(r.deadline))}
-                    </div>
-                  </div>
-                  <div className="shrink-0"><JudgmentBadge judgment={a.judgment} /></div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[10px] text-muted-foreground">合成オッズ</div>
-                    <div className="font-bold tabular-nums">{a.synthetic_odds ? `${fmtNum(a.synthetic_odds, 2)}倍` : "—"}</div>
-                  </div>
-                  {a.judgment === "SKIP" && (a.similar_count || 0) < (settings?.min_similar_races || 30) && (
-                    <div className="text-[11px] text-amber-600 shrink-0">データ不足</div>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       {/* All races */}
       <section>
