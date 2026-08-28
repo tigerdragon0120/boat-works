@@ -1,0 +1,64 @@
+{
+  "name": "UichiLearningMetric",
+  "type": "object",
+  "properties": {
+    "metric_key": {
+      "type": "string"
+    },
+    "dimension": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    },
+    "sample_count": {
+      "type": "number"
+    },
+    "boat1_win_count": {
+      "type": "number"
+    },
+    "boat1_win_rate": {
+      "type": "number"
+    },
+    "main_hit_count": {
+      "type": "number"
+    },
+    "main_hit_rate": {
+      "type": "number"
+    },
+    "ura_hit_count": {
+      "type": "number"
+    },
+    "ura_hit_rate": {
+      "type": "number"
+    },
+    "recommended_hit_count": {
+      "type": "number"
+    },
+    "recommended_hit_rate": {
+      "type": "number"
+    },
+    "reliable": {
+      "type": "boolean"
+    },
+    "min_sample": {
+      "type": "number"
+    },
+    "analysis_version": {
+      "type": "string"
+    },
+    "last_sample_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "metric_key",
+    "dimension",
+    "value"
+  ]
+}
