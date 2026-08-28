@@ -88,9 +88,10 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <CardStat label="ういち出現率" value={fmtPct(analysis.appearance_rate, 1)} sub={`n=${analysis.similar_count ?? "—"}`} />
               <CardStat label="1号艇信頼" value={trustScore ?? "—"} accent={trustScore >= 75 ? "emerald" : trustScore >= 60 ? "sky" : "amber"} />
+              <CardStat label="5/6穴期待" value={analysis.outer_boat_score ?? "—"} sub={analysis.outer_boat_number ? `${analysis.outer_boat_number}号艇 ${analysis.outer_boat_name || ""}` : null} accent={(analysis.outer_boat_score ?? 0) >= 65 ? "emerald" : (analysis.outer_boat_score ?? 0) >= 55 ? "sky" : "amber"} />
               <CardStat label="条件一致" value={conditionMatch != null ? conditionMatch + "%" : "—"} accent="primary" />
             </div>
             {racerName && (
