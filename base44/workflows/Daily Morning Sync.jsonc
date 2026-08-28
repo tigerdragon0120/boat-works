@@ -1,13 +1,13 @@
 {
   "name": "Daily Morning Sync",
-  "description": "\u6bce\u671d6\u6642\u304b\u308910\u6642\u307e\u3067\u6bce\u6642\u3001\u672c\u65e5\u306e\u958b\u50ac\u5834\u4e00\u89a7\u3092\u516c\u5f0f\u304b\u3089\u518d\u78ba\u8a8d\u3057\u3001\u4e0d\u8db3Race\u30fb\u51fa\u8d70\u8868\u3092\u88dc\u5b8c\u3057\u3066pre\u5206\u6790\u307e\u3067\u4fdd\u5b58\u3059\u308b\u3002\u753b\u9762\u8868\u793a\u3068\u306f\u5b8c\u5168\u5206\u96e2\u3002",
+  "description": "\u6bce\u671d5\u6642\u304b\u308910\u6642\u307e\u3067\u6bce\u6642\u300124\u5834\u3092\u76f4\u63a5\u78ba\u8a8d\u3057\u3001\u672c\u65e5\u306e\u5168\u958b\u50ac\u5834\u30fb\u5168Race\u30fb6\u8247\u51fa\u8d70\u8868\u3092\u81ea\u5df1\u4fee\u5fa9\u3057\u3066v8 pre\u5206\u6790\u307e\u3067\u4fdd\u5b58\u3059\u308b\u30021\u5834\u306e\u5931\u6557\u3067\u5168\u4f53\u3092\u6b62\u3081\u306a\u3044\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "0 6-10 * * *",
+      "cron_expression": "0 5-10 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
@@ -30,16 +30,16 @@
         "run_today_sync": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "runDailyOvernight",
+            "function_name": "runRaceDayIntegritySync",
             "args": {
               "target_offset": 0,
-              "skip_aggregate": true
+              "stage": "pre"
             }
           },
           "then": "end",
           "x-base44": {
-            "title": "\u672c\u65e5\u5168\u5834\u540c\u671f",
-            "description": "\u958b\u50ac\u5834\u518d\u78ba\u8a8d\u2192Race/\u51fa\u8d70\u8868\u88dc\u5b8c\u2192pre\u5206\u6790\u4fdd\u5b58"
+            "title": "\u672c\u65e524\u5834\u81ea\u5df1\u4fee\u5fa9\u540c\u671f",
+            "description": "24\u5834\u76f4\u63a5\u78ba\u8a8d\u2192\u5168Race\u767b\u9332\u21926\u8247\u6b20\u640d\u3060\u3051\u518d\u53d6\u5f97\u2192v8 pre\u5206\u6790"
           }
         }
       }
