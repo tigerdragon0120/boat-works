@@ -85,6 +85,7 @@ export default async function(req) {
         `🚤 *BOAT WORKS 前日候補*  ${race.venue_name} ${race.race_number}R`,
         `事前評価 *${a.pre_grade}* / ういち出現率 ${fmtPct(a.appearance_rate)}`,
         `1号艇 ${a.boat1_racer_name || '—'} / 信頼スコア *${a.boat1_trust_score ?? '—'}* / 条件一致 ${a.condition_match_score ?? '—'}%`,
+        `5/6穴期待 *${a.outer_boat_score ?? '—'}* / 注目 ${a.outer_boat_number ? `${a.outer_boat_number}号艇 ${a.outer_boat_name || ''}` : '—'}`,
         `締切 ${fmtJstTime(race.deadline)} / 最終判定 ${fmtJstTime(new Date(new Date(race.deadline).getTime() - 5 * 60 * 1000).toISOString())}`,
       ].join('\n');
     } else {
