@@ -527,7 +527,7 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     b5 ? Math.round(clamp(((b5.national_2rate || 0) * 0.35 + (b5.local_2rate || 0) * 0.25 + (b5.motor_2rate || 0) * 0.25 + clamp((0.22 - (b5.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0,
     b6 ? Math.round(clamp(((b6.national_2rate || 0) * 0.35 + (b6.local_2rate || 0) * 0.25 + (b6.motor_2rate || 0) * 0.25 + clamp((0.22 - (b6.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0
   );
-  const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs, outer?.score || 0, outerSecondScore);
+  const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs);
 
   // v7: 出現率の暴走を抑える校正。
   // 場×Rの実測を土台に、1号艇の相対信頼と番組構成を緩やかに掛ける。
@@ -632,6 +632,17 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     outer_second_score: uichiDirection.outer_second_score,
     outer_third_score: uichiDirection.outer_third_score,
     historical_direction: uichiDirection.historical_direction,
+    program_hypothesis: uichiDirection.program_hypothesis,
+    program_main_intent: uichiDirection.program_main_intent,
+    program_ura_intent: uichiDirection.program_ura_intent,
+    program_intent_confidence: uichiDirection.program_intent_confidence,
+    program_axis_placement: uichiDirection.program_axis_placement,
+    racer_escape_execution: uichiDirection.racer_escape_execution,
+    racer_main_execution: uichiDirection.racer_main_execution,
+    racer_ura_execution: uichiDirection.racer_ura_execution,
+    motor_main_support: uichiDirection.motor_main_support,
+    motor_ura_support: uichiDirection.motor_ura_support,
+    motor_boat1_support: uichiDirection.motor_boat1_support,
     uichi_direction_reasons: uichiDirection.reasons,
     boat1,
     odds_values: oddsValues,
