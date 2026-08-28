@@ -10,6 +10,16 @@ export const UICHI_COMBOS = [
   "1-4-6",
 ];
 
+// 裏ういち6点（1-56-234）
+export const URA_UICHI_COMBOS = [
+  "1-5-2",
+  "1-5-3",
+  "1-5-4",
+  "1-6-2",
+  "1-6-3",
+  "1-6-4",
+];
+
 // 全国24場
 export const VENUES = [
   { code: "KRY", name: "桐生" },
