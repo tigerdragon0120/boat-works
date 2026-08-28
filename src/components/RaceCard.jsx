@@ -76,7 +76,19 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground">事前評価</span>
-              <span className={cn("text-lg font-bold px-2 py-0.5 rounded border", GRADE_STYLE[effectivePreGrade] || GRADE_STYLE.D)}>{effectivePreGrade || "—"}</span>
+              {analysis.program_scenario_status === "PLAYER_BREAK" || analysis.program_scenario_status === "NEUTRAL" ? (
+                <>
+                  <span className="text-sm font-bold px-2.5 py-1 rounded border border-rose-300 bg-rose-50 text-rose-700">見送り候補</span>
+                  <span className="text-[10px] text-muted-foreground">元評価 {effectivePreGrade || "—"}</span>
+                </>
+              ) : analysis.program_scenario_status === "MOTOR_BREAK" ? (
+                <>
+                  <span className="text-sm font-bold px-2.5 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700">慎重</span>
+                  <span className="text-[10px] text-muted-foreground">元評価 {effectivePreGrade || "—"}</span>
+                </>
+              ) : (
+                <span className={cn("text-lg font-bold px-2 py-0.5 rounded border", GRADE_STYLE[effectivePreGrade] || GRADE_STYLE.D)}>{effectivePreGrade || "—"}</span>
+              )}
               {isFetching && (
                 <span className="flex items-center gap-1 text-xs text-primary font-semibold">
                   <Loader2 className="w-3 h-3 animate-spin" /> 最新オッズ取得中…
