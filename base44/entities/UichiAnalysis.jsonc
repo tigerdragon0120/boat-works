@@ -195,10 +195,35 @@
     "uichi_direction_label": {
       "type": "string"
     },
+    "uichi_direction_confidence": {
+      "type": "number",
+      "description": "\u65b9\u5411\u5224\u5b9a\u306e\u4fe1\u983c\u5ea6(0-100)"
+    },
     "uichi_main_suitability": {
       "type": "number"
     },
     "uichi_ura_suitability": {
+      "type": "number"
+    },
+    "uichi_main_structure": {
+      "type": "number"
+    },
+    "uichi_ura_structure": {
+      "type": "number"
+    },
+    "mid_second_score": {
+      "type": "number"
+    },
+    "mid_third_score": {
+      "type": "number"
+    },
+    "outer_second_score": {
+      "type": "number"
+    },
+    "outer_third_score": {
+      "type": "number"
+    },
+    "historical_direction": {
       "type": "number"
     },
     "uichi_direction_reasons": {
