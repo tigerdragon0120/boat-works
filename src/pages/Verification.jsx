@@ -36,12 +36,22 @@ export default function Verification() {
   }, []);
 
   const rows = useMemo(() => {
-    const all = data?.rows || [];
-    if (filter === "buy") return all.filter(r => r.final_judgment === "BUY");
-    if (filter === "watch") return all.filter(r => r.final_judgment === "WATCH");
-    if (filter === "skip") return all.filter(r => r.final_judgment === "SKIP");
-    if (filter === "nofinal") return all.filter(r => !r.final_judgment || r.final_judgment === "PENDING");
-    return all;
+    let all = [...(data?.rows || [])];
+    if (filter === "buy") all = all.filter(r => r.final_judgment === "BUY");
+    if (filter === "watch") all = all.filter(r => r.final_judgment === "WATCH");
+    if (filter === "skip") all = all.filter(r => r.final_judgment === "SKIP");
+    if (filter === "nofinal") all = all.filter(r => !r.final_judgment || r.final_judgment === "PENDING");
+
+    // 時系列昇順: 古い日付 → 新しい日付、同日は締切の早いレース → 遅いレース。
+    // deadlineが無い場合は race_number を補助キーに使う。
+    return all.sort((a, b) => {
+      const dateCmp = String(a.race_date || "").localeCompare(String(b.race_date || ""));
+      if (dateCmp !== 0) return dateCmp;
+      const at = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const bt = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY;
+      if (at !== bt) return at - bt;
+      return Number(a.race_number || 0) - Number(b.race_number || 0);
+    });
   }, [data, filter]);
 
   if (loading) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mr-2" />アラート履歴を読み込み中…</div>;
