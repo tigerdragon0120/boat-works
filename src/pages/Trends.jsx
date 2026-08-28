@@ -14,7 +14,7 @@ export default function Trends() {
     (async () => {
       try {
         const key = "boatworks:uichiTrends:v1";
-        const cached = sessionStorage.getItem(key);
+        const cached = localStorage.getItem(key);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Date.now() - parsed.t < 10 * 60 * 1000) {
@@ -25,7 +25,7 @@ export default function Trends() {
         }
         const res = await base44.functions.invoke("getUichiTrends", {});
         setData(res.data);
-        sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), v: res.data }));
+        localStorage.setItem(key, JSON.stringify({ t: Date.now(), v: res.data }));
       } catch (e) {
         setError(e?.message || "データ取得に失敗しました");
       } finally {
