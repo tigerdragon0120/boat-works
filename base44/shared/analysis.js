@@ -6,7 +6,7 @@ import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v7";
+export const ANALYSIS_VERSION = "v8";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -83,73 +83,113 @@ function computeOuterBoatPotential(entries) {
   };
 }
 
-function computeUichiDirection(entries, trustScore, vrs, outerThirdScore, outerSecondScore) {
+// v8 番組意図エンジン。
+// 第1層はモーターを見ず、枠配置・級別・基本力・場×Rの癖から「何を狙った番組か」を仮説化する。
+function computeProgramIntent(entries, vrs) {
   const b = n => entries.find(e => e.boat_number === n);
-
-  const secondScore = (e) => {
+  const baseStrength = (e) => {
     if (!e) return 0;
-    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 10;
-    const nat2 = clamp((e.national_2rate || 0) / 60, 0, 1) * 28;
-    const loc2 = clamp((e.local_2rate || 0) / 60, 0, 1) * 18;
-    const motor2 = clamp((e.motor_2rate || 0) / 50, 0, 1) * 22;
-    const boat2 = clamp((e.boat_2rate || 0) / 50, 0, 1) * 10;
-    const st = clamp((0.23 - (e.avg_st || 0.23)) / 0.15, 0, 1) * 12;
-    return clamp(Math.round(grade + nat2 + loc2 + motor2 + boat2 + st), 0, 100);
+    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 55;
+    const win = clamp((e.national_win_rate || 0) / 8, 0, 1) * 30;
+    const nat2 = clamp((e.national_2rate || 0) / 60, 0, 1) * 15;
+    return clamp(Math.round(grade + win + nat2), 0, 100);
   };
+  const s1 = baseStrength(b(1));
+  const mids = [2,3,4].map(n => baseStrength(b(n)));
+  const outers = [5,6].map(n => baseStrength(b(n)));
+  const avg = a => a.reduce((x,y)=>x+y,0) / Math.max(a.length,1);
+  const midAvg = avg(mids), outerAvg = avg(outers);
+  const outerMax = Math.max(...outers, 0), midMax = Math.max(...mids, 0);
 
-  const thirdScore = (e) => {
-    if (!e) return 0;
-    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 8;
-    const nat3 = clamp((e.national_3rate || 0) / 70, 0, 1) * 30;
-    const loc3 = clamp((e.local_3rate || 0) / 70, 0, 1) * 18;
-    const motor3 = clamp((e.motor_3rate || 0) / 65, 0, 1) * 24;
-    const boat3 = clamp((e.boat_3rate || 0) / 65, 0, 1) * 10;
-    const st = clamp((0.24 - (e.avg_st || 0.24)) / 0.16, 0, 1) * 10;
-    return clamp(Math.round(grade + nat3 + loc3 + motor3 + boat3 + st), 0, 100);
-  };
+  // 1号艇を軸に置いた度合い。弱い選手の1枠なら意図があっても成立性は後段で落とす。
+  const axisPlacement = clamp(45 + (s1 - avg([...mids, ...outers])) * 0.9, 0, 100);
+  // 本線意図: 234を相手本命、56をヒモ穴として置いた形。
+  const mainShape = clamp(55 + (midAvg - outerAvg) * 0.85 + Math.max(0, outerMax - 45) * 0.25, 0, 100);
+  // 裏意図: 56に「外なのに強い」配置があり、234は3着に残せる程度の厚みがある形。
+  const uraShape = clamp(45 + (outerMax - midAvg) * 1.15 + Math.max(0, midAvg - 45) * 0.30, 0, 100);
 
-  const mids = [b(2), b(3), b(4)];
-  const outers = [b(5), b(6)];
-  const midSecondScores = mids.map(secondScore);
-  const midThirdScores = mids.map(thirdScore);
-  const outerSecondScores = outers.map(secondScore);
-  const outerThirdScores = outers.map(thirdScore);
-
-  // 本線は234の誰かが2着＋56の誰かが3着。裏は逆。
-  // 1艇だけ突出するケースも拾うため max と平均を混ぜる。
-  const pool = arr => Math.round(Math.max(...arr, 0) * 0.62 + (arr.reduce((a,c)=>a+c,0) / Math.max(arr.length,1)) * 0.38);
-  const midSecond = pool(midSecondScores);
-  const midThird = pool(midThirdScores);
-  const outerSecond = Math.round(pool(outerSecondScores) * 0.70 + outerSecondScore * 0.30);
-  const outerThird = Math.round(pool(outerThirdScores) * 0.55 + outerThirdScore * 0.45);
-
-  // 場×Rの過去差はサンプル数で縮小。100走未満の極端値をそのまま信じない。
   const n = vrs?.total_races || 0;
-  const shrink = clamp(n / (n + 100), 0, 0.75);
-  const histMainRate = vrs?.uichi_rate || 0;
-  const histUraRate = vrs?.ura_uichi_rate || 0;
-  const histDirection = clamp((histMainRate - histUraRate) * 500 * shrink, -30, 30);
-  const histStrength = clamp(((histMainRate + histUraRate) / 0.32) * 100, 0, 100);
+  const shrink = clamp(n / (n + 120), 0, 0.70);
+  const histMain = vrs?.uichi_rate || 0;
+  const histUra = vrs?.ura_uichi_rate || 0;
+  const habit = clamp((histMain - histUra) * 420 * shrink, -24, 24);
 
-  // 1号艇は両パターン共通の軸。高すぎても低すぎても方向には効かせず、適性の土台に使う。
-  const axisGate = clamp(((trustScore || 0) - 50) / 35, 0, 1);
-  const mainStructure = clamp(midSecond * 0.52 + outerThird * 0.48, 0, 100);
-  const uraStructure = clamp(outerSecond * 0.56 + midThird * 0.44, 0, 100);
+  const mainIntent = Math.round(clamp(axisPlacement * 0.35 + mainShape * 0.50 + Math.max(habit,0), 0, 100));
+  const uraIntent = Math.round(clamp(axisPlacement * 0.35 + uraShape * 0.50 + Math.max(-habit,0), 0, 100));
+  const diff = mainIntent - uraIntent;
+  let hypothesis = "NEUTRAL";
+  if (diff >= 10) hypothesis = "MAIN";
+  else if (diff <= -10) hypothesis = "URA";
+  const confidence = Math.round(clamp(Math.abs(diff) * 2.4 + Math.max(mainIntent, uraIntent) * 0.45 + Math.abs(habit) * 0.8, 0, 100));
+  const reasons = [];
+  if (axisPlacement >= 65) reasons.push({ label: `1号艇を軸に置く番組構成 ${Math.round(axisPlacement)}`, side: "axis", score: axisPlacement });
+  if (mainShape >= 65) reasons.push({ label: `2〜4号艇を相手本線に置く配置 ${Math.round(mainShape)}`, side: "main", score: mainShape });
+  if (uraShape >= 65) reasons.push({ label: `5・6号艇に外枠以上の強さを配置 ${Math.round(uraShape)}`, side: "ura", score: uraShape });
+  if (Math.abs(habit) >= 6) reasons.push({ label: `この場×Rの番組結果は${habit > 0 ? "本線" : "裏"}寄り`, side: habit > 0 ? "main" : "ura", score: 50 + Math.abs(habit) });
+  return { hypothesis, main_intent: mainIntent, ura_intent: uraIntent, confidence, axis_placement: Math.round(axisPlacement), historical_habit: Math.round(habit), reasons };
+}
 
-  const mainSuitability = Math.round(clamp(
-    (35 + mainStructure * 0.65) * (0.72 + axisGate * 0.28) + Math.max(histDirection, 0), 0, 100
-  ));
-  const uraSuitability = Math.round(clamp(
-    (35 + uraStructure * 0.65) * (0.72 + axisGate * 0.28) + Math.max(-histDirection, 0), 0, 100
-  ));
+// 第2層: 番組意図を選手が実現できるか。モーターは見ない。
+function computeRacerExecution(entries, boat1Trust) {
+  const b = n => entries.find(e => e.boat_number === n);
+  const second = e => {
+    if (!e) return 0;
+    return Math.round(clamp((gradeToScore(e.grade_class) ?? .5)*12 + clamp((e.national_2rate||0)/60,0,1)*32 + clamp((e.local_2rate||0)/60,0,1)*22 + clamp((.23-(e.avg_st||.23))/.15,0,1)*20 + clamp((e.national_win_rate||0)/8,0,1)*14, 0, 100));
+  };
+  const third = e => {
+    if (!e) return 0;
+    return Math.round(clamp((gradeToScore(e.grade_class) ?? .5)*10 + clamp((e.national_3rate||0)/70,0,1)*36 + clamp((e.local_3rate||0)/70,0,1)*25 + clamp((.24-(e.avg_st||.24))/.16,0,1)*17 + clamp((e.national_win_rate||0)/8,0,1)*12, 0, 100));
+  };
+  const pool = arr => Math.round(Math.max(...arr,0)*.62 + arr.reduce((a,c)=>a+c,0)/Math.max(arr.length,1)*.38);
+  const midSecond = pool([2,3,4].map(n=>second(b(n))));
+  const midThird = pool([2,3,4].map(n=>third(b(n))));
+  const outerSecond = pool([5,6].map(n=>second(b(n))));
+  const outerThird = pool([5,6].map(n=>third(b(n))));
+  const boat1 = b(1);
+  // trustにはモーターが混じるため、1号艇実行力は選手項目を中心に再計算しtrustは補助に留める。
+  const escape = Math.round(clamp(
+    clamp((boat1?.c1_win_rate||0)/70,0,1)*36 + clamp((boat1?.national_win_rate||0)/8,0,1)*20 + clamp((boat1?.local_win_rate||0)/8,0,1)*18 + clamp((.24-(boat1?.avg_st||.24))/.16,0,1)*18 + ((boat1?.f_count||0)===0?8:0), 0, 100));
+  const mainExecution = Math.round(clamp(escape*.40 + midSecond*.32 + outerThird*.28, 0, 100));
+  const uraExecution = Math.round(clamp(escape*.40 + outerSecond*.34 + midThird*.26, 0, 100));
+  return { escape, main_execution: mainExecution, ura_execution: uraExecution, mid_second: midSecond, mid_third: midThird, outer_second: outerSecond, outer_third: outerThird, trust_reference: boat1Trust || 0 };
+}
 
-  const rawDiff = mainSuitability - uraSuitability;
-  const directionIndex = Math.round(clamp(rawDiff * 2.5, -100, 100));
-  const structureStrength = Math.max(mainSuitability, uraSuitability);
-  const confidence = Math.round(clamp(
-    Math.abs(directionIndex) * 0.55 + structureStrength * 0.25 + histStrength * 0.20,
-    0, 100
-  ));
+// 第3層: モーターが番組仮説を後押しするか、壊すか。
+function computeMotorSupport(entries) {
+  const b = n => entries.find(e => e.boat_number === n);
+  const m2 = e => e ? Math.round(clamp((e.motor_2rate||0)/50,0,1)*70 + clamp((e.boat_2rate||0)/50,0,1)*30) : 0;
+  const m3 = e => e ? Math.round(clamp((e.motor_3rate||0)/65,0,1)*70 + clamp((e.boat_3rate||0)/65,0,1)*30) : 0;
+  const pool = arr => Math.round(Math.max(...arr,0)*.60 + arr.reduce((a,c)=>a+c,0)/Math.max(arr.length,1)*.40);
+  const boat1Motor = Math.round(m2(b(1))*.70 + m3(b(1))*.30);
+  const midSecond = pool([2,3,4].map(n=>m2(b(n))));
+  const midThird = pool([2,3,4].map(n=>m3(b(n))));
+  const outerSecond = pool([5,6].map(n=>m2(b(n))));
+  const outerThird = pool([5,6].map(n=>m3(b(n))));
+  return {
+    boat1_motor: boat1Motor,
+    main_support: Math.round(clamp(boat1Motor*.35 + midSecond*.35 + outerThird*.30,0,100)),
+    ura_support: Math.round(clamp(boat1Motor*.35 + outerSecond*.38 + midThird*.27,0,100)),
+  };
+}
+
+function computeUichiDirection(entries, trustScore, vrs) {
+  const intent = computeProgramIntent(entries, vrs);
+  const racer = computeRacerExecution(entries, trustScore);
+  const motor = computeMotorSupport(entries);
+
+  // 番組意図が主役。選手は「そのシナリオを実現できるか」、モーターは最後の裏付け。
+  // 意図と選手が逆方向なら大きく減衰し、モーターだけでは方向を反転させない。
+  const mainIntentGate = .55 + intent.main_intent/220;
+  const uraIntentGate = .55 + intent.ura_intent/220;
+  const mainSuitability = Math.round(clamp((intent.main_intent*.50 + racer.main_execution*.32 + motor.main_support*.18) * mainIntentGate, 0, 100));
+  const uraSuitability = Math.round(clamp((intent.ura_intent*.50 + racer.ura_execution*.32 + motor.ura_support*.18) * uraIntentGate, 0, 100));
+
+  let directionIndex = Math.round(clamp((mainSuitability - uraSuitability)*2.6, -100, 100));
+  // 番組意図が中立なら、選手・モーターだけで強い方向判定を出さない。
+  if (intent.hypothesis === "NEUTRAL") directionIndex = Math.round(directionIndex*.55);
+  const chosenExecution = directionIndex >= 0 ? racer.main_execution : racer.ura_execution;
+  const chosenMotor = directionIndex >= 0 ? motor.main_support : motor.ura_support;
+  const confidence = Math.round(clamp(intent.confidence*.50 + chosenExecution*.32 + chosenMotor*.18, 0, 100));
 
   let label = "中立";
   if (directionIndex >= 60 && confidence >= 60) label = "本線ういち濃厚";
@@ -157,12 +197,16 @@ function computeUichiDirection(entries, trustScore, vrs, outerThirdScore, outerS
   else if (directionIndex <= -60 && confidence >= 60) label = "裏ういち濃厚";
   else if (directionIndex <= -25) label = "裏ういち寄り";
 
-  const reasons = [];
-  if (midSecond >= 65) reasons.push({ label: `2〜4号艇の2着力 ${midSecond}`, score: midSecond, side: "main" });
-  if (outerThird >= 65) reasons.push({ label: `5・6号艇の3着力 ${outerThird}`, score: outerThird, side: "main" });
-  if (outerSecond >= 65) reasons.push({ label: `5・6号艇の2着突っ込み力 ${outerSecond}`, score: outerSecond, side: "ura" });
-  if (midThird >= 65) reasons.push({ label: `2〜4号艇の3着残り ${midThird}`, score: midThird, side: "ura" });
-  if (Math.abs(histDirection) >= 8) reasons.push({ label: `場×R過去傾向 ${histDirection > 0 ? "本線" : "裏"}寄り`, score: Math.abs(histDirection) + 50, side: histDirection > 0 ? "main" : "ura" });
+  const reasons = [
+    ...intent.reasons.map(r=>({...r, layer:"program"})),
+    { label:`1号艇 選手逃げ実行力 ${racer.escape}`, score:racer.escape, layer:"racer", side:"axis" },
+    directionIndex >= 0
+      ? { label:`選手で本線成立 ${racer.main_execution}`, score:racer.main_execution, layer:"racer", side:"main" }
+      : { label:`選手で裏成立 ${racer.ura_execution}`, score:racer.ura_execution, layer:"racer", side:"ura" },
+    directionIndex >= 0
+      ? { label:`モーター本線支援 ${motor.main_support}`, score:motor.main_support, layer:"motor", side:"main" }
+      : { label:`モーター裏支援 ${motor.ura_support}`, score:motor.ura_support, layer:"motor", side:"ura" },
+  ].sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,7);
 
   return {
     direction_index: directionIndex,
@@ -170,14 +214,25 @@ function computeUichiDirection(entries, trustScore, vrs, outerThirdScore, outerS
     confidence,
     main_suitability: mainSuitability,
     ura_suitability: uraSuitability,
-    main_structure: Math.round(mainStructure),
-    ura_structure: Math.round(uraStructure),
-    mid_second_score: midSecond,
-    mid_third_score: midThird,
-    outer_second_score: outerSecond,
-    outer_third_score: outerThird,
-    historical_direction: Math.round(histDirection),
-    reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,5),
+    main_structure: racer.main_execution,
+    ura_structure: racer.ura_execution,
+    mid_second_score: racer.mid_second,
+    mid_third_score: racer.mid_third,
+    outer_second_score: racer.outer_second,
+    outer_third_score: racer.outer_third,
+    historical_direction: intent.historical_habit,
+    program_hypothesis: intent.hypothesis,
+    program_main_intent: intent.main_intent,
+    program_ura_intent: intent.ura_intent,
+    program_intent_confidence: intent.confidence,
+    program_axis_placement: intent.axis_placement,
+    racer_escape_execution: racer.escape,
+    racer_main_execution: racer.main_execution,
+    racer_ura_execution: racer.ura_execution,
+    motor_main_support: motor.main_support,
+    motor_ura_support: motor.ura_support,
+    motor_boat1_support: motor.boat1_motor,
+    reasons,
   };
 }
 
