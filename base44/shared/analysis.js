@@ -6,7 +6,7 @@ import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v5";
+export const ANALYSIS_VERSION = "v6";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -81,6 +81,61 @@ function computeOuterBoatPotential(entries) {
     boat5_score: s5.score,
     boat6_score: s6.score,
   };
+}
+
+function computeProgramVolatility(entries, trustScore, vrs, outerThirdScore, outerSecondScore) {
+  const b = n => entries.find(e => e.boat_number === n);
+  const strength = (e) => {
+    if (!e) return 0;
+    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 20;
+    const win = clamp((e.national_win_rate || 0) / 8, 0, 1) * 25;
+    const local = clamp((e.local_win_rate || 0) / 8, 0, 1) * 15;
+    const motor = clamp((e.motor_2rate || 0) / 50, 0, 1) * 20;
+    const st = clamp((0.23 - (e.avg_st || 0.23)) / 0.15, 0, 1) * 20;
+    return grade + win + local + motor + st;
+  };
+
+  const mid = [b(2), b(3), b(4)].map(strength);
+  const midMax = Math.max(...mid, 0), midMin = Math.min(...mid, 0);
+  // 2〜4号艇の力量が近いほど、2着3着の入れ替わりが起きやすいとみなす。
+  const midCloseness = mid.length === 3 ? clamp(100 - (midMax - midMin) * 2.2, 0, 100) : 0;
+
+  const histMain = clamp((vrs?.uichi_rate || 0) * 400, 0, 100);
+  const histUra = clamp((vrs?.ura_uichi_rate || 0) * 650, 0, 100);
+  const historicalChaos = Math.round((histMain * 0.45 + histUra * 0.55));
+
+  // 1号艇が弱すぎるレースは「ういち系の波乱」とは別物なので、信頼75付近を最も高評価。
+  const axisFit = clamp(100 - Math.abs((trustScore || 0) - 78) * 2.7, 0, 100);
+  const outerPressure = Math.round((outerThirdScore * 0.45 + outerSecondScore * 0.55));
+
+  const score = Math.round(
+    axisFit * 0.25 +
+    midCloseness * 0.20 +
+    outerPressure * 0.25 +
+    historicalChaos * 0.30
+  );
+
+  const mainSuitability = Math.round(clamp(
+    (trustScore || 0) * 0.35 + midCloseness * 0.20 + outerThirdScore * 0.25 + histMain * 0.20,
+    0, 100
+  ));
+  const uraSuitability = Math.round(clamp(
+    (trustScore || 0) * 0.30 + outerSecondScore * 0.35 + midCloseness * 0.10 + histUra * 0.25,
+    0, 100
+  ));
+
+  const reasons = [];
+  if (midCloseness >= 70) reasons.push({ label: "2〜4号艇の力量が接近", score: midCloseness });
+  if (outerPressure >= 65) reasons.push({ label: "5・6号艇の上位進出圧力が高い", score: outerPressure });
+  if (historicalChaos >= 65) reasons.push({ label: "この場×Rは過去にういち系波乱が多い", score: historicalChaos });
+  if (axisFit >= 70) reasons.push({ label: "1号艇を残して相手荒れしやすい構成", score: axisFit });
+
+  let label = "順当寄り";
+  if (score >= 80) label = "波乱濃厚";
+  else if (score >= 65) label = "波乱注意";
+  else if (score >= 50) label = "やや波乱";
+
+  return { score, label, main_suitability: mainSuitability, ura_suitability: uraSuitability, reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,3) };
 }
 
 function reliabilityGradeFromSample(n, settings) {
@@ -383,6 +438,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     ? clamp(baseUraRate * (0.65 + (trust?.score || 0) / 400 + outerSecondScore / 500), 0, 0.95)
     : 0;
 
+  const programVolatility = computeProgramVolatility(entries, trust?.score || 0, vrs, outer?.score || 0, outerSecondScore);
+
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
   const sufficiency = totalPool > 0 ? 1 : 0;
@@ -449,6 +506,11 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     outer_boat_number: outer?.boat_number ?? null,
     outer_boat_name: outer?.racer_name ?? null,
     outer_boat_reasons: outer?.reasons || [],
+    program_volatility_score: programVolatility.score,
+    program_volatility_label: programVolatility.label,
+    program_main_suitability: programVolatility.main_suitability,
+    program_ura_suitability: programVolatility.ura_suitability,
+    program_volatility_reasons: programVolatility.reasons,
     boat1,
     odds_values: oddsValues,
     analysis_version: ANALYSIS_VERSION,
