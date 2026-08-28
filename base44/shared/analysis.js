@@ -6,7 +6,7 @@ import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v4";
+export const ANALYSIS_VERSION = "v5";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -346,6 +346,10 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   }
   appearanceRate = clamp(appearanceRate, 0, 0.95);
 
+  // 裏ういち 1-56-234。過去の場×R出現率を土台に、1号艇信頼と5/6号艇の
+  // 『2着まで突っ込める力』で補正する。集計未構築時は0として誤表示しない。
+  const baseUraRate = vrs?.ura_uichi_rate ?? 0;
+
   const similarCount = vrs?.total_races ?? 0;
   const uichiHits = vrs?.uichi_hits ?? 0;
 
@@ -369,6 +373,15 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   // 1号艇信頼スコア + 5/6号艇の穴期待度
   const trust = computeTrustScoreFromAggregates(boat1, rvst, rst, settings, race.venue_name, weatherStat);
   const outer = computeOuterBoatPotential(entries);
+  const b5 = entries.find(e => e.boat_number === 5);
+  const b6 = entries.find(e => e.boat_number === 6);
+  const outerSecondScore = Math.max(
+    b5 ? Math.round(clamp(((b5.national_2rate || 0) * 0.35 + (b5.local_2rate || 0) * 0.25 + (b5.motor_2rate || 0) * 0.25 + clamp((0.22 - (b5.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0,
+    b6 ? Math.round(clamp(((b6.national_2rate || 0) * 0.35 + (b6.local_2rate || 0) * 0.25 + (b6.motor_2rate || 0) * 0.25 + clamp((0.22 - (b6.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0
+  );
+  const uraUichiRate = baseUraRate > 0
+    ? clamp(baseUraRate * (0.65 + (trust?.score || 0) / 400 + outerSecondScore / 500), 0, 0.95)
+    : 0;
 
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
@@ -414,6 +427,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     similar_count: similarCount,
     uichi_hits: uichiHits,
     appearance_rate: appearanceRate,
+    ura_uichi_hits: vrs?.ura_uichi_hits ?? 0,
+    ura_uichi_rate: uraUichiRate,
     synthetic_odds: synthOdds,
     expected_value: ev,
     judgment,
