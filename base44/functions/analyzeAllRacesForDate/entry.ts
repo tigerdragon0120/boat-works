@@ -137,6 +137,8 @@ export default async function(req) {
             analysis_version: ANALYSIS_VERSION, settings_version: settingsVersion,
             reasons: a.reasons, concerns: a.concerns, condition_matches: a.condition_matches,
             trust_components: a.boat1_trust?.components || [],
+            outer_boat_score: a.outer_boat_score, outer_boat_number: a.outer_boat_number,
+            outer_boat_name: a.outer_boat_name, outer_boat_reasons: a.outer_boat_reasons || [],
             boat1_registration_number: a.boat1?.registration_number,
             boat1_racer_name: a.boat1?.racer_name, boat1_grade_class: a.boat1?.grade_class,
             total_pool: a.total_pool, valid_pool: a.valid_pool,
@@ -163,6 +165,9 @@ export default async function(req) {
                 });
               } catch (_) { /* Slack失敗で分析本体を止めない */ }
             }
+          } else if (stage === "pre" && alertByRace[r.id]) {
+            // v4再分析でS/Aから外れた旧候補はHome/Slack対象から外す。
+            await base44.asServiceRole.entities.Alert.update(alertByRace[r.id].id, { status: "filtered_out" });
           }
         } catch (e) { errors++; }
       }));
