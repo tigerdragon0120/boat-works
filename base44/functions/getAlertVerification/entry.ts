@@ -1,7 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 
-// Alert → UichiAnalysis(final) → RaceResult を race_id で結合し、
-// アラート候補の答え合わせを返す。画面側へ大量の生DBを送らない。
+// Alert → UichiAnalysis(final) → RaceResult を結合し、アラート候補の履歴を返す。
+// Alert/UichiAnalysis の race_id はBase44 Race.id、RaceResult.race_id は日付_場コード_R番号形式なので、
+// RaceResult は race_date + venue_code + race_number で照合する。
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
@@ -17,15 +18,20 @@ export default async function(req) {
     }
 
     const ids = [...new Set(alerts.map(a => a.race_id).filter(Boolean))];
+    const alertDates = [...new Set(alerts.map(a => a.race_date).filter(Boolean))];
     const resultRows = await base44.asServiceRole.entities.RaceResult.filter(
-      { data_source: 'official', race_id: { $in: ids } }, '-race_date', limit
+      { data_source: 'official', race_date: { $in: alertDates } }, '-race_date', Math.min(limit * 12, 5000)
     ).catch(() => []);
     const analyses = await base44.asServiceRole.entities.UichiAnalysis.filter(
       { race_id: { $in: ids } }, '-captured_at', Math.min(limit * 3, 2000)
     ).catch(() => []);
 
     const resultMap = new Map();
-    for (const r of resultRows) if (!resultMap.has(r.race_id)) resultMap.set(r.race_id, r);
+    const resultKey = (x) => `${x.race_date}_${String(x.venue_code || '').padStart(2, '0')}_${Number(x.race_number || 0)}`;
+    for (const r of resultRows) {
+      const k = resultKey(r);
+      if (!resultMap.has(k)) resultMap.set(k, r);
+    }
 
     const finalMap = new Map();
     const preMap = new Map();
@@ -35,7 +41,7 @@ export default async function(req) {
     }
 
     const rows = alerts.map(al => {
-      const result = resultMap.get(al.race_id) || null;
+      const result = resultMap.get(resultKey(al)) || null;
       const final = finalMap.get(al.race_id) || null;
       const pre = preMap.get(al.race_id) || null;
       const judgment = final?.judgment || al.final_judgment || null;
