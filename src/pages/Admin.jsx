@@ -86,23 +86,26 @@ export default function Admin() {
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
-        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">判定しきい値</h3>
-        <NumField label="BUY判定期待値（%）" value={settings.buy_threshold} onChange={(v) => set("buy_threshold", v)} />
-        <NumField label="WATCH判定期待値（%）" value={settings.watch_threshold} onChange={(v) => set("watch_threshold", v)} />
-        <NumField label="前日アラート出現率（%）" value={settings.pre_alert_rate} onChange={(v) => set("pre_alert_rate", v)} />
-        <NumField label="類似レース最低件数" value={settings.min_similar_races} onChange={(v) => set("min_similar_races", v)} />
-        <NumField label="BUY判定最低サンプル数" value={settings.min_buy_sample ?? 100} onChange={(v) => set("min_buy_sample", v)} />
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">最終判定の基準</h3>
+        <div className="text-xs text-muted-foreground leading-relaxed">数字が高いほど判定は厳しくなります。通常は初期値のままでOKです。</div>
+        <NumField label="BUYにする期待値" help="110なら、期待値指数110%以上をBUY判定の基準にします。" value={settings.buy_threshold} onChange={(v) => set("buy_threshold", v)} />
+        <NumField label="WATCHにする期待値" help="100なら、100%以上110未満をWATCHの基準にします。100未満はSKIPです。" value={settings.watch_threshold} onChange={(v) => set("watch_threshold", v)} />
+        <NumField label="前日にアラートへ出す出現率" help="15なら、ういち買い推定出現率15%以上のレースを前日候補にします。" value={settings.pre_alert_rate} onChange={(v) => set("pre_alert_rate", v)} />
+        <NumField label="分析に必要な類似レース数" help="似た条件の過去レースがこの件数未満なら『データ不足』として扱います。" value={settings.min_similar_races} onChange={(v) => set("min_similar_races", v)} />
+        <NumField label="BUYを出すための最低データ数" help="分析サンプルがこの件数に届かない場合、期待値が高くてもBUYを抑制します。" value={settings.min_buy_sample ?? 100} onChange={(v) => set("min_buy_sample", v)} />
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
-        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">分析信頼度しきい値</h3>
-        <NumField label="信頼度A（n ≥ ）" value={settings.reliability_a_threshold ?? 500} onChange={(v) => set("reliability_a_threshold", v)} />
-        <NumField label="信頼度B（n ≥ ）" value={settings.reliability_b_threshold ?? 250} onChange={(v) => set("reliability_b_threshold", v)} />
-        <NumField label="信頼度C（n ≥ ）" value={settings.reliability_c_threshold ?? 100} onChange={(v) => set("reliability_c_threshold", v)} />
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">データ量による信頼度</h3>
+        <div className="text-xs text-muted-foreground leading-relaxed">過去データが何件あれば分析をA・B・C評価にするかの基準です。Aが最も信頼できる表示です。</div>
+        <NumField label="A評価に必要なデータ数" help="500件以上なら信頼度Aとして表示します。" value={settings.reliability_a_threshold ?? 500} onChange={(v) => set("reliability_a_threshold", v)} />
+        <NumField label="B評価に必要なデータ数" help="250件以上500件未満なら信頼度Bの目安です。" value={settings.reliability_b_threshold ?? 250} onChange={(v) => set("reliability_b_threshold", v)} />
+        <NumField label="C評価に必要なデータ数" help="100件以上250件未満なら信頼度Cの目安です。これ未満はデータ不足です。" value={settings.reliability_c_threshold ?? 100} onChange={(v) => set("reliability_c_threshold", v)} />
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
-        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">1号艇信頼スコア重み</h3>
+        <h3 className="text-sm font-bold text-muted-foreground tracking-wider">1号艇の強さを何で評価するか</h3>
+        <div className="text-xs text-muted-foreground leading-relaxed">1号艇が逃げ切れそうかを採点する配点です。数字が大きい項目ほど重視します。通常は変更不要です。</div>
         <NumField label="選手基本力（最大点）" value={settings.trust_weight_basic ?? 20} onChange={(v) => set("trust_weight_basic", v)} />
         <NumField label="1コース信頼性（最大点）" value={settings.trust_weight_lane1 ?? 20} onChange={(v) => set("trust_weight_lane1", v)} />
         <NumField label="当地相性（最大点）" value={settings.trust_weight_venue ?? 15} onChange={(v) => set("trust_weight_venue", v)} />
@@ -115,8 +118,8 @@ export default function Admin() {
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
         <h3 className="text-sm font-bold text-muted-foreground tracking-wider">データ・更新</h3>
-        <NumField label="データ分析期間（月）" value={settings.analysis_period_months} onChange={(v) => set("analysis_period_months", v)} />
-        <NumField label="オッズ更新間隔（秒）" value={settings.odds_update_interval} onChange={(v) => set("odds_update_interval", v)} />
+        <NumField label="過去何か月を分析するか" help="6なら直近6か月の過去データを分析に使います。" value={settings.analysis_period_months} onChange={(v) => set("analysis_period_months", v)} />
+        <NumField label="オッズを何秒ごとに更新するか" help="60なら対象時間帯のオッズを約60秒間隔で更新します。" value={settings.odds_update_interval} onChange={(v) => set("odds_update_interval", v)} />
       </div>
 
       <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
@@ -163,15 +166,18 @@ export default function Admin() {
   );
 }
 
-function NumField({ label, value, onChange }) {
+function NumField({ label, help, value, onChange }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <label className="text-sm">{label}</label>
+    <div className="flex items-start justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <label className="text-sm font-medium">{label}</label>
+        {help && <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{help}</div>}
+      </div>
       <input
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-24 px-3 py-2 rounded-lg bg-background border border-border text-right tabular-nums text-sm focus:outline-none focus:border-primary"
+        className="w-24 shrink-0 px-3 py-2 rounded-lg bg-background border border-border text-right tabular-nums text-sm focus:outline-none focus:border-primary"
       />
     </div>
   );
