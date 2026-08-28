@@ -1,0 +1,45 @@
+{
+  "name": "Analytics Cache Refresh",
+  "description": "\u5206\u6790\u30fb\u50be\u5411\u30da\u30fc\u30b8\u7528\u306e\u96c6\u8a08\u30ad\u30e3\u30c3\u30b7\u30e5\u30921\u6642\u9593\u3054\u3068\u306b\u66f4\u65b0\u3059\u308b\u3002\u753b\u9762\u306f\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u307f\u3092\u8aad\u307f\u9ad8\u901f\u8868\u793a\u3059\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 * * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "analytics_cache_refresh",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "refresh": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "refreshAnalyticsCache",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u5206\u6790\u30ad\u30e3\u30c3\u30b7\u30e5\u66f4\u65b0",
+            "description": "\u5206\u6790\u30fb\u50be\u5411\u306e\u96c6\u8a08\u6e08\u307f\u30ad\u30e3\u30c3\u30b7\u30e5\u3092\u66f4\u65b0"
+          }
+        }
+      }
+    ]
+  }
+}
