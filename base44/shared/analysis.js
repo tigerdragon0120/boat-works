@@ -507,27 +507,32 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     judgment = "SKIP";
   }
 
+  // 方向指数から狙う型を決める。中立は無理に買い方向を付けない。
+  let recommendedPattern = "NEUTRAL";
+  if (uichiDirection.direction_index >= 20) recommendedPattern = "MAIN";
+  else if (uichiDirection.direction_index <= -20) recommendedPattern = "URA";
+  const recommendedRate = recommendedPattern === "URA" ? uraUichiRate : recommendedPattern === "MAIN" ? appearanceRate : Math.max(appearanceRate, uraUichiRate);
+  const recommendedStructure = recommendedPattern === "URA" ? uichiDirection.ura_structure : recommendedPattern === "MAIN" ? uichiDirection.main_structure : Math.max(uichiDirection.main_structure, uichiDirection.ura_structure);
+
   let preGrade = null;
   if (stage === "pre") {
-    const ar = appearanceRate * 100;
+    const ar = recommendedRate * 100;
     const ts = trust?.score || 0;
     const cm = trust?.condition_match?.score || 0;
-    const os = outer?.score || 0;
     const preThr = settings?.pre_alert_rate ?? 20;
     const minTrust = settings?.pre_min_boat1_trust ?? 75;
-    const minOuter = settings?.pre_min_outer_score ?? 55;
-    const strongOuter = settings?.pre_strong_outer_score ?? 65;
+    const conf = uichiDirection.confidence || 0;
 
-    // ういち買い専用の厳選条件。
-    // 出現率だけではアラートにしない。1号艇の逃げ信頼 + 5/6号艇の3着穴期待を必須にする。
-    if (ar >= preThr + 2 && ts >= Math.max(minTrust + 5, 80) && os >= strongOuter && cm >= 60) preGrade = "S";
-    else if (ar >= preThr && ts >= minTrust && os >= minOuter && cm >= 40) preGrade = "A";
-    else if (ar >= preThr) preGrade = "B"; // 出現率は高いが、ういち向き条件が足りないので通知しない
+    // v7: 本線/裏のどちらかが明確な時だけS/A候補にする。
+    // 本線=234の2着力+56の3着力、裏=56の2着力+234の3着力を別々に評価。
+    if (recommendedPattern !== "NEUTRAL" && ar >= preThr + 2 && ts >= Math.max(minTrust + 5, 80) && recommendedStructure >= 68 && conf >= 60 && cm >= 50) preGrade = "S";
+    else if (recommendedPattern !== "NEUTRAL" && ar >= preThr && ts >= minTrust && recommendedStructure >= 60 && conf >= 50 && cm >= 40) preGrade = "A";
+    else if (ar >= preThr) preGrade = "B";
     else preGrade = "C";
   }
 
-  // ランキングも「出現率 + 1号艇 + 5/6号艇」の3要素で並べる。
-  const weightedProbability = appearanceRate * (0.45 + (trust?.score || 0) / 300 + (outer?.score || 0) / 600);
+  // ランキングは推奨側の出現率・構造・方向信頼度で並べる。
+  const weightedProbability = recommendedRate * (0.55 + (trust?.score || 0) / 400 + recommendedStructure / 500 + (uichiDirection.confidence || 0) / 1000);
 
   return {
     race_id: race.id, stage,
@@ -549,6 +554,9 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     boat1_trust_score: trust?.score ?? 0,
     condition_match_score: trust?.condition_match?.score ?? 0,
     weighted_probability: weightedProbability,
+    recommended_pattern: recommendedPattern,
+    recommended_rate: recommendedRate,
+    recommended_structure: recommendedStructure,
     pre_grade: preGrade,
     reasons: trust?.reasons || [],
     concerns: trust?.concerns || [],
