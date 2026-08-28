@@ -531,7 +531,7 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   );
   const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs);
 
-  // v7: 出現率の暴走を抑える校正。
+  // v8: 出現率の暴走を抑える校正。
   // 場×Rの実測を土台に、1号艇の相対信頼と番組構成を緩やかに掛ける。
   // 以前のように venueBoat1WinRate が小さい時に95%まで跳ねる比率補正は使わない。
   const racerEscapeAdj = venueBoat1WinRate > 0.05
@@ -584,16 +584,16 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   let preGrade = null;
   if (stage === "pre") {
     const ar = recommendedRate * 100;
-    const ts = trust?.score || 0;
-    const cm = trust?.condition_match?.score || 0;
     const preThr = settings?.pre_alert_rate ?? 20;
-    const minTrust = settings?.pre_min_boat1_trust ?? 75;
     const conf = uichiDirection.confidence || 0;
+    const intentConf = uichiDirection.program_intent_confidence || 0;
+    const escape = uichiDirection.racer_escape_execution || 0;
+    const motorSupport = recommendedPattern === "URA" ? uichiDirection.motor_ura_support : uichiDirection.motor_main_support;
 
-    // v7: 本線/裏のどちらかが明確な時だけS/A候補にする。
-    // 本線=234の2着力+56の3着力、裏=56の2着力+234の3着力を別々に評価。
-    if (recommendedPattern !== "NEUTRAL" && ar >= preThr + 2 && ts >= Math.max(minTrust + 5, 80) && recommendedStructure >= 68 && conf >= 60 && cm >= 50) preGrade = "S";
-    else if (recommendedPattern !== "NEUTRAL" && ar >= preThr && ts >= minTrust && recommendedStructure >= 60 && conf >= 50 && cm >= 40) preGrade = "A";
+    // v8: 順序を固定。
+    // ①番組意図が明確 → ②その意図を選手が実現可能 → ③モーターが否定していない、の順で候補化する。
+    if (recommendedPattern !== "NEUTRAL" && ar >= preThr + 2 && intentConf >= 60 && escape >= 70 && recommendedStructure >= 70 && motorSupport >= 55 && conf >= 62) preGrade = "S";
+    else if (recommendedPattern !== "NEUTRAL" && ar >= preThr && intentConf >= 50 && escape >= 60 && recommendedStructure >= 62 && motorSupport >= 45 && conf >= 52) preGrade = "A";
     else if (ar >= preThr) preGrade = "B";
     else preGrade = "C";
   }
