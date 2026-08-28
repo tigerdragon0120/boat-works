@@ -15,8 +15,22 @@ export default function Analysis() {
     (async () => {
       setLoading(true);
       try {
+        const key = "boatworks:analysis:v1";
+        const cached = localStorage.getItem(key);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Date.now() - parsed.t < 10 * 60 * 1000) {
+            if (m) {
+              setVenueStats(parsed.vs || []);
+              setAnalysisStats(parsed.as || null);
+              setLoading(false);
+            }
+            return;
+          }
+        }
         const [vs, as] = await Promise.all([getVenueStats(), getAnalysisStats()]);
         if (m) { setVenueStats(vs); setAnalysisStats(as); }
+        localStorage.setItem(key, JSON.stringify({ t: Date.now(), vs, as }));
       } finally {
         if (m) setLoading(false);
       }
