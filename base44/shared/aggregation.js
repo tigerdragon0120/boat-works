@@ -30,7 +30,6 @@ export function accumulateResults(results, raceWeatherMap, acc) {
   for (const r of results) {
     if (r.data_source && r.data_source !== "official") continue;
     const reg = r.boat1_registration_number;
-    if (!reg) continue;
     const venue = r.venue_code;
     const rnum = r.race_number;
     const won = r.result_1 === 1;
@@ -39,6 +38,21 @@ export function accumulateResults(results, raceWeatherMap, acc) {
     const isUichi = !!r.is_uichi;
     // 裏ういち: 1-56-234（1-5/6-2/3/4）の6点
     const isUraUichi = r.result_1 === 1 && [5, 6].includes(r.result_2) && [2, 3, 4].includes(r.result_3);
+
+    // VenueRaceStatsは1号艇詳細の有無に関係なく、公式結果すべてを母数にする。
+    const vrsk = `${venue}_${rnum}`;
+    let vrs = acc.venueRaceStats[vrsk];
+    if (!vrs) {
+      vrs = { venue_code: venue, race_number: rnum, total_races: 0, uichi_hits: 0, ura_uichi_hits: 0, boat1_wins: 0 };
+      acc.venueRaceStats[vrsk] = vrs;
+    }
+    vrs.total_races++;
+    if (isUichi) vrs.uichi_hits++;
+    if (isUraUichi) vrs.ura_uichi_hits++;
+    if (won) vrs.boat1_wins++;
+
+    // 選手別集計は1号艇詳細があるRaceResultだけ対象。
+    if (!reg) continue;
     const st = r.boat1_avg_st;
     const fc = r.boat1_f_count || 0;
     const lc = r.boat1_l_count || 0;
@@ -97,18 +111,6 @@ export function accumulateResults(results, raceWeatherMap, acc) {
     if (second) rls.second++;
     if (third) rls.third++;
     if (hasSt) { rls.st_sum += st; rls.st_count++; }
-
-    // VenueRaceStats
-    const vrsk = `${venue}_${rnum}`;
-    let vrs = acc.venueRaceStats[vrsk];
-    if (!vrs) {
-      vrs = { venue_code: venue, race_number: rnum, total_races: 0, uichi_hits: 0, ura_uichi_hits: 0, boat1_wins: 0 };
-      acc.venueRaceStats[vrsk] = vrs;
-    }
-    vrs.total_races++;
-    if (isUichi) vrs.uichi_hits++;
-    if (isUraUichi) vrs.ura_uichi_hits++;
-    if (won) vrs.boat1_wins++;
 
     // RacerWeatherStats
     const w = r.race_id ? raceWeatherMap[r.race_id] : null;
