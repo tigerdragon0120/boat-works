@@ -35,6 +35,14 @@
     "appearance_rate": {
       "type": "number"
     },
+    "ura_uichi_hits": {
+      "type": "number",
+      "description": "\u88cf\u3046\u3044\u3061\u904e\u53bb\u7684\u4e2d\u6570"
+    },
+    "ura_uichi_rate": {
+      "type": "number",
+      "description": "\u88cf\u3046\u3044\u3061 1-56-234 \u63a8\u5b9a\u51fa\u73fe\u7387(0-1)"
+    },
     "synthetic_odds": {
       "type": "number"
     },
@@ -163,6 +171,22 @@
     "valid_pool": {
       "type": "number",
       "description": "1\u53f7\u8247\u8a73\u7d30\u88dc\u5b8c\u6e08\u307f\u6570"
+    },
+    "outer_boat_score": {
+      "type": "number",
+      "description": "5/6\u53f7\u8247\u306e\u3046\u3061\u9ad8\u3044\u7a74\u671f\u5f85\u30b9\u30b3\u30a2"
+    },
+    "outer_boat_number": {
+      "type": "number"
+    },
+    "outer_boat_name": {
+      "type": "string"
+    },
+    "outer_boat_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "required": [
