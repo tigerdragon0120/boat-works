@@ -83,7 +83,7 @@ function computeOuterBoatPotential(entries) {
   };
 }
 
-function computeProgramVolatility(entries, trustScore, vrs, outerThirdScore, outerSecondScore) {
+function computeUichiDirection(entries, trustScore, vrs, outerThirdScore, outerSecondScore) {
   const b = n => entries.find(e => e.boat_number === n);
   const strength = (e) => {
     if (!e) return 0;
@@ -108,13 +108,6 @@ function computeProgramVolatility(entries, trustScore, vrs, outerThirdScore, out
   const axisFit = clamp(100 - Math.abs((trustScore || 0) - 78) * 2.7, 0, 100);
   const outerPressure = Math.round((outerThirdScore * 0.45 + outerSecondScore * 0.55));
 
-  const score = Math.round(
-    axisFit * 0.25 +
-    midCloseness * 0.20 +
-    outerPressure * 0.25 +
-    historicalChaos * 0.30
-  );
-
   const mainSuitability = Math.round(clamp(
     (trustScore || 0) * 0.35 + midCloseness * 0.20 + outerThirdScore * 0.25 + histMain * 0.20,
     0, 100
@@ -130,12 +123,15 @@ function computeProgramVolatility(entries, trustScore, vrs, outerThirdScore, out
   if (historicalChaos >= 65) reasons.push({ label: "この場×Rは過去にういち系波乱が多い", score: historicalChaos });
   if (axisFit >= 70) reasons.push({ label: "1号艇を残して相手荒れしやすい構成", score: axisFit });
 
-  let label = "順当寄り";
-  if (score >= 80) label = "波乱濃厚";
-  else if (score >= 65) label = "波乱注意";
-  else if (score >= 50) label = "やや波乱";
+  // +100 = 本線ういち、-100 = 裏ういち。差が小さいほど中立。
+  const directionIndex = Math.round(clamp((mainSuitability - uraSuitability) * 2, -100, 100));
+  let label = "中立";
+  if (directionIndex >= 60) label = "本線ういち濃厚";
+  else if (directionIndex >= 25) label = "本線ういち寄り";
+  else if (directionIndex <= -60) label = "裏ういち濃厚";
+  else if (directionIndex <= -25) label = "裏ういち寄り";
 
-  return { score, label, main_suitability: mainSuitability, ura_suitability: uraSuitability, reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,3) };
+  return { direction_index: directionIndex, label, main_suitability: mainSuitability, ura_suitability: uraSuitability, reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,3) };
 }
 
 function reliabilityGradeFromSample(n, settings) {
