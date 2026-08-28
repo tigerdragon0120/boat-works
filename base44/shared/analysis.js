@@ -189,7 +189,28 @@ function computeUichiDirection(entries, trustScore, vrs) {
   if (intent.hypothesis === "NEUTRAL") directionIndex = Math.round(directionIndex*.55);
   const chosenExecution = directionIndex >= 0 ? racer.main_execution : racer.ura_execution;
   const chosenMotor = directionIndex >= 0 ? motor.main_support : motor.ura_support;
-  const confidence = Math.round(clamp(intent.confidence*.50 + chosenExecution*.32 + chosenMotor*.18, 0, 100));
+
+  // 番組側の意図が見えても、1号艇が逃げ切れない選手なら「番組意図不成立」。
+  // モーターだけが弱い場合は方向を反転させず、信頼度を落として見送り寄りにする。
+  let scenarioStatus = "VALID";
+  let scenarioLabel = "番組意図成立";
+  let scenarioPenalty = 0;
+  if (intent.hypothesis === "NEUTRAL") {
+    scenarioStatus = "NEUTRAL";
+    scenarioLabel = "番組意図不明瞭";
+    scenarioPenalty = 25;
+  } else if (racer.escape < 52 || chosenExecution < 52) {
+    scenarioStatus = "PLAYER_BREAK";
+    scenarioLabel = "番組意図不成立（選手）";
+    scenarioPenalty = 40;
+    directionIndex = Math.round(directionIndex * 0.35);
+  } else if (chosenMotor < 38) {
+    scenarioStatus = "MOTOR_BREAK";
+    scenarioLabel = "番組意図弱化（モーター）";
+    scenarioPenalty = 22;
+    directionIndex = Math.round(directionIndex * 0.72);
+  }
+  const confidence = Math.round(clamp(intent.confidence*.50 + chosenExecution*.32 + chosenMotor*.18 - scenarioPenalty, 0, 100));
 
   let label = "中立";
   if (directionIndex >= 60 && confidence >= 60) label = "本線ういち濃厚";
@@ -232,6 +253,9 @@ function computeUichiDirection(entries, trustScore, vrs) {
     motor_main_support: motor.main_support,
     motor_ura_support: motor.ura_support,
     motor_boat1_support: motor.boat1_motor,
+    program_scenario_status: scenarioStatus,
+    program_scenario_label: scenarioLabel,
+    program_scenario_penalty: scenarioPenalty,
     reasons,
   };
 }
@@ -589,11 +613,12 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     const intentConf = uichiDirection.program_intent_confidence || 0;
     const escape = uichiDirection.racer_escape_execution || 0;
     const motorSupport = recommendedPattern === "URA" ? uichiDirection.motor_ura_support : uichiDirection.motor_main_support;
+    const scenarioOk = uichiDirection.program_scenario_status === "VALID";
 
     // v8: 順序を固定。
     // ①番組意図が明確 → ②その意図を選手が実現可能 → ③モーターが否定していない、の順で候補化する。
-    if (recommendedPattern !== "NEUTRAL" && ar >= preThr + 2 && intentConf >= 60 && escape >= 70 && recommendedStructure >= 70 && motorSupport >= 55 && conf >= 62) preGrade = "S";
-    else if (recommendedPattern !== "NEUTRAL" && ar >= preThr && intentConf >= 50 && escape >= 60 && recommendedStructure >= 62 && motorSupport >= 45 && conf >= 52) preGrade = "A";
+    if (scenarioOk && recommendedPattern !== "NEUTRAL" && ar >= preThr + 2 && intentConf >= 60 && escape >= 70 && recommendedStructure >= 70 && motorSupport >= 55 && conf >= 62) preGrade = "S";
+    else if (scenarioOk && recommendedPattern !== "NEUTRAL" && ar >= preThr && intentConf >= 50 && escape >= 60 && recommendedStructure >= 62 && motorSupport >= 45 && conf >= 52) preGrade = "A";
     else if (ar >= preThr) preGrade = "B";
     else preGrade = "C";
   }
@@ -655,6 +680,9 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     motor_main_support: uichiDirection.motor_main_support,
     motor_ura_support: uichiDirection.motor_ura_support,
     motor_boat1_support: uichiDirection.motor_boat1_support,
+    program_scenario_status: uichiDirection.program_scenario_status,
+    program_scenario_label: uichiDirection.program_scenario_label,
+    program_scenario_penalty: uichiDirection.program_scenario_penalty,
     uichi_direction_reasons: uichiDirection.reasons,
     boat1,
     odds_values: oddsValues,
