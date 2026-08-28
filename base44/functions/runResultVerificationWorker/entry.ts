@@ -23,12 +23,13 @@ export default async function(req) {
     const results = await base44.asServiceRole.entities.RaceResult.filter(
       { race_date: raceDate, data_source: 'official' }, 'race_number', 500
     ).catch(() => []);
-    const resultIds = new Set(results.map(r => r.race_id));
+    const resultKey = (x) => `${x.race_date}_${String(x.venue_code || '').padStart(2, '0')}_${Number(x.race_number || 0)}`;
+    const resultKeys = new Set(results.map(resultKey));
 
     // 締切25分後を過ぎ、まだ結果が無いレースがある開催場だけ再取得する。
     const venueTargets = new Set<string>();
     for (const r of races) {
-      if (!r?.deadline || resultIds.has(r.id)) continue;
+      if (!r?.deadline || resultKeys.has(resultKey(r))) continue;
       const deadlineMs = new Date(r.deadline).getTime();
       if (!Number.isFinite(deadlineMs)) continue;
       if (nowMs >= deadlineMs + 25 * 60 * 1000) venueTargets.add(String(r.venue_code).padStart(2, '0'));
@@ -60,9 +61,9 @@ export default async function(req) {
     const refreshed = await base44.asServiceRole.entities.RaceResult.filter(
       { race_date: raceDate, data_source: 'official' }, 'race_number', 500
     ).catch(() => []);
-    const refreshedIds = new Set(refreshed.map(r => r.race_id));
+    const refreshedKeys = new Set(refreshed.map(resultKey));
     const alerts = await base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, 'race_number', 500).catch(() => []);
-    const updates = alerts.filter(a => refreshedIds.has(a.race_id) && a.status !== 'resolved')
+    const updates = alerts.filter(a => refreshedKeys.has(resultKey(a)) && a.status !== 'resolved')
       .map(a => ({ id: a.id, status: 'resolved' }));
     if (updates.length > 0) await base44.asServiceRole.entities.Alert.bulkUpdate(updates);
 
