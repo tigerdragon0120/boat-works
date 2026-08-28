@@ -118,6 +118,7 @@ export default async function(req) {
 
     // === 分析実行（8レース並列バッチ） ===
     let analyzed = 0, skipped = 0, errors = 0, alertCandidates = 0;
+    const errorDetails = [];
     const BATCH = 8;
     const now = new Date().toISOString();
 
@@ -127,7 +128,11 @@ export default async function(req) {
         try {
           if (!force && existingMap[r.id]) { skipped++; return; }
           const entries = entriesByRace[r.id] || [];
-          if (entries.length === 0) { errors++; return; }
+          if (entries.length < 6) {
+            errors++;
+            errorDetails.push({ race_id: r.id, venue_code: r.venue_code, race_number: r.race_number, phase: "entries", message: `${entries.length}艇のため分析対象外` });
+            return;
+          }
           const odds = stage === "pre" ? null : (oddsByRace[r.id] || null);
           const a = computeRaceAnalysis(r, entries, odds, stats, settings, stage);
 
@@ -255,7 +260,16 @@ export default async function(req) {
             // v4再分析でS/Aから外れた旧候補はHome/Slack対象から外す。
             await base44.asServiceRole.entities.Alert.update(alertByRace[r.id].id, { status: "filtered_out" });
           }
-        } catch (e) { errors++; }
+        } catch (e) {
+          errors++;
+          errorDetails.push({
+            race_id: r.id,
+            venue_code: r.venue_code,
+            race_number: r.race_number,
+            phase: "analysis",
+            message: e?.message || String(e),
+          });
+        }
       }));
     }
 
@@ -264,6 +278,7 @@ export default async function(req) {
       race_date, stage,
       analysis_version: ANALYSIS_VERSION, settings_version: settingsVersion,
       total: targetRaces.length, analyzed, skipped, errors, alert_candidates: alertCandidates,
+      error_details: errorDetails.slice(0, 50),
       total_races_aggregated: totalRaces,
       elapsed_ms: Date.now() - t0,
     });
