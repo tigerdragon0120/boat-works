@@ -134,7 +134,9 @@ export default async function(req) {
             captured_at: now, analyzed_at: now,
             reliability: a.reliability, data_sufficiency: a.data_sufficiency,
             boat1_trust_score: a.boat1_trust_score, condition_match_score: a.condition_match_score,
-            weighted_probability: a.weighted_probability, pre_grade: a.pre_grade,
+            weighted_probability: a.weighted_probability,
+            recommended_pattern: a.recommended_pattern, recommended_rate: a.recommended_rate,
+            recommended_structure: a.recommended_structure, pre_grade: a.pre_grade,
             analysis_version: ANALYSIS_VERSION, settings_version: settingsVersion,
             reasons: a.reasons, concerns: a.concerns, condition_matches: a.condition_matches,
             trust_components: a.boat1_trust?.components || [],
@@ -207,7 +209,14 @@ async function ensureAlert(base44, race, analysis, stage, settings, alertByRace)
     race_number: race.race_number, deadline: race.deadline, status: "active", notified: false,
   };
   if (stage === "pre") {
-    const payload = { ...common, pre_appearance_rate: analysis.appearance_rate, pre_grade: analysis.pre_grade };
+    const payload = {
+      ...common,
+      pre_appearance_rate: analysis.recommended_rate ?? analysis.appearance_rate,
+      pre_grade: analysis.pre_grade,
+      recommended_pattern: analysis.recommended_pattern,
+      direction_index: analysis.uichi_direction_index,
+      direction_confidence: analysis.uichi_direction_confidence,
+    };
     if (existing) await base44.asServiceRole.entities.Alert.update(existing.id, payload);
     else await base44.asServiceRole.entities.Alert.create({ ...payload, race_id: race.id });
   } else {
