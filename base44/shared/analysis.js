@@ -434,7 +434,7 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     ? clamp(baseUraRate * (0.65 + (trust?.score || 0) / 400 + outerSecondScore / 500), 0, 0.95)
     : 0;
 
-  const programVolatility = computeProgramVolatility(entries, trust?.score || 0, vrs, outer?.score || 0, outerSecondScore);
+  const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs, outer?.score || 0, outerSecondScore);
 
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
@@ -502,11 +502,11 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     outer_boat_number: outer?.boat_number ?? null,
     outer_boat_name: outer?.racer_name ?? null,
     outer_boat_reasons: outer?.reasons || [],
-    program_volatility_score: programVolatility.score,
-    program_volatility_label: programVolatility.label,
-    program_main_suitability: programVolatility.main_suitability,
-    program_ura_suitability: programVolatility.ura_suitability,
-    program_volatility_reasons: programVolatility.reasons,
+    uichi_direction_index: uichiDirection.direction_index,
+    uichi_direction_label: uichiDirection.label,
+    uichi_main_suitability: uichiDirection.main_suitability,
+    uichi_ura_suitability: uichiDirection.ura_suitability,
+    uichi_direction_reasons: uichiDirection.reasons,
     boat1,
     odds_values: oddsValues,
     analysis_version: ANALYSIS_VERSION,
