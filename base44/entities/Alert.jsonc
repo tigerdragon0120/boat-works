@@ -34,6 +34,20 @@
         "C"
       ]
     },
+    "recommended_pattern": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "NEUTRAL"
+      ]
+    },
+    "direction_index": {
+      "type": "number"
+    },
+    "direction_confidence": {
+      "type": "number"
+    },
     "day_appearance_rate": {
       "type": "number"
     },
