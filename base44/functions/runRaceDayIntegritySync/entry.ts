@@ -114,10 +114,28 @@ export default async function(req) {
     const entryCount = new Map();
     for (const e of entries) entryCount.set(e.race_id, (entryCount.get(e.race_id) || 0) + 1);
 
+    const alreadyCompleteIds = allRaceRows.filter(r => (entryCount.get(r.id) || 0) >= 6).map(r => r.id);
     const missing = allRaceRows.filter(r => (entryCount.get(r.id) || 0) < 6);
     let repaired = 0;
+    let initialAnalysis = null;
 
-    await mapBatches(missing, 3, async (r) => {
+    if (alreadyCompleteIds.length > 0) {
+      try {
+        const preRes = await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
+          race_date: raceDate,
+          stage,
+          race_ids: alreadyCompleteIds,
+          force: true,
+        });
+        initialAnalysis = preRes?.data || preRes;
+      } catch (e) {
+        initialAnalysis = { status: 'error', message: e?.message || '先行分析失敗' };
+        errors.push({ phase: 'initial_analysis', message: e?.message || '先行分析失敗' });
+      }
+    }
+
+    const repairTargets = missing.slice(0, 30);
+    await mapBatches(repairTargets, 6, async (r) => {
       try {
         const jcd = String(r.venue_code).padStart(2, '0');
         const url = `${BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
