@@ -1,0 +1,182 @@
+{
+  "name": "UichiLearningSample",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "analysis_version": {
+      "type": "string"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "program_hypothesis": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "NEUTRAL"
+      ]
+    },
+    "program_main_intent": {
+      "type": "number"
+    },
+    "program_ura_intent": {
+      "type": "number"
+    },
+    "program_intent_confidence": {
+      "type": "number"
+    },
+    "program_axis_placement": {
+      "type": "number"
+    },
+    "racer_escape_execution": {
+      "type": "number"
+    },
+    "racer_main_execution": {
+      "type": "number"
+    },
+    "racer_ura_execution": {
+      "type": "number"
+    },
+    "motor_main_support": {
+      "type": "number"
+    },
+    "motor_ura_support": {
+      "type": "number"
+    },
+    "motor_boat1_support": {
+      "type": "number"
+    },
+    "program_scenario_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "PLAYER_BREAK",
+        "MOTOR_BREAK",
+        "NEUTRAL"
+      ]
+    },
+    "direction_index": {
+      "type": "number"
+    },
+    "direction_confidence": {
+      "type": "number"
+    },
+    "recommended_pattern": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "NEUTRAL"
+      ]
+    },
+    "recommended_rate": {
+      "type": "number"
+    },
+    "recommended_structure": {
+      "type": "number"
+    },
+    "pre_grade": {
+      "type": "string",
+      "enum": [
+        "S",
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "boat1_trust_score": {
+      "type": "number"
+    },
+    "condition_match_score": {
+      "type": "number"
+    },
+    "entries_snapshot": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "final_judgment": {
+      "type": "string",
+      "enum": [
+        "BUY",
+        "WATCH",
+        "SKIP",
+        "PENDING"
+      ]
+    },
+    "final_expected_value": {
+      "type": "number"
+    },
+    "final_synthetic_odds": {
+      "type": "number"
+    },
+    "result_1": {
+      "type": "number"
+    },
+    "result_2": {
+      "type": "number"
+    },
+    "result_3": {
+      "type": "number"
+    },
+    "trifecta": {
+      "type": "string"
+    },
+    "payout_trifecta": {
+      "type": "number"
+    },
+    "boat1_win": {
+      "type": "boolean"
+    },
+    "main_hit": {
+      "type": "boolean"
+    },
+    "ura_hit": {
+      "type": "boolean"
+    },
+    "recommended_hit": {
+      "type": "boolean"
+    },
+    "outcome_pattern": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "OTHER",
+        "PENDING"
+      ]
+    },
+    "result_attached_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "race_id",
+    "race_date",
+    "venue_code",
+    "race_number"
+  ]
+}
