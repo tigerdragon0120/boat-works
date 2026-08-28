@@ -14,42 +14,26 @@ export default function Verification() {
     let mounted = true;
     (async () => {
       try {
-        const key = "boatworks:alertHistory:v3";
         const loadHistory = async () => {
           const res = await base44.functions.invoke("getAlertVerification", { limit: 500 });
           const v = res.data || res;
           if (mounted) setData(v);
-          sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), v }));
           return v;
         };
 
-        let current = null;
-        const cached = sessionStorage.getItem(key);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Date.now() - parsed.t < 2 * 60 * 1000) {
-            current = parsed.v;
-            if (mounted) {
-              setData(current);
-              setLoading(false);
-            }
-          }
-        }
-        if (!current) current = await loadHistory();
+        // 検証ページは必ず最新DBを読む。結果表示で古いキャッシュは使わない。
+        let current = await loadHistory();
 
-        // 終了から25分以上たっているのに結果待ちがあれば、表示後に裏で自動回収する。
+        // 終了から25分以上たっているのに結果待ちがあれば、その場で自動回収して再読込する。
         const now = Date.now();
         const stalePending = (current?.rows || []).some((r) => {
           if (r.completed || !r.deadline) return false;
           const d = new Date(r.deadline).getTime();
           return Number.isFinite(d) && now >= d + 25 * 60 * 1000;
         });
-        const repairKey = "boatworks:lastResultRepair";
-        const lastRepair = Number(sessionStorage.getItem(repairKey) || 0);
-        if (stalePending && now - lastRepair > 10 * 60 * 1000) {
-          sessionStorage.setItem(repairKey, String(now));
+        if (stalePending) {
           await base44.functions.invoke("runResultVerificationWorker", {});
-          if (mounted) await loadHistory();
+          if (mounted) current = await loadHistory();
         }
       } catch (e) {
         if (mounted) setError(e?.message || "アラート履歴の取得に失敗しました");
