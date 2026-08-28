@@ -1,0 +1,48 @@
+{
+  "name": "Daily Result Aggregation",
+  "description": "\u6bce\u65e523\u664250\u5206\u306b\u5f53\u65e5\u307e\u3067\u306e\u516c\u5f0f\u7d50\u679c\u4fdd\u5b58\u30fb\u65e5\u6b21\u96c6\u8a08\u30fb\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u66f4\u65b0\u3092\u884c\u3046\u3002\u51fa\u8d70\u8868\u76e3\u8996\u3068\u306f\u5206\u96e2\u3059\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "50 23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_result_aggregation",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_daily_maintenance": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runDailyOvernight",
+            "args": {
+              "target_offset": 1,
+              "skip_aggregate": false
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u65e5\u6b21\u7d50\u679c\u30fb\u5b66\u7fd2\u96c6\u8a08",
+            "description": "\u516c\u5f0f\u7d50\u679c\u4fdd\u5b58\u2192\u96c6\u8a08\u66f4\u65b0\u2192\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u66f4\u65b0"
+          }
+        }
+      }
+    ]
+  }
+}
