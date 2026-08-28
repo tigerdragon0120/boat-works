@@ -19,6 +19,7 @@ import Analysis from '@/pages/Analysis';
 import Admin from '@/pages/Admin';
 import Performance from '@/pages/Performance';
 import Trends from '@/pages/Trends';
+import Verification from '@/pages/Verification';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -60,6 +61,7 @@ const AuthenticatedApp = () => {
           <Route path="/admin" element={<Admin />} />
           <Route path="/performance" element={<Performance />} />
           <Route path="/trends" element={<Trends />} />
+          <Route path="/verification" element={<Verification />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
