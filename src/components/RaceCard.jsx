@@ -93,7 +93,27 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
               <CardStat label="裏ういち" value={analysis.ura_uichi_rate != null ? fmtPct(analysis.ura_uichi_rate, 1) : "—"} sub="1-56-234" accent="amber" />
               <CardStat label="方向指数" value={analysis.uichi_direction_index != null ? `${analysis.uichi_direction_index > 0 ? "+" : ""}${analysis.uichi_direction_index}` : "—"} sub={`${analysis.uichi_direction_label || "中立"}${analysis.uichi_direction_confidence != null ? ` / 信頼${analysis.uichi_direction_confidence}` : ""}`} accent={(analysis.uichi_direction_index ?? 0) < -24 ? "amber" : (analysis.uichi_direction_index ?? 0) > 24 ? "sky" : "primary"} />
               <CardStat label="1号艇信頼" value={trustScore ?? "—"} accent={trustScore >= 75 ? "emerald" : trustScore >= 60 ? "sky" : "amber"} />
-              <CardStat label="5/6穴期待" value={analysis.outer_boat_score ?? "—"} sub={analysis.outer_boat_number ? `${analysis.outer_boat_number}号艇 ${analysis.outer_boat_name || ""}` : null} accent={(analysis.outer_boat_score ?? 0) >= 65 ? "emerald" : (analysis.outer_boat_score ?? 0) >= 55 ? "sky" : "amber"} />
+              <CardStat label="推奨" value={analysis.recommended_pattern === "MAIN" ? "本線" : analysis.recommended_pattern === "URA" ? "裏" : "中立"} sub={analysis.recommended_pattern === "MAIN" ? "1-234-56" : analysis.recommended_pattern === "URA" ? "1-56-234" : "見送り候補"} accent={analysis.recommended_pattern === "URA" ? "amber" : analysis.recommended_pattern === "MAIN" ? "sky" : "primary"} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <LayerStat
+                label="① 番組意図"
+                value={analysis.program_hypothesis === "MAIN" ? "本線" : analysis.program_hypothesis === "URA" ? "裏" : "中立"}
+                score={analysis.program_intent_confidence}
+                sub={analysis.program_hypothesis === "URA" ? `裏${analysis.program_ura_intent ?? "—"}` : analysis.program_hypothesis === "MAIN" ? `本線${analysis.program_main_intent ?? "—"}` : `本${analysis.program_main_intent ?? "—"} / 裏${analysis.program_ura_intent ?? "—"}`}
+              />
+              <LayerStat
+                label="② 選手成立"
+                value={analysis.recommended_pattern === "URA" ? analysis.racer_ura_execution : analysis.recommended_pattern === "MAIN" ? analysis.racer_main_execution : analysis.racer_escape_execution}
+                score={analysis.racer_escape_execution}
+                sub={`1号艇逃げ力 ${analysis.racer_escape_execution ?? "—"}`}
+              />
+              <LayerStat
+                label="③ モーター"
+                value={analysis.recommended_pattern === "URA" ? analysis.motor_ura_support : analysis.recommended_pattern === "MAIN" ? analysis.motor_main_support : analysis.motor_boat1_support}
+                score={analysis.motor_boat1_support}
+                sub={`1号艇足 ${analysis.motor_boat1_support ?? "—"}`}
+              />
             </div>
             {racerName && (
               <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} onPhotoClick={() => setRacerOpen(true)} />
