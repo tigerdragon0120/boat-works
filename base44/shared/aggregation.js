@@ -3,7 +3,7 @@
 //
 // 重要: RaceResultは削除しない。集計Entityは RaceResult から導出されるキャッシュ。
 
-export const STATS_VERSION = 1;
+export const STATS_VERSION = 2;
 
 export function windSpeedGroup(ws) {
   if (ws == null) return "unknown";
@@ -37,6 +37,8 @@ export function accumulateResults(results, raceWeatherMap, acc) {
     const second = r.result_2 === 1;
     const third = r.result_3 === 1;
     const isUichi = !!r.is_uichi;
+    // 裏ういち: 1-56-234（1-5/6-2/3/4）の6点
+    const isUraUichi = r.result_1 === 1 && [5, 6].includes(r.result_2) && [2, 3, 4].includes(r.result_3);
     const st = r.boat1_avg_st;
     const fc = r.boat1_f_count || 0;
     const lc = r.boat1_l_count || 0;
@@ -100,11 +102,12 @@ export function accumulateResults(results, raceWeatherMap, acc) {
     const vrsk = `${venue}_${rnum}`;
     let vrs = acc.venueRaceStats[vrsk];
     if (!vrs) {
-      vrs = { venue_code: venue, race_number: rnum, total_races: 0, uichi_hits: 0, boat1_wins: 0 };
+      vrs = { venue_code: venue, race_number: rnum, total_races: 0, uichi_hits: 0, ura_uichi_hits: 0, boat1_wins: 0 };
       acc.venueRaceStats[vrsk] = vrs;
     }
     vrs.total_races++;
     if (isUichi) vrs.uichi_hits++;
+    if (isUraUichi) vrs.ura_uichi_hits++;
     if (won) vrs.boat1_wins++;
 
     // RacerWeatherStats
@@ -172,6 +175,7 @@ export function finalizeAccumulator(acc, now) {
   for (const k of Object.keys(acc.venueRaceStats)) {
     const vrs = acc.venueRaceStats[k];
     vrs.uichi_rate = vrs.total_races > 0 ? vrs.uichi_hits / vrs.total_races : 0;
+    vrs.ura_uichi_rate = vrs.total_races > 0 ? (vrs.ura_uichi_hits || 0) / vrs.total_races : 0;
     vrs.boat1_win_rate = vrs.total_races > 0 ? vrs.boat1_wins / vrs.total_races : 0;
     vrs.updated_at = ts;
     vrs.stats_version = STATS_VERSION;
@@ -268,8 +272,10 @@ export function mergeRacerLaneStats(existing, day) {
 export function mergeVenueRaceStats(existing, day) {
   existing.total_races = (existing.total_races || 0) + day.total_races;
   existing.uichi_hits = (existing.uichi_hits || 0) + day.uichi_hits;
+  existing.ura_uichi_hits = (existing.ura_uichi_hits || 0) + (day.ura_uichi_hits || 0);
   existing.boat1_wins = (existing.boat1_wins || 0) + day.boat1_wins;
   existing.uichi_rate = existing.total_races > 0 ? existing.uichi_hits / existing.total_races : 0;
+  existing.ura_uichi_rate = existing.total_races > 0 ? (existing.ura_uichi_hits || 0) / existing.total_races : 0;
   existing.boat1_win_rate = existing.total_races > 0 ? existing.boat1_wins / existing.total_races : 0;
   existing.updated_at = new Date().toISOString();
   existing.stats_version = STATS_VERSION;
