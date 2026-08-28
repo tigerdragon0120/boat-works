@@ -90,7 +90,10 @@ export default function Admin() {
         <div className="text-xs text-muted-foreground leading-relaxed">数字が高いほど判定は厳しくなります。通常は初期値のままでOKです。</div>
         <NumField label="BUYにする期待値" help="110なら、期待値指数110%以上をBUY判定の基準にします。" value={settings.buy_threshold} onChange={(v) => set("buy_threshold", v)} />
         <NumField label="WATCHにする期待値" help="100なら、100%以上110未満をWATCHの基準にします。100未満はSKIPです。" value={settings.watch_threshold} onChange={(v) => set("watch_threshold", v)} />
-        <NumField label="前日にアラートへ出す出現率" help="15なら、ういち買い推定出現率15%以上のレースを前日候補にします。" value={settings.pre_alert_rate} onChange={(v) => set("pre_alert_rate", v)} />
+        <NumField label="前日にアラートへ出す最低出現率" help="現在は20%。これ未満は1号艇や5/6号艇が良くてもアラートにしません。" value={settings.pre_alert_rate} onChange={(v) => set("pre_alert_rate", v)} />
+        <NumField label="アラートに必要な1号艇信頼" help="現在は75点。イン逃げを信頼できる1号艇だけを候補に残します。" value={settings.pre_min_boat1_trust ?? 75} onChange={(v) => set("pre_min_boat1_trust", v)} />
+        <NumField label="5・6号艇の最低穴期待" help="現在は55点。5号艇か6号艇のどちらかに、3着へ食い込める材料が必要です。" value={settings.pre_min_outer_score ?? 55} onChange={(v) => set("pre_min_outer_score", v)} />
+        <NumField label="S評価に必要な5・6号艇穴期待" help="現在は65点。S評価は1号艇だけでなく、5/6号艇にも強い買い材料が必要です。" value={settings.pre_strong_outer_score ?? 65} onChange={(v) => set("pre_strong_outer_score", v)} />
         <NumField label="分析に必要な類似レース数" help="似た条件の過去レースがこの件数未満なら『データ不足』として扱います。" value={settings.min_similar_races} onChange={(v) => set("min_similar_races", v)} />
         <NumField label="BUYを出すための最低データ数" help="分析サンプルがこの件数に届かない場合、期待値が高くてもBUYを抑制します。" value={settings.min_buy_sample ?? 100} onChange={(v) => set("min_buy_sample", v)} />
       </div>
