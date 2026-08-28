@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Settings as SettingsIcon, Loader2, Save, Check } from "lucide-react";
+import { Settings as SettingsIcon, Loader2, Save, Check, RefreshCw } from "lucide-react";
 import { getSettings, updateSettings } from "@/lib/boatService";
+import { base44 } from "@/api/base44Client";
 import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 import BackfillStatusBanner from "@/components/BackfillStatusBanner";
@@ -10,6 +11,8 @@ export default function Admin() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [aggregateRunning, setAggregateRunning] = useState(false);
+  const [aggregateResult, setAggregateResult] = useState(null);
 
   useEffect(() => {
     let m = true;
@@ -67,6 +70,27 @@ export default function Admin() {
     }
   };
 
+  const rebuildAggregates = async () => {
+    setAggregateRunning(true);
+    setAggregateResult(null);
+    try {
+      const res = await base44.functions.invoke("ensureAggregateVersion", {});
+      const data = res?.data || res;
+      if (data?.status === "current") {
+        setAggregateResult({ ok: true, text: `集計は最新です（v${data.stats_version}）` });
+      } else if (data?.status === "success" || data?.status === "done") {
+        const n = data?.result?.total_results;
+        setAggregateResult({ ok: true, text: `裏ういち再集計が完了しました（v${data.stats_version}${n ? ` / ${Number(n).toLocaleString()}レース` : ""}）` });
+      } else {
+        setAggregateResult({ ok: false, text: `再集計に失敗しました：${data?.message || data?.status || "不明なエラー"}` });
+      }
+    } catch (e) {
+      setAggregateResult({ ok: false, text: `再集計に失敗しました：${e?.message || e}` });
+    } finally {
+      setAggregateRunning(false);
+    }
+  };
+
   if (loading || !settings) return <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mr-2" />読み込み中…</div>;
 
   return (
@@ -78,10 +102,29 @@ export default function Admin() {
 
       <BackfillStatusBanner />
 
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <div className="font-bold text-sm">データ更新は自動です</div>
-        <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          レース結果の保存、過去データの補完、1号艇詳細の補完、集計更新はバックグラウンドで自動実行します。通常は手動操作不要です。
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-3">
+        <div>
+          <div className="font-bold text-sm">データ更新は自動です</div>
+          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            レース結果の保存、過去データの補完、1号艇詳細の補完、集計更新はバックグラウンドで自動実行します。通常は手動操作不要です。
+          </div>
+        </div>
+        <div className="border-t border-border pt-3">
+          <div className="text-sm font-bold">裏ういち初回集計</div>
+          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">「1-56-234」の過去実績を全公式レースから一度だけ集計します。v2になった後は毎日自動更新されます。</div>
+          <button
+            onClick={rebuildAggregates}
+            disabled={aggregateRunning}
+            className="mt-3 w-full py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-primary font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {aggregateRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {aggregateRunning ? "裏ういちを再集計中…" : "裏ういち過去データを再集計"}
+          </button>
+          {aggregateResult && (
+            <div className={cn("mt-2 text-xs font-semibold", aggregateResult.ok ? "text-emerald-600" : "text-red-600")}>
+              {aggregateResult.text}
+            </div>
+          )}
         </div>
       </div>
 
