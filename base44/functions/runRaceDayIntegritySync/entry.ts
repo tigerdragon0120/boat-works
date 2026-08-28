@@ -136,7 +136,25 @@ export default async function(req) {
       }
     }
 
-    const repairTargets = missing.slice(0, 30);
+    // 部分取得済みの場を最優先に修復する。
+    // 例: 唐津で1R/3Rだけ取れている場合、他場の未取得群より先に残りRを埋める。
+    const venueEntryCounts = new Map();
+    for (const r of allRaceRows) {
+      const jcd = String(r.venue_code).padStart(2, '0');
+      venueEntryCounts.set(jcd, (venueEntryCounts.get(jcd) || 0) + (entryCount.get(r.id) || 0));
+    }
+    const repairTargets = [...missing]
+      .sort((a, b) => {
+        const aj = String(a.venue_code).padStart(2, '0');
+        const bj = String(b.venue_code).padStart(2, '0');
+        const aPartial = (venueEntryCounts.get(aj) || 0) > 0 ? 1 : 0;
+        const bPartial = (venueEntryCounts.get(bj) || 0) > 0 ? 1 : 0;
+        if (aPartial !== bPartial) return bPartial - aPartial;
+        const ad = new Date(a.deadline || '2999-12-31').getTime();
+        const bd = new Date(b.deadline || '2999-12-31').getTime();
+        return ad - bd;
+      })
+      .slice(0, 36);
     await mapBatches(repairTargets, 6, async (r) => {
       try {
         const jcd = String(r.venue_code).padStart(2, '0');
