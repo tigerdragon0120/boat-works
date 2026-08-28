@@ -187,6 +187,25 @@
       "items": {
         "type": "object"
       }
+    },
+    "uichi_direction_index": {
+      "type": "number",
+      "description": "+100=\u672c\u7dda\u3046\u3044\u3061\u3001-100=\u88cf\u3046\u3044\u3061"
+    },
+    "uichi_direction_label": {
+      "type": "string"
+    },
+    "uichi_main_suitability": {
+      "type": "number"
+    },
+    "uichi_ura_suitability": {
+      "type": "number"
+    },
+    "uichi_direction_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "required": [
