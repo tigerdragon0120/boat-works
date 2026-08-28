@@ -24,8 +24,10 @@ const RACELIST_BASE = "https://boatrace.jp/owpc/pc/race";
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ status: "error", message: "認証が必要です" }, { status: 401 });
+    let user = null;
+    try { user = await base44.auth.me(); } catch {}
+    // 通常HTTP実行は管理者のみ。サービスロール/ワークフロー実行は許可する。
+    if (user && user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
 
     const body = await req.json().catch(() => ({}));
     const raceDate = body.race_date;
