@@ -55,7 +55,9 @@ export default async function(req) {
     );
     const existingMap = {};
     for (const a of existing) {
-      if (!force && a.settings_version === settingsVersion) existingMap[a.race_id] = a;
+      // force=trueでも既存レコードは更新対象として必ず保持する。
+      // これを外すと再分析のたびに同一race_id/stage/versionが重複作成される。
+      if (!existingMap[a.race_id]) existingMap[a.race_id] = a;
     }
 
     // 学習用原本。pre時点の特徴量を固定保存し、final/結果で後から追記する。
@@ -126,7 +128,7 @@ export default async function(req) {
       const batchRaces = targetRaces.slice(i, i + BATCH);
       await Promise.all(batchRaces.map(async (r) => {
         try {
-          if (!force && existingMap[r.id]) { skipped++; return; }
+          if (!force && existingMap[r.id] && existingMap[r.id].settings_version === settingsVersion) { skipped++; return; }
           const entries = entriesByRace[r.id] || [];
           if (entries.length < 6) {
             errors++;
