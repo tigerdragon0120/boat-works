@@ -278,6 +278,21 @@
     "motor_boat1_support": {
       "type": "number"
     },
+    "program_scenario_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "PLAYER_BREAK",
+        "MOTOR_BREAK",
+        "NEUTRAL"
+      ]
+    },
+    "program_scenario_label": {
+      "type": "string"
+    },
+    "program_scenario_penalty": {
+      "type": "number"
+    },
     "uichi_direction_reasons": {
       "type": "array",
       "items": {
