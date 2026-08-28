@@ -113,6 +113,7 @@ export default async function(req) {
       await base44.asServiceRole.entities.AggregationMeta.update(metaList[0].id, {
         last_aggregated_date: raceDate, status: "idle",
         total_races_processed: prevTotal + results.length,
+        stats_version: STATS_VERSION,
         updated_at: new Date().toISOString(),
       });
     }
