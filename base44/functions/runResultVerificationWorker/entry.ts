@@ -10,10 +10,11 @@ function jstDateStr(offsetDays = 0) {
 const resultKey = (x) => `${x.race_date}_${String(x.venue_code || '').padStart(2, '0')}_${Number(x.race_number || 0)}`;
 
 async function processDate(base44, raceDate, nowMs) {
-  const [races, alerts, results] = await Promise.all([
+  const [races, alerts, results, learningRows] = await Promise.all([
     base44.asServiceRole.entities.Race.filter({ race_date: raceDate, data_source: 'official' }, 'deadline', 300).catch(() => []),
     base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, 'race_number', 500).catch(() => []),
     base44.asServiceRole.entities.RaceResult.filter({ race_date: raceDate, data_source: 'official' }, 'race_number', 500).catch(() => []),
+    base44.asServiceRole.entities.UichiLearningSample.filter({ race_date: raceDate }, 'race_number', 500).catch(() => []),
   ]);
 
   const resultKeys = new Set(results.map(resultKey));
@@ -65,6 +66,32 @@ async function processDate(base44, raceDate, nowMs) {
     .map(a => ({ id: a.id, status: 'resolved' }));
   if (updates.length > 0) await base44.asServiceRole.entities.Alert.bulkUpdate(updates);
 
+  // 学習サンプルへ公式結果を結合。予想時点の特徴量は上書きしない。
+  const learningByKey = new Map(learningRows.map(x => [resultKey(x), x]));
+  const learningUpdates = [];
+  for (const result of refreshed) {
+    const sample = learningByKey.get(resultKey(result));
+    if (!sample || sample.result_attached_at) continue;
+    const r1 = Number(result.result_1 || 0), r2 = Number(result.result_2 || 0), r3 = Number(result.result_3 || 0);
+    const mainHit = r1 === 1 && [2,3,4].includes(r2) && [5,6].includes(r3);
+    const uraHit = r1 === 1 && [5,6].includes(r2) && [2,3,4].includes(r3);
+    const recommendedHit = sample.recommended_pattern === 'MAIN' ? mainHit : sample.recommended_pattern === 'URA' ? uraHit : false;
+    learningUpdates.push({
+      id: sample.id,
+      result_1: r1, result_2: r2, result_3: r3,
+      trifecta: result.trifecta,
+      payout_trifecta: result.payout_trifecta,
+      boat1_win: r1 === 1,
+      main_hit: mainHit,
+      ura_hit: uraHit,
+      recommended_hit: recommendedHit,
+      outcome_pattern: mainHit ? 'MAIN' : uraHit ? 'URA' : 'OTHER',
+      result_attached_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  if (learningUpdates.length > 0) await base44.asServiceRole.entities.UichiLearningSample.bulkUpdate(learningUpdates);
+
   return {
     race_date: raceDate,
     target_venues: venues.length,
@@ -72,6 +99,7 @@ async function processDate(base44, raceDate, nowMs) {
     fetch_errors: errors,
     fetched_races: saved,
     resolved_alerts: updates.length,
+    learning_samples_updated: learningUpdates.length,
     total_results: refreshed.length,
   };
 }
