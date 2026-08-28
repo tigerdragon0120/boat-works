@@ -279,7 +279,19 @@ export default function RaceDetail() {
         ) : analysis ? (
           <>
             <div className="text-xs text-muted-foreground tracking-wider mb-2">事前評価</div>
-            <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
+            {analysis.program_scenario_status === "PLAYER_BREAK" || analysis.program_scenario_status === "NEUTRAL" ? (
+              <div>
+                <span className="text-2xl font-bold px-5 py-2 rounded-xl border-2 inline-block border-rose-300 bg-rose-50 text-rose-700">見送り候補</span>
+                <div className="text-xs text-muted-foreground mt-1">元評価 {analysis.pre_grade || "—"}</div>
+              </div>
+            ) : analysis.program_scenario_status === "MOTOR_BREAK" ? (
+              <div>
+                <span className="text-2xl font-bold px-5 py-2 rounded-xl border-2 inline-block border-amber-300 bg-amber-50 text-amber-700">慎重</span>
+                <div className="text-xs text-muted-foreground mt-1">元評価 {analysis.pre_grade || "—"}</div>
+              </div>
+            ) : (
+              <span className={cn("text-3xl font-bold px-5 py-2 rounded-xl border-2 inline-block", GRADE_STYLE[analysis.pre_grade] || GRADE_STYLE.D)}>{analysis.pre_grade || "—"}</span>
+            )}
             {mins != null && (
               <div className="text-sm text-muted-foreground mt-2">
                 最終判定予定 <span className="text-foreground font-bold tabular-nums">{fmtTime(finalAt)}</span>
