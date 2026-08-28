@@ -12,7 +12,8 @@ export default async function(req) {
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Number(body.limit || 500), 1000);
 
-    const alerts = await base44.asServiceRole.entities.Alert.filter({}, '-race_date', limit).catch(() => []);
+    const rawAlerts = await base44.asServiceRole.entities.Alert.filter({}, '-race_date', limit).catch(() => []);
+    const alerts = rawAlerts.filter(a => a.status !== 'filtered_out');
     if (!alerts.length) {
       return Response.json({ status: 'success', summary: emptySummary(), rows: [] });
     }
