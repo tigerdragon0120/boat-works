@@ -20,6 +20,14 @@
       "type": "number",
       "description": "\u3046\u3044\u3061\u51fa\u73fe\u7387(0-1)"
     },
+    "ura_uichi_hits": {
+      "type": "number",
+      "description": "\u88cf\u3046\u3044\u3061 1-56-234 \u7684\u4e2d\u6570"
+    },
+    "ura_uichi_rate": {
+      "type": "number",
+      "description": "\u88cf\u3046\u3044\u3061 1-56-234 \u51fa\u73fe\u7387(0-1)"
+    },
     "boat1_win_rate": {
       "type": "number",
       "description": "1\u53f7\u82471\u7740\u7387(0-1)"
