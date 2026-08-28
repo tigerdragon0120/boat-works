@@ -95,6 +95,17 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
               <CardStat label="1号艇信頼" value={trustScore ?? "—"} accent={trustScore >= 75 ? "emerald" : trustScore >= 60 ? "sky" : "amber"} />
               <CardStat label="推奨" value={analysis.recommended_pattern === "MAIN" ? "本線" : analysis.recommended_pattern === "URA" ? "裏" : "中立"} sub={analysis.recommended_pattern === "MAIN" ? "1-234-56" : analysis.recommended_pattern === "URA" ? "1-56-234" : "見送り候補"} accent={analysis.recommended_pattern === "URA" ? "amber" : analysis.recommended_pattern === "MAIN" ? "sky" : "primary"} />
             </div>
+            {analysis.program_scenario_label && (
+              <div className={cn(
+                "rounded-xl border px-3 py-2 text-xs font-bold",
+                analysis.program_scenario_status === "VALID" ? "border-emerald-300 bg-emerald-50 text-emerald-700" :
+                analysis.program_scenario_status === "PLAYER_BREAK" ? "border-rose-300 bg-rose-50 text-rose-700" :
+                analysis.program_scenario_status === "MOTOR_BREAK" ? "border-amber-300 bg-amber-50 text-amber-700" :
+                "border-slate-300 bg-slate-50 text-slate-600"
+              )}>
+                {analysis.program_scenario_label}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2">
               <LayerStat
                 label="① 番組意図"
