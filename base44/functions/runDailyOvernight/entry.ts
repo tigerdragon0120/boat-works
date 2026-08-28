@@ -37,6 +37,7 @@ export default async function(req) {
     // これにより過去RaceResultは毎日増え続け、手動バックフィル不要になる。
     let yesterdayResultUpdate = null;
     let aggregateUpdate = null;
+    let learningMetricsUpdate = null;
     if (!skipAggregate) {
       const yStr = localDateStr(-1);
       try {
@@ -71,6 +72,15 @@ export default async function(req) {
         aggregateUpdate = aggRes?.data || aggRes;
       } catch (e) {
         aggregateUpdate = { status: "error", message: e.message };
+      }
+
+      // 前日結果が揃った後、学習条件別の的中率を再集計する。
+      // 100走未満は reliable=false のまま保持し、ロジックへ自動反映しない。
+      try {
+        const learnRes = await base44.asServiceRole.functions.invoke("refreshLearningMetrics", {});
+        learningMetricsUpdate = learnRes?.data || learnRes;
+      } catch (e) {
+        learningMetricsUpdate = { status: "error", message: e.message };
       }
     }
 
@@ -215,6 +225,7 @@ export default async function(req) {
       fetch_errors: fetchErrors,
       yesterday_result_update: yesterdayResultUpdate,
       aggregate_update: aggregateUpdate,
+      learning_metrics_update: learningMetricsUpdate,
       analysis: analysisResult,
       elapsed_ms: Date.now() - t0,
     });
