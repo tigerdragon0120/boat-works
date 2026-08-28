@@ -176,21 +176,22 @@ export default async function(req) {
     for (const e of finalEntries) finalCount.set(e.race_id, (finalCount.get(e.race_id) || 0) + 1);
     const completeIds = allRaceRows.filter(r => (finalCount.get(r.id) || 0) >= 6).map(r => r.id);
     const incompleteRows = allRaceRows.filter(r => (finalCount.get(r.id) || 0) < 6);
+    const initialSet = new Set(alreadyCompleteIds);
+    const newlyCompleteIds = completeIds.filter(id => !initialSet.has(id));
 
-    // 5) 完全なレースのみ分析。forceで旧v7/v8途中データも最新v8へ更新。
-    let analysis = null;
-    if (completeIds.length > 0) {
+    let analysis = initialAnalysis;
+    if (newlyCompleteIds.length > 0) {
       try {
         const res = await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
           race_date: raceDate,
           stage,
-          race_ids: completeIds,
+          race_ids: newlyCompleteIds,
           force: true,
         });
-        analysis = res?.data || res;
+        analysis = { initial: initialAnalysis, repaired: res?.data || res };
       } catch (e) {
-        analysis = { status: 'error', message: e?.message || '分析失敗' };
-        errors.push({ phase: 'analysis', message: e?.message || '分析失敗' });
+        analysis = { initial: initialAnalysis, repaired: { status: 'error', message: e?.message || '追加分析失敗' } };
+        errors.push({ phase: 'analysis_after_repair', message: e?.message || '追加分析失敗' });
       }
     }
 
@@ -208,7 +209,10 @@ export default async function(req) {
       race_created: raceCreated,
       race_updated: raceUpdated,
       missing_entries_before: missing.length,
+      repair_targets_this_run: repairTargets.length,
       repaired_entries: repaired,
+      already_complete_before_repair: alreadyCompleteIds.length,
+      newly_complete_after_repair: newlyCompleteIds.length,
       complete_races: completeIds.length,
       incomplete_races: incompleteRows.map(r => ({ venue_code: r.venue_code, venue_name: r.venue_name, race_number: r.race_number })),
       analysis,
