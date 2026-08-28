@@ -163,7 +163,6 @@ function CardStat({ label, value, sub, unit, accent }) {
 }
 
 function LayerStat({ label, value, score, sub }) {
-  const num = typeof value === "number" ? value : null;
   return (
     <div className="rounded-xl border border-border bg-background/40 px-3 py-2">
       <div className="text-[10px] font-semibold text-muted-foreground tracking-wider">{label}</div>
