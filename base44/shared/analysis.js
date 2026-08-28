@@ -6,7 +6,7 @@ import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v6";
+export const ANALYSIS_VERSION = "v7";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -85,53 +85,100 @@ function computeOuterBoatPotential(entries) {
 
 function computeUichiDirection(entries, trustScore, vrs, outerThirdScore, outerSecondScore) {
   const b = n => entries.find(e => e.boat_number === n);
-  const strength = (e) => {
+
+  const secondScore = (e) => {
     if (!e) return 0;
-    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 20;
-    const win = clamp((e.national_win_rate || 0) / 8, 0, 1) * 25;
-    const local = clamp((e.local_win_rate || 0) / 8, 0, 1) * 15;
-    const motor = clamp((e.motor_2rate || 0) / 50, 0, 1) * 20;
-    const st = clamp((0.23 - (e.avg_st || 0.23)) / 0.15, 0, 1) * 20;
-    return grade + win + local + motor + st;
+    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 10;
+    const nat2 = clamp((e.national_2rate || 0) / 60, 0, 1) * 28;
+    const loc2 = clamp((e.local_2rate || 0) / 60, 0, 1) * 18;
+    const motor2 = clamp((e.motor_2rate || 0) / 50, 0, 1) * 22;
+    const boat2 = clamp((e.boat_2rate || 0) / 50, 0, 1) * 10;
+    const st = clamp((0.23 - (e.avg_st || 0.23)) / 0.15, 0, 1) * 12;
+    return clamp(Math.round(grade + nat2 + loc2 + motor2 + boat2 + st), 0, 100);
   };
 
-  const mid = [b(2), b(3), b(4)].map(strength);
-  const midMax = Math.max(...mid, 0), midMin = Math.min(...mid, 0);
-  // 2〜4号艇の力量が近いほど、2着3着の入れ替わりが起きやすいとみなす。
-  const midCloseness = mid.length === 3 ? clamp(100 - (midMax - midMin) * 2.2, 0, 100) : 0;
+  const thirdScore = (e) => {
+    if (!e) return 0;
+    const grade = (gradeToScore(e.grade_class) ?? 0.5) * 8;
+    const nat3 = clamp((e.national_3rate || 0) / 70, 0, 1) * 30;
+    const loc3 = clamp((e.local_3rate || 0) / 70, 0, 1) * 18;
+    const motor3 = clamp((e.motor_3rate || 0) / 65, 0, 1) * 24;
+    const boat3 = clamp((e.boat_3rate || 0) / 65, 0, 1) * 10;
+    const st = clamp((0.24 - (e.avg_st || 0.24)) / 0.16, 0, 1) * 10;
+    return clamp(Math.round(grade + nat3 + loc3 + motor3 + boat3 + st), 0, 100);
+  };
 
-  const histMain = clamp((vrs?.uichi_rate || 0) * 400, 0, 100);
-  const histUra = clamp((vrs?.ura_uichi_rate || 0) * 650, 0, 100);
-  const historicalChaos = Math.round((histMain * 0.45 + histUra * 0.55));
+  const mids = [b(2), b(3), b(4)];
+  const outers = [b(5), b(6)];
+  const midSecondScores = mids.map(secondScore);
+  const midThirdScores = mids.map(thirdScore);
+  const outerSecondScores = outers.map(secondScore);
+  const outerThirdScores = outers.map(thirdScore);
 
-  // 1号艇が弱すぎるレースは「ういち系の波乱」とは別物なので、信頼75付近を最も高評価。
-  const axisFit = clamp(100 - Math.abs((trustScore || 0) - 78) * 2.7, 0, 100);
-  const outerPressure = Math.round((outerThirdScore * 0.45 + outerSecondScore * 0.55));
+  // 本線は234の誰かが2着＋56の誰かが3着。裏は逆。
+  // 1艇だけ突出するケースも拾うため max と平均を混ぜる。
+  const pool = arr => Math.round(Math.max(...arr, 0) * 0.62 + (arr.reduce((a,c)=>a+c,0) / Math.max(arr.length,1)) * 0.38);
+  const midSecond = pool(midSecondScores);
+  const midThird = pool(midThirdScores);
+  const outerSecond = Math.round(pool(outerSecondScores) * 0.70 + outerSecondScore * 0.30);
+  const outerThird = Math.round(pool(outerThirdScores) * 0.55 + outerThirdScore * 0.45);
+
+  // 場×Rの過去差はサンプル数で縮小。100走未満の極端値をそのまま信じない。
+  const n = vrs?.total_races || 0;
+  const shrink = clamp(n / (n + 100), 0, 0.75);
+  const histMainRate = vrs?.uichi_rate || 0;
+  const histUraRate = vrs?.ura_uichi_rate || 0;
+  const histDirection = clamp((histMainRate - histUraRate) * 500 * shrink, -30, 30);
+  const histStrength = clamp(((histMainRate + histUraRate) / 0.32) * 100, 0, 100);
+
+  // 1号艇は両パターン共通の軸。高すぎても低すぎても方向には効かせず、適性の土台に使う。
+  const axisGate = clamp(((trustScore || 0) - 50) / 35, 0, 1);
+  const mainStructure = clamp(midSecond * 0.52 + outerThird * 0.48, 0, 100);
+  const uraStructure = clamp(outerSecond * 0.56 + midThird * 0.44, 0, 100);
 
   const mainSuitability = Math.round(clamp(
-    (trustScore || 0) * 0.35 + midCloseness * 0.20 + outerThirdScore * 0.25 + histMain * 0.20,
-    0, 100
+    (35 + mainStructure * 0.65) * (0.72 + axisGate * 0.28) + Math.max(histDirection, 0), 0, 100
   ));
   const uraSuitability = Math.round(clamp(
-    (trustScore || 0) * 0.30 + outerSecondScore * 0.35 + midCloseness * 0.10 + histUra * 0.25,
+    (35 + uraStructure * 0.65) * (0.72 + axisGate * 0.28) + Math.max(-histDirection, 0), 0, 100
+  ));
+
+  const rawDiff = mainSuitability - uraSuitability;
+  const directionIndex = Math.round(clamp(rawDiff * 2.5, -100, 100));
+  const structureStrength = Math.max(mainSuitability, uraSuitability);
+  const confidence = Math.round(clamp(
+    Math.abs(directionIndex) * 0.55 + structureStrength * 0.25 + histStrength * 0.20,
     0, 100
   ));
 
-  const reasons = [];
-  if (midCloseness >= 70) reasons.push({ label: "2〜4号艇の力量が接近", score: midCloseness });
-  if (outerPressure >= 65) reasons.push({ label: "5・6号艇の上位進出圧力が高い", score: outerPressure });
-  if (historicalChaos >= 65) reasons.push({ label: "この場×Rは過去にういち系波乱が多い", score: historicalChaos });
-  if (axisFit >= 70) reasons.push({ label: "1号艇を残して相手荒れしやすい構成", score: axisFit });
-
-  // +100 = 本線ういち、-100 = 裏ういち。差が小さいほど中立。
-  const directionIndex = Math.round(clamp((mainSuitability - uraSuitability) * 2, -100, 100));
   let label = "中立";
-  if (directionIndex >= 60) label = "本線ういち濃厚";
+  if (directionIndex >= 60 && confidence >= 60) label = "本線ういち濃厚";
   else if (directionIndex >= 25) label = "本線ういち寄り";
-  else if (directionIndex <= -60) label = "裏ういち濃厚";
+  else if (directionIndex <= -60 && confidence >= 60) label = "裏ういち濃厚";
   else if (directionIndex <= -25) label = "裏ういち寄り";
 
-  return { direction_index: directionIndex, label, main_suitability: mainSuitability, ura_suitability: uraSuitability, reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,3) };
+  const reasons = [];
+  if (midSecond >= 65) reasons.push({ label: `2〜4号艇の2着力 ${midSecond}`, score: midSecond, side: "main" });
+  if (outerThird >= 65) reasons.push({ label: `5・6号艇の3着力 ${outerThird}`, score: outerThird, side: "main" });
+  if (outerSecond >= 65) reasons.push({ label: `5・6号艇の2着突っ込み力 ${outerSecond}`, score: outerSecond, side: "ura" });
+  if (midThird >= 65) reasons.push({ label: `2〜4号艇の3着残り ${midThird}`, score: midThird, side: "ura" });
+  if (Math.abs(histDirection) >= 8) reasons.push({ label: `場×R過去傾向 ${histDirection > 0 ? "本線" : "裏"}寄り`, score: Math.abs(histDirection) + 50, side: histDirection > 0 ? "main" : "ura" });
+
+  return {
+    direction_index: directionIndex,
+    label,
+    confidence,
+    main_suitability: mainSuitability,
+    ura_suitability: uraSuitability,
+    main_structure: Math.round(mainStructure),
+    ura_structure: Math.round(uraStructure),
+    mid_second_score: midSecond,
+    mid_third_score: midThird,
+    outer_second_score: outerSecond,
+    outer_third_score: outerThird,
+    historical_direction: Math.round(histDirection),
+    reasons: reasons.sort((a,b)=>b.score-a.score).slice(0,5),
+  };
 }
 
 function reliabilityGradeFromSample(n, settings) {
