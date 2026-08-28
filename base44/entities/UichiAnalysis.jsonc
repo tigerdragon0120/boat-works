@@ -109,6 +109,20 @@
       "type": "number",
       "description": "\u4fe1\u983c\u30b9\u30b3\u30a2\u52a0\u91cd\u51fa\u73fe\u7387"
     },
+    "recommended_pattern": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "NEUTRAL"
+      ]
+    },
+    "recommended_rate": {
+      "type": "number"
+    },
+    "recommended_structure": {
+      "type": "number"
+    },
     "pre_grade": {
       "type": "string",
       "enum": [
