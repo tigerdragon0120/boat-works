@@ -58,6 +58,13 @@ export default async function(req) {
       if (!force && a.settings_version === settingsVersion) existingMap[a.race_id] = a;
     }
 
+    // 学習用原本。pre時点の特徴量を固定保存し、final/結果で後から追記する。
+    const learningRows = await base44.asServiceRole.entities.UichiLearningSample.filter(
+      { race_date }, "race_number", 500
+    ).catch(() => []);
+    const learningByRace = {};
+    for (const row of learningRows) learningByRace[row.race_id] = row;
+
     // === 集計データ一括取得（RaceResult不使用・固定クエリ数） ===
     // 1. VenueRaceStats全件
     const allVRS = await base44.asServiceRole.entities.VenueRaceStats.list("venue_code", 500);
@@ -179,6 +186,55 @@ export default async function(req) {
           } else {
             await base44.asServiceRole.entities.UichiAnalysis.create(payload);
           }
+
+          // 学習用スナップショットはpreで元データまで固定。finalではEV/判定だけ追記する。
+          const currentLearning = learningByRace[r.id];
+          if (stage === "pre") {
+            const learningPayload = {
+              race_id: r.id, race_date: r.race_date, venue_code: r.venue_code, venue_name: r.venue_name,
+              race_number: r.race_number, analysis_version: ANALYSIS_VERSION,
+              captured_at: now, updated_at: now,
+              program_hypothesis: a.program_hypothesis,
+              program_main_intent: a.program_main_intent,
+              program_ura_intent: a.program_ura_intent,
+              program_intent_confidence: a.program_intent_confidence,
+              program_axis_placement: a.program_axis_placement,
+              racer_escape_execution: a.racer_escape_execution,
+              racer_main_execution: a.racer_main_execution,
+              racer_ura_execution: a.racer_ura_execution,
+              motor_main_support: a.motor_main_support,
+              motor_ura_support: a.motor_ura_support,
+              motor_boat1_support: a.motor_boat1_support,
+              program_scenario_status: a.program_scenario_status,
+              direction_index: a.uichi_direction_index,
+              direction_confidence: a.uichi_direction_confidence,
+              recommended_pattern: a.recommended_pattern,
+              recommended_rate: a.recommended_rate,
+              recommended_structure: a.recommended_structure,
+              pre_grade: a.pre_grade,
+              boat1_trust_score: a.boat1_trust_score,
+              condition_match_score: a.condition_match_score,
+              entries_snapshot: snapshotEntries(entries),
+              outcome_pattern: currentLearning?.outcome_pattern || "PENDING",
+            };
+            if (currentLearning) await base44.asServiceRole.entities.UichiLearningSample.update(currentLearning.id, learningPayload);
+            else {
+              const createdLearning = await base44.asServiceRole.entities.UichiLearningSample.create(learningPayload);
+              learningByRace[r.id] = createdLearning;
+            }
+          } else if (currentLearning) {
+            await base44.asServiceRole.entities.UichiLearningSample.update(currentLearning.id, {
+              updated_at: now,
+              final_judgment: a.judgment,
+              final_expected_value: a.expected_value,
+              final_synthetic_odds: a.synthetic_odds,
+              recommended_pattern: a.recommended_pattern,
+              recommended_rate: a.recommended_rate,
+              recommended_structure: a.recommended_structure,
+              direction_index: a.uichi_direction_index,
+              direction_confidence: a.uichi_direction_confidence,
+            });
+          }
           analyzed++;
 
           if (shouldGenerateAlert(a, settings, stage)) {
@@ -214,6 +270,31 @@ export default async function(req) {
   } catch (error) {
     return Response.json({ status: "error", message: error.message }, { status: 500 });
   }
+}
+
+function snapshotEntries(entries) {
+  return [...entries].sort((a,b) => Number(a.boat_number) - Number(b.boat_number)).map(e => ({
+    boat_number: e.boat_number,
+    registration_number: e.registration_number,
+    racer_name: e.racer_name,
+    grade_class: e.grade_class,
+    national_win_rate: e.national_win_rate,
+    national_2rate: e.national_2rate,
+    national_3rate: e.national_3rate,
+    local_win_rate: e.local_win_rate,
+    local_2rate: e.local_2rate,
+    local_3rate: e.local_3rate,
+    c1_win_rate: e.c1_win_rate,
+    c1_2rate: e.c1_2rate,
+    c1_3rate: e.c1_3rate,
+    avg_st: e.avg_st,
+    f_count: e.f_count,
+    motor_number: e.motor_number,
+    motor_2rate: e.motor_2rate,
+    motor_3rate: e.motor_3rate,
+    boat_2rate: e.boat_2rate,
+    boat_3rate: e.boat_3rate,
+  }));
 }
 
 async function ensureAlert(base44, race, analysis, stage, settings, alertByRace) {
