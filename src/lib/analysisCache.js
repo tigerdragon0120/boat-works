@@ -2,7 +2,7 @@
 // Home/Alerts/RaceDetailは保存済みUichiAnalysisを読むだけ（再分析しない）
 import { base44 } from "@/api/base44Client";
 
-const ANALYSIS_VERSION = "v3";
+const ANALYSIS_VERSION = "v6";
 
 // 指定日のUichiAnalysisを一括取得（race_id→analysis のマップ）
 // stage指定時はそのstageのみ。
