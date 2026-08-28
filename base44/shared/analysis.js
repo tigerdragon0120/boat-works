@@ -436,13 +436,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const venueBoat1WinRate = vrs?.boat1_win_rate ?? (vs?.c1_win_rate ? vs.c1_win_rate / 100 : 0.5);
   const racerBoat1WinRate = rvst?.boat1_win_rate ?? rst?.boat1_win_rate ?? venueBoat1WinRate;
 
-  let appearanceRate;
-  if (venueBoat1WinRate > 0.05 && (rvst || rst)) {
-    appearanceRate = racerBoat1WinRate * (baseUichiRate / venueBoat1WinRate);
-  } else {
-    appearanceRate = baseUichiRate;
-  }
-  appearanceRate = clamp(appearanceRate, 0, 0.95);
+  // まず場×Rの実績を基準値にする。最終的な出現率は番組構成を計算した後で校正する。
+  let appearanceRate = baseUichiRate;
 
   // 裏ういち 1-56-234。過去の場×R出現率を土台に、1号艇信頼と5/6号艇の
   // 『2着まで突っ込める力』で補正する。集計未構築時は0として誤表示しない。
@@ -477,11 +472,24 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     b5 ? Math.round(clamp(((b5.national_2rate || 0) * 0.35 + (b5.local_2rate || 0) * 0.25 + (b5.motor_2rate || 0) * 0.25 + clamp((0.22 - (b5.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0,
     b6 ? Math.round(clamp(((b6.national_2rate || 0) * 0.35 + (b6.local_2rate || 0) * 0.25 + (b6.motor_2rate || 0) * 0.25 + clamp((0.22 - (b6.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0
   );
-  const uraUichiRate = baseUraRate > 0
-    ? clamp(baseUraRate * (0.65 + (trust?.score || 0) / 400 + outerSecondScore / 500), 0, 0.95)
-    : 0;
-
   const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs, outer?.score || 0, outerSecondScore);
+
+  // v7: 出現率の暴走を抑える校正。
+  // 場×Rの実測を土台に、1号艇の相対信頼と番組構成を緩やかに掛ける。
+  // 以前のように venueBoat1WinRate が小さい時に95%まで跳ねる比率補正は使わない。
+  const racerEscapeAdj = venueBoat1WinRate > 0.05
+    ? clamp(racerBoat1WinRate / venueBoat1WinRate, 0.75, 1.25)
+    : 1;
+  const trustAdj = clamp(0.88 + (trust?.score || 0) / 650, 0.88, 1.04);
+  const mainStructureAdj = clamp(0.78 + uichiDirection.main_structure / 300, 0.78, 1.12);
+  const uraStructureAdj = clamp(0.78 + uichiDirection.ura_structure / 300, 0.78, 1.12);
+
+  appearanceRate = baseUichiRate > 0
+    ? clamp(baseUichiRate * racerEscapeAdj * trustAdj * mainStructureAdj, 0, 0.45)
+    : 0;
+  const uraUichiRate = baseUraRate > 0
+    ? clamp(baseUraRate * racerEscapeAdj * trustAdj * uraStructureAdj, 0, 0.45)
+    : 0;
 
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
