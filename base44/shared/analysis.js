@@ -6,7 +6,7 @@ import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v3";
+export const ANALYSIS_VERSION = "v4";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -23,6 +23,64 @@ function gradeToScore(grade) {
   if (g === "B1") return 0.65;
   if (g === "B2") return 0.45;
   return 0.5;
+}
+
+// 5・6号艇の「3着へ食い込む穴期待度」。勝つ強さより、3着を拾う材料を重視する。
+function computeOuterBoatPotential(entries) {
+  const scoreOne = (e) => {
+    if (!e) return { score: 0, reasons: [] };
+    let score = 0;
+    const reasons = [];
+
+    const gs = gradeToScore(e.grade_class);
+    if (gs != null) {
+      const p = Math.round(gs * 15);
+      score += p;
+      if (p >= 10) reasons.push({ label: `級別 ${e.grade_class}`, strength: p });
+    }
+
+    if (e.national_3rate != null) {
+      const p = Math.round(clamp(e.national_3rate / 65, 0, 1) * 25);
+      score += p;
+      if (e.national_3rate >= 45) reasons.push({ label: `全国3連率 ${fmtNum(e.national_3rate, 1)}%`, strength: p });
+    }
+    if (e.local_3rate != null) {
+      const p = Math.round(clamp(e.local_3rate / 65, 0, 1) * 20);
+      score += p;
+      if (e.local_3rate >= 45) reasons.push({ label: `当地3連率 ${fmtNum(e.local_3rate, 1)}%`, strength: p });
+    }
+    if (e.motor_3rate != null) {
+      const p = Math.round(clamp(e.motor_3rate / 60, 0, 1) * 20);
+      score += p;
+      if (e.motor_3rate >= 40) reasons.push({ label: `モーター3連率 ${fmtNum(e.motor_3rate, 1)}%`, strength: p });
+    }
+    if (e.motor_2rate != null) {
+      const p = Math.round(clamp(e.motor_2rate / 45, 0, 1) * 10);
+      score += p;
+      if (e.motor_2rate >= 35) reasons.push({ label: `モーター2連率 ${fmtNum(e.motor_2rate, 1)}%`, strength: p });
+    }
+    if (e.avg_st != null && e.avg_st > 0) {
+      const p = Math.round(clamp((0.23 - e.avg_st) / 0.15, 0, 1) * 10);
+      score += p;
+      if (e.avg_st <= 0.16) reasons.push({ label: `平均ST ${fmtNum(e.avg_st, 2)}`, strength: p });
+    }
+
+    return { score: clamp(Math.round(score), 0, 100), reasons: reasons.sort((a, b) => b.strength - a.strength).slice(0, 4) };
+  };
+
+  const b5 = entries.find(e => e.boat_number === 5);
+  const b6 = entries.find(e => e.boat_number === 6);
+  const s5 = scoreOne(b5);
+  const s6 = scoreOne(b6);
+  const best = s6.score > s5.score ? { boat: b6, ...s6 } : { boat: b5, ...s5 };
+  return {
+    score: best.score,
+    boat_number: best.boat?.boat_number ?? null,
+    racer_name: best.boat?.racer_name ?? null,
+    reasons: best.reasons,
+    boat5_score: s5.score,
+    boat6_score: s6.score,
+  };
 }
 
 function reliabilityGradeFromSample(n, settings) {
@@ -308,8 +366,9 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     if (wList) weatherStat = wList.find(w => w.weather === race.weather && w.wind_speed_group === wsg);
   }
 
-  // 信頼スコア
+  // 1号艇信頼スコア + 5/6号艇の穴期待度
   const trust = computeTrustScoreFromAggregates(boat1, rvst, rst, settings, race.venue_name, weatherStat);
+  const outer = computeOuterBoatPotential(entries);
 
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
@@ -331,14 +390,23 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   if (stage === "pre") {
     const ar = appearanceRate * 100;
     const ts = trust?.score || 0;
-    const preThr = settings?.pre_alert_rate || 15;
-    if (ar >= preThr && ts >= 75) preGrade = "S";
-    else if (ar >= preThr * 0.85 && ts >= 65) preGrade = "A";
-    else if (ar >= preThr * 0.7) preGrade = "B";
+    const cm = trust?.condition_match?.score || 0;
+    const os = outer?.score || 0;
+    const preThr = settings?.pre_alert_rate ?? 20;
+    const minTrust = settings?.pre_min_boat1_trust ?? 75;
+    const minOuter = settings?.pre_min_outer_score ?? 55;
+    const strongOuter = settings?.pre_strong_outer_score ?? 65;
+
+    // ういち買い専用の厳選条件。
+    // 出現率だけではアラートにしない。1号艇の逃げ信頼 + 5/6号艇の3着穴期待を必須にする。
+    if (ar >= preThr + 2 && ts >= Math.max(minTrust + 5, 80) && os >= strongOuter && cm >= 60) preGrade = "S";
+    else if (ar >= preThr && ts >= minTrust && os >= minOuter && cm >= 40) preGrade = "A";
+    else if (ar >= preThr) preGrade = "B"; // 出現率は高いが、ういち向き条件が足りないので通知しない
     else preGrade = "C";
   }
 
-  const weightedProbability = appearanceRate * (0.5 + (trust?.score || 0) / 200);
+  // ランキングも「出現率 + 1号艇 + 5/6号艇」の3要素で並べる。
+  const weightedProbability = appearanceRate * (0.45 + (trust?.score || 0) / 300 + (outer?.score || 0) / 600);
 
   return {
     race_id: race.id, stage,
@@ -362,6 +430,10 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     reasons: trust?.reasons || [],
     concerns: trust?.concerns || [],
     condition_matches: trust?.condition_match?.conditions || [],
+    outer_boat_score: outer?.score ?? 0,
+    outer_boat_number: outer?.boat_number ?? null,
+    outer_boat_name: outer?.racer_name ?? null,
+    outer_boat_reasons: outer?.reasons || [],
     boat1,
     odds_values: oddsValues,
     analysis_version: ANALYSIS_VERSION,
