@@ -2,7 +2,7 @@
 // RaceResult全件を読まず、RacerStats/RacerVenueStats/VenueRaceStats等の集計済みEntityから分析する。
 // データ量が増えても分析時間は増えない。
 
-import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.js";
+import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.js";
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
@@ -501,13 +501,15 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const similarCount = vrs?.total_races ?? 0;
   const uichiHits = vrs?.uichi_hits ?? 0;
 
-  // オッズ + EV
-  let synthOdds = 0, oddsValues = [];
+  // オッズ。最終EVは本線/裏の推奨方向が決まってから計算する。
+  let synthOdds = 0, oddsValues = [], mainSynthOdds = 0, uraSynthOdds = 0;
   if (odds && stage !== "pre") {
-    oddsValues = UICHI_COMBOS.map(c => odds["odds_" + c.replace(/-/g, "_")]);
-    synthOdds = syntheticOdds(oddsValues);
+    const allOdds = odds.all_trifecta_odds || {};
+    const mainValues = UICHI_COMBOS.map(c => odds["odds_" + c.replace(/-/g, "_")] ?? allOdds[c]);
+    const uraValues = URA_UICHI_COMBOS.map(c => allOdds[c]);
+    mainSynthOdds = syntheticOdds(mainValues);
+    uraSynthOdds = syntheticOdds(uraValues);
   }
-  const ev = stage === "pre" ? null : expectedValue(appearanceRate, synthOdds);
   const minOk = similarCount >= (settings?.min_similar_races || 30);
 
   // 天候一致stat検索
@@ -551,23 +553,33 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const sufficiency = totalPool > 0 ? 1 : 0;
   const reliability = reliabilityGradeFromSample(similarCount, settings);
 
-  let judgment = "PENDING";
-  if (stage === "pre") {
-    judgment = "PENDING";
-  } else if (minOk) {
-    judgment = judgeWithSample(ev, similarCount, settings);
-  } else {
-    // final/day判定時に必要サンプル数へ届かない場合でもPENDINGを残さない。
-    // データ不足のため安全側にSKIP確定とする。
-    judgment = "SKIP";
-  }
-
   // 方向指数から狙う型を決める。中立は無理に買い方向を付けない。
   let recommendedPattern = "NEUTRAL";
   if (uichiDirection.direction_index >= 20) recommendedPattern = "MAIN";
   else if (uichiDirection.direction_index <= -20) recommendedPattern = "URA";
   const recommendedRate = recommendedPattern === "URA" ? uraUichiRate : recommendedPattern === "MAIN" ? appearanceRate : Math.max(appearanceRate, uraUichiRate);
   const recommendedStructure = recommendedPattern === "URA" ? uichiDirection.ura_structure : recommendedPattern === "MAIN" ? uichiDirection.main_structure : Math.max(uichiDirection.main_structure, uichiDirection.ura_structure);
+
+  // v8: 最終判定も推奨方向の6点オッズを使う。裏推奨時に本線オッズでEVを出さない。
+  if (stage !== "pre") {
+    if (recommendedPattern === "URA") {
+      synthOdds = uraSynthOdds;
+      oddsValues = URA_UICHI_COMBOS.map(c => odds?.all_trifecta_odds?.[c]);
+    } else if (recommendedPattern === "MAIN") {
+      synthOdds = mainSynthOdds;
+      oddsValues = UICHI_COMBOS.map(c => odds?.["odds_" + c.replace(/-/g, "_")] ?? odds?.all_trifecta_odds?.[c]);
+    } else {
+      synthOdds = 0;
+      oddsValues = [];
+    }
+  }
+  const ev = stage === "pre" || recommendedPattern === "NEUTRAL" ? null : expectedValue(recommendedRate, synthOdds);
+
+  let judgment = "PENDING";
+  if (stage === "pre") judgment = "PENDING";
+  else if (recommendedPattern === "NEUTRAL") judgment = "SKIP";
+  else if (minOk) judgment = judgeWithSample(ev, similarCount, settings);
+  else judgment = "SKIP";
 
   let preGrade = null;
   if (stage === "pre") {
