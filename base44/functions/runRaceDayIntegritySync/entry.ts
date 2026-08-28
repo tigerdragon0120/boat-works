@@ -117,6 +117,8 @@ export default async function(req) {
     const alreadyCompleteIds = allRaceRows.filter(r => (entryCount.get(r.id) || 0) >= 6).map(r => r.id);
     const missing = allRaceRows.filter(r => (entryCount.get(r.id) || 0) < 6);
     let repaired = 0;
+    let refreshedChanged = 0;
+    const changedIds:any[] = [];
     let initialAnalysis = null;
 
     if (alreadyCompleteIds.length > 0) {
@@ -168,7 +170,65 @@ export default async function(req) {
       }
     }, 220);
 
-    // 4) 修復後に再度完全性を数える。
+    // 4) すでに6艇揃っているレースも定期的に再取得し、出走表更新を検知する。
+    // 登録番号・級別・ST・モーター/艇成績のいずれかが変われば、そのレースだけ再保存→再分析する。
+    const entryRowsByRace = new Map();
+    for (const e of entries) {
+      if (!entryRowsByRace.has(e.race_id)) entryRowsByRace.set(e.race_id, []);
+      entryRowsByRace.get(e.race_id).push(e);
+    }
+    const signature = (rows:any[]) => [...(rows || [])]
+      .sort((a,b) => Number(a.boat_number) - Number(b.boat_number))
+      .map(e => [e.boat_number,e.registration_number,e.grade_class,e.avg_st,e.f_count,e.motor_number,e.motor_2rate,e.motor_3rate,e.boat_number_id,e.boat_2rate,e.boat_3rate].join(':'))
+      .join('|');
+
+    const refreshTargets = allRaceRows
+      .filter(r => (entryCount.get(r.id) || 0) >= 6)
+      .sort((a,b) => new Date(a.deadline || '2999-12-31').getTime() - new Date(b.deadline || '2999-12-31').getTime())
+      .slice(0, 36);
+
+    await mapBatches(refreshTargets, 6, async (r) => {
+      try {
+        const jcd = String(r.venue_code).padStart(2, '0');
+        const url = `${BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
+        const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 9000, 1);
+        const html = await res.text();
+        const parsed = parseRacelist(html, Number(r.race_number), raceDate);
+        if (!parsed.entries || parsed.entries.length < 6) return null;
+        const oldSig = signature(entryRowsByRace.get(r.id) || []);
+        const newSig = signature(parsed.entries);
+        if (oldSig === newSig) return null;
+
+        await base44.asServiceRole.entities.Race.update(r.id, {
+          race_name: parsed.raceName,
+          deadline: parsed.deadline || r.deadline,
+          entries_fetched_at: new Date().toISOString(),
+          last_updated: new Date().toISOString(),
+        });
+        await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.id });
+        await base44.asServiceRole.entities.RaceEntry.bulkCreate(parsed.entries.map(e => ({
+          ...e, race_id: r.id, race_date: raceDate, venue_code: jcd, race_number: r.race_number,
+        })));
+        refreshedChanged++;
+        changedIds.push(r.id);
+        return r.id;
+      } catch (e) {
+        errors.push({ phase: 'entry_refresh', jcd: r.venue_code, race_number: r.race_number, message: e?.message || '更新確認失敗' });
+        return null;
+      }
+    }, 180);
+
+    if (changedIds.length > 0) {
+      try {
+        await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
+          race_date: raceDate, stage, race_ids: changedIds, force: true,
+        });
+      } catch (e) {
+        errors.push({ phase: 'changed_entry_analysis', message: e?.message || '更新レース再分析失敗' });
+      }
+    }
+
+    // 5) 修復後に再度完全性を数える。
     const finalEntries = await base44.asServiceRole.entities.RaceEntry.filter(
       { race_date: raceDate }, 'boat_number', 5000
     ).catch(() => []);
@@ -211,6 +271,8 @@ export default async function(req) {
       missing_entries_before: missing.length,
       repair_targets_this_run: repairTargets.length,
       repaired_entries: repaired,
+      refresh_checked: refreshTargets.length,
+      refreshed_changed: refreshedChanged,
       already_complete_before_repair: alreadyCompleteIds.length,
       newly_complete_after_repair: newlyCompleteIds.length,
       complete_races: completeIds.length,
