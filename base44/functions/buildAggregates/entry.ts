@@ -10,8 +10,8 @@ export default async function(req) {
   try {
     base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (!user) return Response.json({ status: "error", message: "認証が必要です" }, { status: 401 });
-    if (user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
+    // 管理画面からの直接実行はadminのみ。Workflow/サービス実行（user=null）は許可する。
+    if (user && user.role !== "admin") return Response.json({ status: "error", message: "管理者権限が必要です" }, { status: 403 });
 
     const t0 = Date.now();
 
