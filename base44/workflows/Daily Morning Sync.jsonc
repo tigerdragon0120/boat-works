@@ -1,13 +1,13 @@
 {
   "name": "Daily Morning Sync",
-  "description": "\u6bce\u671d5\u6642\u304b\u308910\u6642\u307e\u3067\u6bce\u6642\u300124\u5834\u3092\u76f4\u63a5\u78ba\u8a8d\u3057\u3001\u672c\u65e5\u306e\u5168\u958b\u50ac\u5834\u30fb\u5168Race\u30fb6\u8247\u51fa\u8d70\u8868\u3092\u81ea\u5df1\u4fee\u5fa9\u3057\u3066v8 pre\u5206\u6790\u307e\u3067\u4fdd\u5b58\u3059\u308b\u30021\u5834\u306e\u5931\u6557\u3067\u5168\u4f53\u3092\u6b62\u3081\u306a\u3044\u3002",
+  "description": "\u6bce\u65e50\u6642\u304b\u308910\u664230\u5206\u307e\u306730\u5206\u3054\u3068\u306b\u5f53\u65e5\u306e\u516824\u5834\u3092\u78ba\u8a8d\u3057\u3001\u51fa\u8d70\u8868\u306e\u65b0\u898f\u516c\u958b\u30fb\u66f4\u65b0\u3092\u691c\u77e5\u3057\u305f\u30ec\u30fc\u30b9\u304b\u3089\u9806\u6b21v8\u5206\u6790\u3059\u308b\u3002\u6b20\u640d\u30ec\u30fc\u30b9\u306f\u81ea\u5df1\u4fee\u5fa9\u3059\u308b\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "0 5-10 * * *",
+      "cron_expression": "*/30 0-10 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
@@ -22,7 +22,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "daily_morning_sync",
-      "version": "1.0",
+      "version": "2.0",
       "namespace": "base44"
     },
     "do": [
@@ -38,8 +38,8 @@
           },
           "then": "end",
           "x-base44": {
-            "title": "\u672c\u65e524\u5834\u81ea\u5df1\u4fee\u5fa9\u540c\u671f",
-            "description": "24\u5834\u76f4\u63a5\u78ba\u8a8d\u2192\u5168Race\u767b\u9332\u21926\u8247\u6b20\u640d\u3060\u3051\u518d\u53d6\u5f97\u2192v8 pre\u5206\u6790"
+            "title": "\u5f53\u65e5\u51fa\u8d70\u8868\u76e3\u8996\u30fb\u81ea\u5df1\u4fee\u5fa9",
+            "description": "30\u5206\u3054\u3068\u306b\u65b0\u898f\u516c\u958b/\u66f4\u65b0\u691c\u77e5\u2192\u6b20\u640d\u4fee\u5fa9\u2192\u8a72\u5f53\u30ec\u30fc\u30b9\u3092\u5373v8\u5206\u6790"
           }
         }
       }
