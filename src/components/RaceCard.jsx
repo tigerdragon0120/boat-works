@@ -162,6 +162,20 @@ function CardStat({ label, value, sub, unit, accent }) {
   );
 }
 
+function LayerStat({ label, value, score, sub }) {
+  const num = typeof value === "number" ? value : null;
+  return (
+    <div className="rounded-xl border border-border bg-background/40 px-3 py-2">
+      <div className="text-[10px] font-semibold text-muted-foreground tracking-wider">{label}</div>
+      <div className="flex items-baseline gap-1 mt-0.5">
+        <span className="text-base font-bold tabular-nums">{value ?? "—"}</span>
+        {score != null && <span className="text-[10px] text-muted-foreground">信頼{score}</span>}
+      </div>
+      {sub && <div className="text-[10px] text-muted-foreground truncate">{sub}</div>}
+    </div>
+  );
+}
+
 function RacerBlock({ racerName, regNum, gradeClass, trustScore, reasons, concerns, onPhotoClick }) {
   return (
     <div className="flex items-center gap-3 rounded-xl bg-background/50 px-3 py-2.5">
