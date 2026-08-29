@@ -302,6 +302,49 @@
     "program_scenario_penalty": {
       "type": "number"
     },
+    "exhibition_gate_status": {
+      "type": "string",
+      "enum": [
+        "PRE",
+        "MISSING",
+        "FAIL",
+        "CAUTION",
+        "PASS"
+      ]
+    },
+    "final_escape_score": {
+      "type": "number"
+    },
+    "exhibition_score": {
+      "type": "number"
+    },
+    "weather_escape_score": {
+      "type": "number"
+    },
+    "exhibition_rank": {
+      "type": "number"
+    },
+    "exhibition_time": {
+      "type": "number"
+    },
+    "exhibition_st": {
+      "type": "number"
+    },
+    "exhibition_st_raw": {
+      "type": "string"
+    },
+    "exhibition_entry_course": {
+      "type": "number"
+    },
+    "exhibition_ready": {
+      "type": "boolean"
+    },
+    "exhibition_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
     "uichi_direction_reasons": {
       "type": "array",
       "items": {
