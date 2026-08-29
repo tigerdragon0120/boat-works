@@ -113,10 +113,21 @@ export default async function(req) {
 
     const stats = { venueRaceStats, racerStats, racerVenueStats, racerWeatherStats, venueStats, totalRaces };
 
-    // 既存Alert一括取得
-    const existingAlerts = await base44.asServiceRole.entities.Alert.filter({ race_date, status: "active" }, "race_id", 500);
+    // 既存Alert一括取得。
+    // resolved/filtered_outも含めてrace_id単位で再利用し、再分析のたびに重複Alertを作らない。
+    const existingAlerts = await base44.asServiceRole.entities.Alert.filter({ race_date }, "-updated_date", 500);
     const alertByRace = {};
-    for (const al of existingAlerts) alertByRace[al.race_id] = al;
+    for (const al of existingAlerts) {
+      const cur = alertByRace[al.race_id];
+      if (!cur) {
+        alertByRace[al.race_id] = al;
+        continue;
+      }
+      const curFinal = cur.final_judgment && cur.final_judgment !== "PENDING";
+      const alFinal = al.final_judgment && al.final_judgment !== "PENDING";
+      // final確定済みAlertを優先。両方同条件ならupdated_dateが新しい方（取得順の先頭）を維持。
+      if (alFinal && !curFinal) alertByRace[al.race_id] = al;
+    }
 
     // === 分析実行（8レース並列バッチ） ===
     let analyzed = 0, skipped = 0, errors = 0, alertCandidates = 0;
