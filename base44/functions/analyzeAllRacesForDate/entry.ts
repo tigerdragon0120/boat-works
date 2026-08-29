@@ -149,6 +149,8 @@ export default async function(req) {
             reliability: a.reliability, data_sufficiency: a.data_sufficiency,
             boat1_trust_score: a.boat1_trust_score, condition_match_score: a.condition_match_score,
             weighted_probability: a.weighted_probability,
+            has_scratch: a.has_scratch === true,
+            scratched_boats: a.scratched_boats || [],
             recommended_pattern: a.recommended_pattern, recommended_rate: a.recommended_rate,
             recommended_structure: a.recommended_structure, pre_grade: a.pre_grade,
             analysis_version: ANALYSIS_VERSION, settings_version: settingsVersion,
