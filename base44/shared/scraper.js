@@ -177,6 +177,92 @@ export function parseRacelist(html, raceNumber, raceDate) {
   return { deadline, raceName, entries };
 }
 
+// 直前情報パース（展示タイム・スタート展示・気象・欠場）
+export function parseBeforeInfo(html) {
+  const entries = [];
+  const tbodyRe = /<tbody\s+class="[^"]*is-fs12[^"]*">([\s\S]*?)<\/tbody>/g;
+  let bm;
+  while ((bm = tbodyRe.exec(html)) !== null) {
+    const tbody = bm[1];
+    const tds = [];
+    const tdRe = /<td([^>]*)rowspan="4"[^>]*>([\s\S]*?)<\/td>/g;
+    let tm;
+    while ((tm = tdRe.exec(tbody)) !== null) tds.push({ attrs: tm[1], content: tm[2] });
+    const i = tds.findIndex(t => t.attrs.includes("is-boatColor") && t.attrs.includes("is-fs14"));
+    if (i < 0 || i + 4 >= tds.length) continue;
+    const boat = toNum(tds[i].content);
+    const exhibitionTime = toFloat(tds[i + 3]?.content);
+    const tilt = toFloat(tds[i + 4]?.content);
+    if (boat) entries.push({ boat_number: boat, exhibition_time: exhibitionTime, tilt });
+  }
+
+  // 展示順位（タイムの速い順。同タイムは同順位扱いではなく枠順で安定化）
+  const ranked = entries
+    .filter(e => e.exhibition_time != null)
+    .slice()
+    .sort((a,b) => a.exhibition_time - b.exhibition_time || a.boat_number - b.boat_number);
+  ranked.forEach((e, idx) => { e.exhibition_rank = idx + 1; });
+  const rankMap = Object.fromEntries(ranked.map(e => [e.boat_number, e.exhibition_rank]));
+
+  const startSectionStart = html.indexOf("スタート展示");
+  const weatherSectionStart = html.indexOf("水面気象情報");
+  const startSection = startSectionStart >= 0
+    ? html.substring(startSectionStart, weatherSectionStart > startSectionStart ? weatherSectionStart : startSectionStart + 12000)
+    : "";
+  const startRows = [];
+  const startRe = /table1_boatImage1Number\s+is-type(\d+)">(\d)<\/span>[\s\S]*?table1_boatImage1Time[^>]*>([^<]*)<\/span>/g;
+  let sm;
+  while ((sm = startRe.exec(startSection)) !== null) {
+    const boat = Number(sm[2]);
+    const raw = stripTags(sm[3]);
+    let st = null;
+    if (/^F\.\d+$/.test(raw)) st = -Number(raw.replace("F", "0"));
+    else if (/^L\.\d+$/.test(raw)) st = Number(raw.replace("L", "0"));
+    else {
+      const n = Number(raw.startsWith(".") ? `0${raw}` : raw);
+      st = Number.isFinite(n) ? n : null;
+    }
+    startRows.push({ boat_number: boat, entry_course: startRows.length + 1, exhibition_st: st, exhibition_st_raw: raw || null });
+  }
+  const startMap = Object.fromEntries(startRows.map(e => [e.boat_number, e]));
+  const displayMap = Object.fromEntries(entries.map(e => [e.boat_number, e]));
+  const scratchedBoats = [1,2,3,4,5,6].filter(n => {
+    const d = displayMap[n];
+    return !startMap[n] || !d || d.exhibition_time == null;
+  });
+
+  const mergedEntries = [1,2,3,4,5,6].map(n => ({
+    boat_number: n,
+    exhibition_time: displayMap[n]?.exhibition_time ?? null,
+    exhibition_rank: rankMap[n] ?? null,
+    tilt: displayMap[n]?.tilt ?? null,
+    entry_course: startMap[n]?.entry_course ?? null,
+    exhibition_st: startMap[n]?.exhibition_st ?? null,
+    exhibition_st_raw: startMap[n]?.exhibition_st_raw ?? null,
+    is_scratched: scratchedBoats.includes(n),
+  }));
+
+  const getNumberAfter = (label) => {
+    const re = new RegExp(`${label}<\\/span>\\s*<span[^>]*>([^<]+)<\\/span>`);
+    const m = html.match(re);
+    return m ? toFloat(m[1]) : null;
+  };
+  const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
+  const windClass = html.match(/weather1_bodyUnitImage\s+is-wind(\d+)/);
+
+  return {
+    entries: mergedEntries,
+    scratched_boats: scratchedBoats,
+    exhibition_ready: mergedEntries.some(e => e.exhibition_time != null) && startRows.length >= 3,
+    weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
+    wind_dir: windClass ? windClass[1] : null,
+    wind_speed: getNumberAfter("風速"),
+    air_temperature: getNumberAfter("気温"),
+    water_temperature: getNumberAfter("水温"),
+    wave_height: getNumberAfter("波高"),
+  };
+}
+
 // 1日の開催場一覧パース（トップページHTMLからjcd一覧を抽出）
 export function parseDailyVenueList(html) {
   const jcds = new Set();
