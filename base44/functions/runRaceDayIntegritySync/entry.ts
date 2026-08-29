@@ -44,6 +44,64 @@ export default async function(req) {
     const t0 = Date.now();
     const errors:any[] = [];
 
+    // 0) DB上ですでに判明している「締切90分以内の未取得レース」を最初に救済する。
+    // 24場スキャンを待っている間に締切を迎える事故を防ぐため、最短経路で先にracelistを取得する。
+    const knownRaces = await base44.asServiceRole.entities.Race.filter(
+      { race_date: raceDate, data_source: 'official' }, 'deadline', 500
+    ).catch(() => []);
+    const knownEntries = await base44.asServiceRole.entities.RaceEntry.filter(
+      { race_date: raceDate }, 'boat_number', 5000
+    ).catch(() => []);
+    const knownEntryCount = new Map();
+    for (const e of knownEntries) knownEntryCount.set(e.race_id, (knownEntryCount.get(e.race_id) || 0) + 1);
+    const urgentNow = Date.now();
+    const urgentMissing = knownRaces
+      .filter(r => {
+        if ((knownEntryCount.get(r.id) || 0) >= 6) return false;
+        const d = new Date(r.deadline || 0).getTime();
+        return d >= urgentNow && d - urgentNow <= 90 * 60 * 1000;
+      })
+      .sort((a,b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+      .slice(0, 24);
+    const urgentRepairedIds:any[] = [];
+    await mapBatches(urgentMissing, 6, async (r) => {
+      try {
+        const jcd = String(r.venue_code).padStart(2, '0');
+        const url = `${BASE}/racelist?rno=${r.race_number}&jcd=${jcd}&hd=${hd}`;
+        const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 7000, 2);
+        const html = await res.text();
+        const parsed = parseRacelist(html, Number(r.race_number), raceDate);
+        if (!parsed.entries || parsed.entries.length < 6) {
+          errors.push({ phase: 'urgent_entry_fetch', jcd, race_number: r.race_number, message: `${parsed.entries?.length || 0}艇` });
+          return null;
+        }
+        await base44.asServiceRole.entities.Race.update(r.id, {
+          race_name: parsed.raceName,
+          deadline: parsed.deadline || r.deadline,
+          entries_fetched_at: new Date().toISOString(),
+          last_updated: new Date().toISOString(),
+        });
+        await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.id });
+        await base44.asServiceRole.entities.RaceEntry.bulkCreate(parsed.entries.map(e => ({
+          ...e, race_id: r.id, race_date: raceDate, venue_code: jcd, race_number: r.race_number,
+        })));
+        urgentRepairedIds.push(r.id);
+        return r.id;
+      } catch (e) {
+        errors.push({ phase: 'urgent_entry_fetch', jcd: r.venue_code, race_number: r.race_number, message: e?.message || '緊急取得失敗' });
+        return null;
+      }
+    }, 100);
+    if (urgentRepairedIds.length > 0) {
+      try {
+        await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
+          race_date: raceDate, stage, race_ids: urgentRepairedIds, force: true,
+        });
+      } catch (e) {
+        errors.push({ phase: 'urgent_analysis', message: e?.message || '緊急分析失敗' });
+      }
+    }
+
     // 1) 24場を直接確認。トップページの開催場抽出失敗に依存しない。
     const venueScans = await mapBatches(ALL_VENUE_JCDS, 4, async (jcd) => {
       try {
@@ -291,6 +349,8 @@ export default async function(req) {
       venue_codes: activeVenues.map(v => v.jcd),
       expected_races: expectedRaceCount,
       db_races: dbRaces.length,
+      urgent_missing_before_scan: urgentMissing.length,
+      urgent_repaired_before_scan: urgentRepairedIds.length,
       race_created: raceCreated,
       race_updated: raceUpdated,
       missing_entries_before: missing.length,
