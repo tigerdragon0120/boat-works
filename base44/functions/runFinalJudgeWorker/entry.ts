@@ -56,7 +56,9 @@ export default async function(req) {
           // 展示Worker取りこぼし時もここで自己修復する。
           try {
             await base44.asServiceRole.functions.invoke('fetchBeforeInfo', {
-              race_id: r.id,
+              race_date: raceDate,
+              jcd: r.venue_code,
+              race_number: r.race_number,
             });
           } catch {}
 
