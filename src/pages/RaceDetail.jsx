@@ -110,29 +110,12 @@ export default function RaceDetail() {
         } catch {}
       }
 
-      // 締切5分前は、final未作成またはPENDINGなら必ず最新オッズ取得→final分析。
-      // finalレコードがPENDINGのまま残っていても「判定済み」と扱わない。
+      // final取得・分析はバックエンド Final Judge Worker に一本化。
+      // 詳細画面を開いただけでは公式サイトへ再アクセスしない。
       const finalNeedsUpdate = within5 && (!finalCached || finalCached.judgment === "PENDING");
       if (finalNeedsUpdate) {
-        (async () => {
-          try {
-            const fetched = await fetchOfficialRace(r.race_date, r.venue_code, r.race_number);
-            if (fetched?.status !== "success") throw new Error(fetched?.message || "最新オッズ取得失敗");
-            await analyzeRaceFinal(id, r.race_date);
-            // 最新オッズとfinal分析を即画面へ反映する。
-            const [freshOdds, freshHist] = await Promise.all([
-              getLatestOdds(id),
-              getOddsHistory(id),
-            ]);
-            setOdds(freshOdds);
-            setOddsHistory(freshHist);
-            setReloadKey(k => k + 1);
-          } catch (e) {
-            console.error("[RaceDetail] 最終判定失敗", e);
-            setFetchMsg(`最終判定失敗：${e?.message || "不明なエラー"}`);
-            setFetching("error");
-          }
-        })();
+        setFetching("waiting");
+        setFetchMsg("最終オッズを自動取得中…（バックエンドで処理）");
       }
     } catch (e) {
       setError(e.message || "データ取得失敗");
