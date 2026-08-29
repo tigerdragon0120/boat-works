@@ -42,8 +42,10 @@ export default async function(req) {
 
     const oddsReadyIds:string[] = [];
     let fetchErrors = 0;
-    for (let i = 0; i < targets.length; i += 3) {
-      const batch = targets.slice(i, i + 3);
+    // 公式サイトへの瞬間的な集中を避けるため2レースずつ処理する。
+    // fetchRaceData側にも45秒キャッシュ＋短時間リトライがある。
+    for (let i = 0; i < targets.length; i += 2) {
+      const batch = targets.slice(i, i + 2);
       const result = await Promise.all(batch.map(async (r) => {
         try {
           const res = await base44.asServiceRole.functions.invoke('fetchRaceData', {
