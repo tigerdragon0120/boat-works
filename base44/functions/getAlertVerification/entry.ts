@@ -12,8 +12,22 @@ export default async function(req) {
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Number(body.limit || 500), 1000);
 
-    const rawAlerts = await base44.asServiceRole.entities.Alert.filter({}, '-race_date', limit).catch(() => []);
-    const alerts = rawAlerts.filter(a => a.status !== 'filtered_out');
+    const rawAlerts = await base44.asServiceRole.entities.Alert.filter({}, '-updated_date', limit).catch(() => []);
+    // 過去に重複作成されたAlertがあっても、race_idごとに1件だけ採用する。
+    // final確定済みAlertを優先し、同条件ならupdated_dateが新しいものを使う。
+    const alertMap = new Map();
+    for (const a of rawAlerts) {
+      if (a.status === 'filtered_out' || !a.race_id) continue;
+      const cur = alertMap.get(a.race_id);
+      if (!cur) {
+        alertMap.set(a.race_id, a);
+        continue;
+      }
+      const curFinal = cur.final_judgment && cur.final_judgment !== 'PENDING';
+      const aFinal = a.final_judgment && a.final_judgment !== 'PENDING';
+      if (aFinal && !curFinal) alertMap.set(a.race_id, a);
+    }
+    const alerts = [...alertMap.values()];
     if (!alerts.length) {
       return Response.json({ status: 'success', summary: emptySummary(), rows: [] });
     }
