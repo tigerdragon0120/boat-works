@@ -68,7 +68,14 @@ export default async function(req) {
           const data = res?.data || res;
           if (data?.status !== 'success') return null;
           const hasScratch = data?.has_scratch === true || (Array.isArray(data?.scratched_boats) && data.scratched_boats.length > 0);
-          return { id: r.id, hasScratch, alreadyDone: doneFinal.has(r.id) };
+          const prevFinal = latestFinalByRace[r.id];
+          // v9以前、または展示未取得で一度SKIPしただけのfinalは「完了」とみなさない。
+          // 展示が揃った次の巡回で必ず再判定する。
+          const alreadyDone = doneFinal.has(r.id)
+            && prevFinal?.analysis_version === 'v9'
+            && prevFinal?.exhibition_gate_status
+            && prevFinal.exhibition_gate_status !== 'MISSING';
+          return { id: r.id, hasScratch, alreadyDone };
         } catch {
           return null;
         }
