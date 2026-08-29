@@ -259,8 +259,13 @@ export default async function(req) {
               } catch (_) { /* Slack失敗で分析本体を止めない */ }
             }
           } else if (stage === "pre" && alertByRace[r.id]) {
-            // v4再分析でS/Aから外れた旧候補はHome/Slack対象から外す。
-            await base44.asServiceRole.entities.Alert.update(alertByRace[r.id].id, { status: "filtered_out" });
+            // final確定後はpre再分析でAlert状態を絶対に上書きしない。
+            const existingAlert = alertByRace[r.id];
+            const hasDefinitiveFinal = existingAlert?.final_judgment && existingAlert.final_judgment !== "PENDING";
+            if (!hasDefinitiveFinal) {
+              // v4再分析でS/Aから外れた旧候補はHome/Slack対象から外す。
+              await base44.asServiceRole.entities.Alert.update(existingAlert.id, { status: "filtered_out" });
+            }
           }
         } catch (e) {
           errors++;
@@ -321,6 +326,8 @@ async function ensureAlert(base44, race, analysis, stage, settings, alertByRace)
     race_number: race.race_number, deadline: race.deadline, status: "active", notified: false,
   };
   if (stage === "pre") {
+    // final確定後のAlertはロック。後からpreが来てもBUY/WATCH/SKIPを壊さない。
+    if (existing?.final_judgment && existing.final_judgment !== "PENDING") return;
     const payload = {
       ...common,
       pre_appearance_rate: analysis.recommended_rate ?? analysis.appearance_rate,
