@@ -77,6 +77,27 @@
         "expired",
         "filtered_out"
       ]
+    },
+    "slack_pre_notified": {
+      "type": "boolean"
+    },
+    "slack_pre_ts": {
+      "type": "string"
+    },
+    "slack_final_notified": {
+      "type": "boolean"
+    },
+    "slack_final_ts": {
+      "type": "string"
+    },
+    "slack_result_notified": {
+      "type": "boolean"
+    },
+    "slack_result_ts": {
+      "type": "string"
+    },
+    "slack_result_hit": {
+      "type": "boolean"
     }
   },
   "required": [
