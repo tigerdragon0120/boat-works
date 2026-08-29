@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValu
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v8";
+export const ANALYSIS_VERSION = "v9";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -169,6 +169,69 @@ function computeMotorSupport(entries) {
     boat1_motor: boat1Motor,
     main_support: Math.round(clamp(boat1Motor*.35 + midSecond*.35 + outerThird*.30,0,100)),
     ura_support: Math.round(clamp(boat1Motor*.35 + outerSecond*.38 + midThird*.27,0,100)),
+  };
+}
+
+// v9 直前展示ゲート。
+// 事前の選手評価とは分離し、最終段階だけ「今このレースで1号艇が逃げられるか」を判定する。
+function computeExhibitionGate(race, entries, racerEscape, motorBoat1, weatherStat, stage) {
+  if (stage === "pre") {
+    return { status: "PRE", score: null, exhibition_score: null, weather_score: null, reasons: [], ready: false };
+  }
+
+  const b1 = entries.find(e => e.boat_number === 1);
+  const active = entries.filter(e => !e.is_scratched && e.exhibition_time != null);
+  const startActive = entries.filter(e => !e.is_scratched && e.exhibition_st != null);
+  const ready = race?.exhibition_ready === true && !!b1 && b1.exhibition_time != null && startActive.length >= 3;
+  if (!ready) {
+    return { status: "MISSING", score: null, exhibition_score: null, weather_score: null, reasons: [{ label: "展示情報未取得", score: 0, layer: "exhibition" }], ready: false };
+  }
+
+  const reasons = [];
+  const times = active.map(e => e.exhibition_time).filter(v => Number.isFinite(v)).sort((a,b)=>a-b);
+  const bestTime = times[0] ?? b1.exhibition_time;
+  const worstTime = times[times.length - 1] ?? b1.exhibition_time;
+  const rank = b1.exhibition_rank || (times.indexOf(b1.exhibition_time) + 1);
+  const timeSpread = Math.max(worstTime - bestTime, 0.01);
+  const relativeTimeScore = clamp(100 - ((b1.exhibition_time - bestTime) / timeSpread) * 80, 20, 100);
+  const rankScore = clamp(110 - rank * 15, 20, 100);
+
+  // 展示STは絶対値だけでなく他艇との差を見る。F展示は本番で踏み込みを下げる可能性もあるため過大評価しない。
+  const validSt = startActive.map(e => e.exhibition_st).filter(v => Number.isFinite(v));
+  const fieldAvgSt = validSt.length ? validSt.reduce((a,b)=>a+b,0) / validSt.length : 0.15;
+  const b1St = b1.exhibition_st;
+  let stScore = b1St == null ? 50 : clamp(55 + (fieldAvgSt - b1St) * 220, 20, 95);
+  if (String(b1.exhibition_st_raw || "").startsWith("F")) stScore = Math.min(stScore, 68);
+
+  const courseScore = b1.entry_course === 1 ? 100 : b1.entry_course === 2 ? 35 : 10;
+  const exhibitionScore = Math.round(clamp(relativeTimeScore*.38 + rankScore*.22 + stScore*.25 + courseScore*.15, 0, 100));
+
+  // 同じ晴/雨・風速帯での1着実績。サンプル不足なら中立50として扱い、推測で加点しない。
+  let weatherScore = 50;
+  if (weatherStat?.races >= 5 && weatherStat?.win_rate != null) {
+    weatherScore = Math.round(clamp(weatherStat.win_rate / 0.70 * 100, 0, 100));
+    reasons.push({ label: `同天候${weatherStat.races}走 1着率${Math.round(weatherStat.win_rate*100)}%`, score: weatherScore, layer: "weather" });
+  }
+
+  const score = Math.round(clamp(
+    (racerEscape || 0)*.38 + (motorBoat1 || 0)*.17 + weatherScore*.15 + exhibitionScore*.30,
+    0, 100
+  ));
+
+  reasons.push({ label: `1号艇 展示${rank}位 ${b1.exhibition_time.toFixed(2)}`, score: Math.round(relativeTimeScore), layer: "exhibition" });
+  reasons.push({ label: `展示ST ${b1.exhibition_st_raw || "—"}`, score: Math.round(stScore), layer: "exhibition" });
+  reasons.push({ label: `展示進入 ${b1.entry_course || "—"}コース`, score: courseScore, layer: "exhibition" });
+
+  let status = "PASS";
+  if (b1.entry_course !== 1 || score < 52 || exhibitionScore < 42) status = "FAIL";
+  else if (score < 62 || exhibitionScore < 55) status = "CAUTION";
+
+  return {
+    status, score, exhibition_score: exhibitionScore, weather_score: weatherScore,
+    exhibition_rank: rank, exhibition_time: b1.exhibition_time,
+    exhibition_st: b1.exhibition_st, exhibition_st_raw: b1.exhibition_st_raw || null,
+    entry_course: b1.entry_course || null,
+    ready: true, reasons,
   };
 }
 
@@ -554,6 +617,13 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     b6 ? Math.round(clamp(((b6.national_2rate || 0) * 0.35 + (b6.local_2rate || 0) * 0.25 + (b6.motor_2rate || 0) * 0.25 + clamp((0.22 - (b6.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0
   );
   const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs);
+  const exhibitionGate = computeExhibitionGate(
+    race, entries,
+    uichiDirection.racer_escape_execution,
+    uichiDirection.motor_boat1_support,
+    weatherStat,
+    stage
+  );
 
   // v8: 出現率の暴走を抑える校正。
   // 場×Rの実測を土台に、1号艇の相対信頼と番組構成を緩やかに掛ける。
@@ -612,7 +682,14 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   if (stage === "pre") judgment = "PENDING";
   else if (hasScratch) judgment = "SKIP";
   else if (recommendedPattern === "NEUTRAL") judgment = "SKIP";
-  else if (minOk) judgment = judgeWithSample(ev, similarCount, settings);
+  // v9: 最終BUYは展示後の「逃げゲート」を必ず通す。
+  // 展示未取得・進入崩れ・逃げスコア不足は、高EVでも買わない。
+  else if (exhibitionGate.status === "MISSING" || exhibitionGate.status === "FAIL") judgment = "SKIP";
+  else if (minOk) {
+    judgment = judgeWithSample(ev, similarCount, settings);
+    // 注意域はBUYまで上げずWATCH止まり。PASSだけがBUY可能。
+    if (exhibitionGate.status === "CAUTION" && judgment === "BUY") judgment = "WATCH";
+  }
   else judgment = "SKIP";
 
   let preGrade = null;
@@ -695,6 +772,17 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     program_scenario_status: uichiDirection.program_scenario_status,
     program_scenario_label: uichiDirection.program_scenario_label,
     program_scenario_penalty: uichiDirection.program_scenario_penalty,
+    exhibition_gate_status: exhibitionGate.status,
+    final_escape_score: exhibitionGate.score,
+    exhibition_score: exhibitionGate.exhibition_score,
+    weather_escape_score: exhibitionGate.weather_score,
+    exhibition_rank: exhibitionGate.exhibition_rank ?? null,
+    exhibition_time: exhibitionGate.exhibition_time ?? null,
+    exhibition_st: exhibitionGate.exhibition_st ?? null,
+    exhibition_st_raw: exhibitionGate.exhibition_st_raw ?? null,
+    exhibition_entry_course: exhibitionGate.entry_course ?? null,
+    exhibition_ready: exhibitionGate.ready === true,
+    exhibition_reasons: exhibitionGate.reasons || [],
     uichi_direction_reasons: uichiDirection.reasons,
     boat1,
     odds_values: oddsValues,
