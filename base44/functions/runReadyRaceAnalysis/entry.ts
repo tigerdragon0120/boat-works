@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { ANALYSIS_VERSION } from '../../shared/analysis.js';
 
 function jstDateStr(offset = 0) {
   const now = new Date();
@@ -33,7 +34,12 @@ export default async function(req) {
     for (const e of entries) entryCount.set(e.race_id, (entryCount.get(e.race_id) || 0) + 1);
 
     const latestAnalysis = new Map();
-    for (const a of analyses) if (!latestAnalysis.has(a.race_id)) latestAnalysis.set(a.race_id, a);
+    // 現行ロジックと同じversionだけを「分析済み」とする。
+    // v8等の旧分析が残っていても、v9へ上げた日は必ず再分析する。
+    for (const a of analyses) {
+      if (a.analysis_version !== ANALYSIS_VERSION) continue;
+      if (!latestAnalysis.has(a.race_id)) latestAnalysis.set(a.race_id, a);
+    }
 
     const definitiveFinal = new Set(
       finalAnalyses
