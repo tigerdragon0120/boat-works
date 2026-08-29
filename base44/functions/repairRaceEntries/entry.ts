@@ -80,6 +80,24 @@ export default async function(req) {
       await sleep(250);
     }
 
+    // 修復できたレースはこの関数内で即pre分析まで完了させる。
+    // 呼び出し側や10分分析Workerを待たない。
+    let analysis = null;
+    if (completed_ids.length > 0) {
+      try {
+        const res = await base44.asServiceRole.functions.invoke("analyzeAllRacesForDate", {
+          race_date,
+          stage: body.stage || "pre",
+          race_ids: [...new Set(completed_ids)],
+          force: true,
+        });
+        analysis = res?.data || res;
+      } catch (e) {
+        errors++;
+        error_items.push({ phase: "analysis", reason: e?.message || "修復後分析失敗" });
+      }
+    }
+
     return Response.json({
       status: errors > 0 && repaired === 0 ? "partial" : "success",
       race_date,
@@ -88,6 +106,7 @@ export default async function(req) {
       skipped,
       errors,
       completed_ids,
+      analysis,
       error_items,
     });
   } catch (error) {
