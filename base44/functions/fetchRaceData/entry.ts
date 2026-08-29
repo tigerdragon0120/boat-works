@@ -129,9 +129,11 @@ export default async function(req) {
         const cachedOdds = cached?.all_trifecta_odds || {};
         if (Object.keys(cachedOdds).length >= 120) {
           return Response.json({
-            status: "success", race: currentRace, entries: 6, odds_count: 120,
+            status: "success", race: currentRace, entries: 6, odds_count: Object.keys(cachedOdds).length,
             synthetic_odds: cached.synthetic_odds ?? null,
             captured_at: cached.captured_at,
+            scratched_boats: cached.scratched_boats || [],
+            has_scratch: cached.has_scratch === true,
             cached: true,
           });
         }
