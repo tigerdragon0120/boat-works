@@ -83,6 +83,53 @@ export default function Home() {
     return () => clearInterval(t);
   }, []);
 
+  // Homeの表示同期専用ポーリング。
+  // 公式サイトへはアクセスせず、Base44に保存済みの分析・Alertだけを軽量再取得する。
+  // 締切10分以内のレースがある間は10秒ごと、それ以外は30秒ごと。
+  useEffect(() => {
+    if (tab !== "today" || loading || races.length === 0) return;
+    let alive = true;
+    let timer = null;
+
+    const refreshSavedState = async () => {
+      try {
+        const date = dateStr(0);
+        invalidateCache(`alerts_${date}`);
+        const [freshAnalyses, freshAlerts] = await Promise.all([
+          getCachedAnalysesByDate(date),
+          getAlerts(date),
+        ]);
+        if (!alive) return;
+        setAnalyses(freshAnalyses);
+        setAlerts(freshAlerts);
+        setCacheHitRate(computeCacheHitRate(races, freshAnalyses));
+      } catch {}
+    };
+
+    const scheduleNext = async () => {
+      await refreshSavedState();
+      if (!alive) return;
+      const now = Date.now();
+      const hasNearDeadline = races.some(r => {
+        if (!r?.deadline) return false;
+        const d = new Date(r.deadline).getTime();
+        return Number.isFinite(d) && d > now && d - now <= 10 * 60 * 1000;
+      });
+      timer = setTimeout(scheduleNext, hasNearDeadline ? 10000 : 30000);
+    };
+
+    scheduleNext();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshSavedState();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [tab, loading, races]);
+
   // 当日Homeで締切90分以内なのに分析未作成のレースが見えている場合、
   // バックグラウンド定期実行を待たず自己修復を1回だけ起動する。
   useEffect(() => {
