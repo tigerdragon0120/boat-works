@@ -1,0 +1,45 @@
+{
+  "name": "Slack Notification Retry Worker",
+  "description": "\u5f53\u65e5\u306e\u672a\u9001\u4fe1BUY/WATCH\u30925\u5206\u3054\u3068\u306b\u518d\u78ba\u8a8d\u3057\u3001Slack\u901a\u77e5\u3092\u518d\u9001\u3059\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 0-23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "slack_notification_retry_worker",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "retry_unsent_slack": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runSlackNotificationRetry",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Slack\u672a\u9001\u4fe1\u518d\u30c1\u30a7\u30c3\u30af",
+            "description": "BUY/WATCH\u5224\u5b9a\u6e08\u307f\u3067Slack\u672a\u9001\u4fe1\u306e\u30ec\u30fc\u30b9\u30925\u5206\u3054\u3068\u306b\u518d\u901a\u77e5"
+          }
+        }
+      }
+    ]
+  }
+}
