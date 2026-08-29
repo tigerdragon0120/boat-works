@@ -43,6 +43,21 @@ async function fetchTextWithRetry(url, validate, label) {
 }
 
 // 3連単オッズパース（120通り）
+function inferScratchedBoats(allOdds) {
+  const seen = new Set();
+  for (const [combo, val] of Object.entries(allOdds || {})) {
+    if (!(Number(val) > 1)) continue;
+    for (const n of String(combo).split("-").map(Number)) {
+      if (n >= 1 && n <= 6) seen.add(n);
+    }
+  }
+  const active = [...seen].sort((a,b)=>a-b);
+  const scratched = [1,2,3,4,5,6].filter(n => !seen.has(n));
+  const expected = active.length >= 3 ? active.length * (active.length - 1) * (active.length - 2) : 0;
+  const count = Object.keys(allOdds || {}).length;
+  return { active, scratched, expected, count, isConsistent: scratched.length > 0 && expected === count };
+}
+
 function parseOdds3t(html) {
   const tbodyMatch = html.match(/<tbody class="is-p3-0">([\s\S]*?)<\/tbody>/);
   if (!tbodyMatch) return {};
@@ -136,12 +151,15 @@ export default async function(req) {
     const odFetched = await fetchTextWithRetry(oddsUrl, (html) => {
       const value = parseOdds3t(html);
       const count = Object.keys(value).length;
-      return count >= 120
-        ? { ok: true, value }
-        : { ok: false, message: `オッズ取得失敗：${count}件（120通り未満）` };
+      if (count >= 120) return { ok: true, value };
+      const scratch = inferScratchedBoats(value);
+      if (scratch.isConsistent) return { ok: true, value };
+      return { ok: false, message: `オッズ取得失敗：${count}件（120通り未満）` };
     }, "オッズ");
     const allOdds = odFetched.value;
     const oddsCount = Object.keys(allOdds).length;
+    const scratchInfo = inferScratchedBoats(allOdds);
+    const scratchedBoats = oddsCount < 120 && scratchInfo.isConsistent ? scratchInfo.scratched : [];
 
     // ういち買い6点抽出
     const uichiVals = UICHI_COMBOS.map((c) => allOdds[c]);
@@ -198,6 +216,8 @@ export default async function(req) {
       odds_1_4_6: allOdds["1-4-6"] ?? null,
       synthetic_odds: synth,
       all_trifecta_odds: allOdds,
+      scratched_boats: scratchedBoats,
+      has_scratch: scratchedBoats.length > 0,
     };
     await base44.asServiceRole.entities.OddsSnapshot.create(oddsRecord);
 
@@ -218,6 +238,8 @@ export default async function(req) {
       captured_at: now,
       cached: false,
       retry_count: Math.max(rlFetched.attempt || 0, odFetched.attempt || 0),
+      scratched_boats: scratchedBoats,
+      has_scratch: scratchedBoats.length > 0,
     });
   } catch (error) {
     return Response.json({ status: "error", message: error.message }, { status: 500 });
