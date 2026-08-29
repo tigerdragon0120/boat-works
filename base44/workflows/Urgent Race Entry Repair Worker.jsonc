@@ -30,7 +30,7 @@
         "repair_urgent_today": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "runUrgentEntryRepair",
+            "function_name": "runRaceDayIntegritySync",
             "args": {
               "target_offset": 0,
               "stage": "pre"

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "deprecated": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [],
+  "name": "Dummy2"
+}
