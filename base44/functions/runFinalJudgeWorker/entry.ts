@@ -52,6 +52,14 @@ export default async function(req) {
       const batch = targets.slice(i, i + 2);
       const result = await Promise.all(batch.map(async (r) => {
         try {
+          // v9: 最終判定の直前に展示・進入・天候を必ず再取得する。
+          // 展示Worker取りこぼし時もここで自己修復する。
+          try {
+            await base44.asServiceRole.functions.invoke('fetchBeforeInfo', {
+              race_id: r.id,
+            });
+          } catch {}
+
           const res = await base44.asServiceRole.functions.invoke('fetchRaceData', {
             race_date: raceDate,
             jcd: r.venue_code,
