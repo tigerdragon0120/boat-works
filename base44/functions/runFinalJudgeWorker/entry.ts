@@ -24,12 +24,15 @@ export default async function(req) {
       { race_date: raceDate, stage: 'final' }, '-captured_at', 500
     ).catch(() => []);
 
+    const latestFinalByRace:any = {};
+    for (const a of finals) if (!latestFinalByRace[a.race_id]) latestFinalByRace[a.race_id] = a;
     const doneFinal = new Set(
       finals.filter(a => a?.judgment && a.judgment !== 'PENDING').map(a => a.race_id)
     );
 
+    // 締切5分以内は、確定済みfinalも欠場チェックのため対象に残す。
     const targets = races.filter(r => {
-      if (!r?.deadline || doneFinal.has(r.id)) return false;
+      if (!r?.deadline) return false;
       const deadlineMs = new Date(r.deadline).getTime();
       if (!Number.isFinite(deadlineMs)) return false;
       const finalAt = deadlineMs - 5 * 60 * 1000;
@@ -41,6 +44,7 @@ export default async function(req) {
     }
 
     const oddsReadyIds:string[] = [];
+    const scratchDetectedIds:string[] = [];
     let fetchErrors = 0;
     // 公式サイトへの瞬間的な集中を避けるため2レースずつ処理する。
     // fetchRaceData側にも45秒キャッシュ＋短時間リトライがある。
@@ -54,13 +58,18 @@ export default async function(req) {
             race_number: r.race_number,
           });
           const data = res?.data || res;
-          return data?.status === 'success' ? r.id : null;
+          if (data?.status !== 'success') return null;
+          const hasScratch = data?.has_scratch === true || (Array.isArray(data?.scratched_boats) && data.scratched_boats.length > 0);
+          return { id: r.id, hasScratch, alreadyDone: doneFinal.has(r.id) };
         } catch {
           return null;
         }
       }));
-      for (const id of result) {
-        if (id) oddsReadyIds.push(id); else fetchErrors++;
+      for (const item of result) {
+        if (!item) { fetchErrors++; continue; }
+        // 未判定レースは通常finalへ。確定済みは欠場時だけ再分析して強制SKIPへ更新する。
+        if (!item.alreadyDone || item.hasScratch) oddsReadyIds.push(item.id);
+        if (item.hasScratch) scratchDetectedIds.push(item.id);
       }
     }
 
@@ -103,6 +112,8 @@ export default async function(req) {
       odds_ready: oddsReadyIds.length,
       judged: latestFinals.filter(a => oddsReadyIds.includes(a.race_id) && a.judgment && a.judgment !== 'PENDING').length,
       fetch_errors: fetchErrors,
+      scratch_detected: scratchDetectedIds.length,
+      scratch_race_ids: scratchDetectedIds,
       slack_sent: slackSent,
       analysis: analysisResult,
     });
