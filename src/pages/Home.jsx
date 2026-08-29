@@ -106,15 +106,9 @@ export default function Home() {
           const d = new Date(r.deadline).getTime();
           return d >= now && d - now <= 90 * 60 * 1000;
         }).map(r => r.id);
-        const repaired = await base44.functions.invoke("repairRaceEntries", {
-          race_date: dateStr(0), race_ids: missingIds,
+        await base44.functions.invoke("repairRaceEntries", {
+          race_date: dateStr(0), race_ids: missingIds, stage: "pre",
         });
-        const completedIds = repaired?.data?.completed_ids || [];
-        if (completedIds.length) {
-          await base44.functions.invoke("analyzeAllRacesForDate", {
-            race_date: dateStr(0), stage: "pre", race_ids: completedIds, force: true,
-          });
-        }
         const [freshRaces, freshAnalyses] = await Promise.all([
           getRacesByDate(dateStr(0)), getCachedAnalysesByDate(dateStr(0)),
         ]);
