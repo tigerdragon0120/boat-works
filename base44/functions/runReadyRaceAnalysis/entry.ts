@@ -20,10 +20,13 @@ export default async function(req) {
     const raceDate = body.race_date || jstDateStr(Number(body.target_offset || 0));
     const stage = body.stage || 'pre';
 
-    const [races, entries, analyses] = await Promise.all([
+    const [races, entries, analyses, finalAnalyses] = await Promise.all([
       base44.asServiceRole.entities.Race.filter({ race_date: raceDate, data_source: 'official' }, 'deadline', 500).catch(() => []),
       base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, 'boat_number', 5000).catch(() => []),
       base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate, stage }, '-captured_at', 500).catch(() => []),
+      stage === 'pre'
+        ? base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate, stage: 'final' }, '-captured_at', 500).catch(() => [])
+        : Promise.resolve([]),
     ]);
 
     const entryCount = new Map();
@@ -32,8 +35,22 @@ export default async function(req) {
     const latestAnalysis = new Map();
     for (const a of analyses) if (!latestAnalysis.has(a.race_id)) latestAnalysis.set(a.race_id, a);
 
+    const definitiveFinal = new Set(
+      finalAnalyses
+        .filter(a => a?.judgment && a.judgment !== 'PENDING')
+        .map(a => a.race_id)
+    );
+    const nowMs = Date.now();
     const ready = races.filter(r => (entryCount.get(r.id) || 0) >= 6);
-    const pending = ready.filter(r => !latestAnalysis.has(r.id));
+    const pending = ready.filter(r => {
+      if (latestAnalysis.has(r.id)) return false;
+      if (stage === 'pre') {
+        if (definitiveFinal.has(r.id)) return false;
+        const deadlineMs = r?.deadline ? new Date(r.deadline).getTime() : NaN;
+        if (Number.isFinite(deadlineMs) && nowMs >= deadlineMs) return false;
+      }
+      return true;
+    });
 
     let analyzed = 0, errors = 0;
     const runs:any[] = [];
