@@ -173,10 +173,8 @@ export default function Home() {
       .filter((r) => {
         if (tab !== "today") return true;
         if (!r.deadline) return true;
-        if (new Date(r.deadline).getTime() > now) return true;
-        // アラート対象レースは、公式結果取得でAlertがresolvedになるまでHomeに残す。
-        const al = alerts.find((x) => x.race_id === r.id);
-        return !!al && al.status !== "resolved";
+        // Homeは進行中・未来レースだけ表示。締切を過ぎたBUY/WATCHも即非表示にする。
+        return new Date(r.deadline).getTime() > now;
       })
       .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
   }, [races, alerts, tab, tick]);
@@ -305,7 +303,7 @@ export default function Home() {
           <span className="ml-auto text-xs text-muted-foreground">{alertRaces.length}件</span>
         </div>
         {tab === "today" && (
-          <div className="text-[11px] text-muted-foreground mb-2">アラート対象は結果確定まで表示します。終了後の結果は下メニューの「検証」で確認できます。</div>
+          <div className="text-[11px] text-muted-foreground mb-2">締切を過ぎたレースはHomeから自動で消えます。終了後の結果は下メニューの「検証」で確認できます。</div>
         )}
         {alertRaces.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
