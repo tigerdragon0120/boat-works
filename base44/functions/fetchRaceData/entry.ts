@@ -8,6 +8,39 @@ import { VENUE_NAMES, toNum, toFloat, parseRacelist } from "../../shared/scraper
 // 取得失敗時は架空データを作らずエラーを返す。
 
 const BASE = "https://boatrace.jp/owpc/pc/race";
+const ODDS_CACHE_MS = 45 * 1000;
+const RETRY_DELAYS_MS = [1200, 2500];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchTextWithRetry(url, validate, label) {
+  let lastMessage = `${label}取得失敗`;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Cache-Control": "no-cache",
+        },
+      });
+      if (!res.ok) {
+        lastMessage = `${label}取得失敗 (HTTP ${res.status})`;
+      } else {
+        const html = await res.text();
+        if (html.includes("予期せぬエラーが発生しました")) {
+          lastMessage = `${label}取得失敗：公式サイトに該当レースが未公開です`;
+        } else {
+          const checked = validate(html);
+          if (checked?.ok) return { html, value: checked.value, attempt };
+          lastMessage = checked?.message || `${label}取得失敗`;
+        }
+      }
+    } catch (e) {
+      lastMessage = `${label}取得失敗：${e?.message || "通信エラー"}`;
+    }
+    if (attempt < RETRY_DELAYS_MS.length) await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+  throw new Error(lastMessage);
+}
 
 // 3連単オッズパース（120通り）
 function parseOdds3t(html) {
@@ -66,30 +99,49 @@ export default async function(req) {
     const racelistUrl = `${BASE}/racelist?rno=${raceNumber}&jcd=${jcd}&hd=${hd}`;
     const oddsUrl = `${BASE}/odds3t?rno=${raceNumber}&jcd=${jcd}&hd=${hd}`;
 
-    // 出走表取得
-    const rlRes = await fetch(racelistUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-    if (!rlRes.ok) return Response.json({ status: "error", message: `出走表取得失敗 (HTTP ${rlRes.status})` }, { status: 502 });
-    const rlHtml = await rlRes.text();
-    if (rlHtml.includes("予期せぬエラーが発生しました")) {
-      return Response.json({ status: "error", message: "出走表取得失敗：公式サイトに該当レースが未公開です" }, { status: 502 });
-    }
-    const parsed = parseRacelist(rlHtml, raceNumber, raceDate);
-    if (!parsed.entries.length || parsed.entries.length < 6) {
-      return Response.json({ status: "error", message: `出走表取得失敗：${parsed.entries.length}件（6艇未満）` }, { status: 502 });
+    // 同一レースへの重複アクセス抑止。45秒以内の完全な公式オッズがあれば再利用する。
+    const existingRace = await base44.asServiceRole.entities.Race.filter({
+      race_date: raceDate, venue_code: jcd, race_number: raceNumber
+    });
+    const currentRace = existingRace[0] || null;
+    if (!body.force && currentRace?.odds_fetched_at) {
+      const ageMs = Date.now() - new Date(currentRace.odds_fetched_at).getTime();
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < ODDS_CACHE_MS) {
+        const snapshots = await base44.asServiceRole.entities.OddsSnapshot.filter(
+          { race_id: currentRace.id }, "-captured_at", 1
+        ).catch(() => []);
+        const cached = snapshots[0];
+        const cachedOdds = cached?.all_trifecta_odds || {};
+        if (Object.keys(cachedOdds).length >= 120) {
+          return Response.json({
+            status: "success", race: currentRace, entries: 6, odds_count: 120,
+            synthetic_odds: cached.synthetic_odds ?? null,
+            captured_at: cached.captured_at,
+            cached: true,
+          });
+        }
+      }
     }
 
-    // オッズ取得
-    const odRes = await fetch(oddsUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-    if (!odRes.ok) return Response.json({ status: "error", message: `オッズ取得失敗 (HTTP ${odRes.status})` }, { status: 502 });
-    const odHtml = await odRes.text();
-    if (odHtml.includes("予期せぬエラーが発生しました")) {
-      return Response.json({ status: "error", message: "オッズ取得失敗：公式サイトに該当レースが未公開です" }, { status: 502 });
-    }
-    const allOdds = parseOdds3t(odHtml);
+    // 出走表取得。一時的な不完全レスポンスは短い間隔で再試行する。
+    const rlFetched = await fetchTextWithRetry(racelistUrl, (html) => {
+      const value = parseRacelist(html, raceNumber, raceDate);
+      return value.entries?.length >= 6
+        ? { ok: true, value }
+        : { ok: false, message: `出走表取得失敗：${value.entries?.length || 0}件（6艇未満）` };
+    }, "出走表");
+    const parsed = rlFetched.value;
+
+    // オッズ取得。120通り揃わない途中レスポンスは即エラーにせず最大2回再試行する。
+    const odFetched = await fetchTextWithRetry(oddsUrl, (html) => {
+      const value = parseOdds3t(html);
+      const count = Object.keys(value).length;
+      return count >= 120
+        ? { ok: true, value }
+        : { ok: false, message: `オッズ取得失敗：${count}件（120通り未満）` };
+    }, "オッズ");
+    const allOdds = odFetched.value;
     const oddsCount = Object.keys(allOdds).length;
-    if (oddsCount < 120) {
-      return Response.json({ status: "error", message: `オッズ取得失敗：${oddsCount}件（120通り未満）` }, { status: 502 });
-    }
 
     // ういち買い6点抽出
     const uichiVals = UICHI_COMBOS.map((c) => allOdds[c]);
@@ -100,9 +152,7 @@ export default async function(req) {
     const venueName = VENUE_NAMES[jcd] || jcd;
 
     // Race upsert
-    const existing = await base44.asServiceRole.entities.Race.filter({
-      race_date: raceDate, venue_code: jcd, race_number: raceNumber
-    });
+    const existing = existingRace;
     let race;
     const raceData = {
       race_date: raceDate,
@@ -166,6 +216,8 @@ export default async function(req) {
       },
       synthetic_odds: synth,
       captured_at: now,
+      cached: false,
+      retry_count: Math.max(rlFetched.attempt || 0, odFetched.attempt || 0),
     });
   } catch (error) {
     return Response.json({ status: "error", message: error.message }, { status: 500 });
