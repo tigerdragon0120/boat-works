@@ -143,18 +143,25 @@ export default async function(req) {
       const jcd = String(r.venue_code).padStart(2, '0');
       venueEntryCounts.set(jcd, (venueEntryCounts.get(jcd) || 0) + (entryCount.get(r.id) || 0));
     }
+    const nowMs = Date.now();
     const repairTargets = [...missing]
       .sort((a, b) => {
+        const ad = new Date(a.deadline || '2999-12-31').getTime();
+        const bd = new Date(b.deadline || '2999-12-31').getTime();
+        const aSoon = ad >= nowMs && ad - nowMs <= 90 * 60 * 1000 ? 1 : 0;
+        const bSoon = bd >= nowMs && bd - nowMs <= 90 * 60 * 1000 ? 1 : 0;
+        // 締切90分以内の未取得レースを最優先。直前レースを後回しにしない。
+        if (aSoon !== bSoon) return bSoon - aSoon;
+        if (aSoon && bSoon && ad !== bd) return ad - bd;
+
         const aj = String(a.venue_code).padStart(2, '0');
         const bj = String(b.venue_code).padStart(2, '0');
         const aPartial = (venueEntryCounts.get(aj) || 0) > 0 ? 1 : 0;
         const bPartial = (venueEntryCounts.get(bj) || 0) > 0 ? 1 : 0;
         if (aPartial !== bPartial) return bPartial - aPartial;
-        const ad = new Date(a.deadline || '2999-12-31').getTime();
-        const bd = new Date(b.deadline || '2999-12-31').getTime();
         return ad - bd;
       })
-      .slice(0, 36);
+      .slice(0, 48);
     await mapBatches(repairTargets, 6, async (r) => {
       try {
         const jcd = String(r.venue_code).padStart(2, '0');
