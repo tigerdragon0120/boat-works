@@ -45,7 +45,13 @@ export default function Verification() {
   }, []);
 
   const rows = useMemo(() => {
-    let all = [...(data?.rows || [])];
+    // API側でも重複排除しているが、表示側でもrace_id単位で二重防止する。
+    const unique = new Map();
+    for (const r of (data?.rows || [])) {
+      if (!r?.race_id) continue;
+      if (!unique.has(r.race_id)) unique.set(r.race_id, r);
+    }
+    let all = [...unique.values()];
     if (filter === "buy") all = all.filter(r => r.final_judgment === "BUY");
     if (filter === "watch") all = all.filter(r => r.final_judgment === "WATCH");
     if (filter === "skip") all = all.filter(r => r.final_judgment === "SKIP");
