@@ -45,6 +45,25 @@
     "wave_height": {
       "type": "number"
     },
+    "air_temperature": {
+      "type": "number"
+    },
+    "water_temperature": {
+      "type": "number"
+    },
+    "beforeinfo_fetched_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "exhibition_ready": {
+      "type": "boolean"
+    },
+    "scratched_boats": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
     "status": {
       "type": "string",
       "enum": [
