@@ -109,6 +109,15 @@
       "type": "number",
       "description": "\u4fe1\u983c\u30b9\u30b3\u30a2\u52a0\u91cd\u51fa\u73fe\u7387"
     },
+    "has_scratch": {
+      "type": "boolean"
+    },
+    "scratched_boats": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
     "recommended_pattern": {
       "type": "string",
       "enum": [
