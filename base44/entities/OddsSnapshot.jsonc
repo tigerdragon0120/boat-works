@@ -47,6 +47,15 @@
     },
     "all_trifecta_odds": {
       "type": "object"
+    },
+    "scratched_boats": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "has_scratch": {
+      "type": "boolean"
     }
   },
   "required": [
