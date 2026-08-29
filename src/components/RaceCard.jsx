@@ -118,7 +118,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
                 {analysis.program_scenario_label}
               </div>
             )}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <LayerStat
                 label="① 番組意図"
                 value={analysis.program_hypothesis === "MAIN" ? "本線" : analysis.program_hypothesis === "URA" ? "裏" : "中立"}
@@ -136,6 +136,14 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
                 value={analysis.recommended_pattern === "URA" ? analysis.motor_ura_support : analysis.recommended_pattern === "MAIN" ? analysis.motor_main_support : analysis.motor_boat1_support}
                 score={analysis.motor_boat1_support}
                 sub={`1号艇足 ${analysis.motor_boat1_support ?? "—"}`}
+              />
+              <LayerStat
+                label="④ 展示逃げ"
+                value={analysis.stage === "final" ? (analysis.final_escape_score ?? "—") : "待機"}
+                score={analysis.final_escape_score}
+                sub={analysis.stage === "final"
+                  ? `${analysis.exhibition_gate_status || "—"} / 展示${analysis.exhibition_rank ?? "—"}位`
+                  : "締切前に判定"}
               />
             </div>
             {racerName && (
