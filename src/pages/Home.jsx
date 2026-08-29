@@ -12,6 +12,7 @@ import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCach
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { fmtPct, fmtNum, fmtTime, minutesUntilDeadline, canFinalJudge, finalJudgeTime, GRADE_STYLE } from "@/lib/boat";
 import { cn } from "@/lib/utils";
+import { base44 } from "@/api/base44Client";
 
 function dateStr(offset = 0) {
   const d = new Date();
@@ -81,6 +82,26 @@ export default function Home() {
     const t = setInterval(() => setTick((x) => x + 1), 30000);
     return () => clearInterval(t);
   }, []);
+
+  // 当日Homeで締切90分以内なのに分析未作成のレースが見えている場合、
+  // バックグラウンド定期実行を待たず自己修復を1回だけ起動する。
+  useEffect(() => {
+    if (tab !== "today" || loading || races.length === 0) return;
+    const now = Date.now();
+    const urgentMissing = races.some(r => {
+      if (analyses[r.id] || !r.deadline) return false;
+      const d = new Date(r.deadline).getTime();
+      return d >= now && d - now <= 90 * 60 * 1000;
+    });
+    if (!urgentMissing) return;
+
+    const key = `boatworks_urgent_repair_${dateStr(0)}`;
+    const last = Number(sessionStorage.getItem(key) || 0);
+    if (now - last < 5 * 60 * 1000) return;
+    sessionStorage.setItem(key, String(now));
+    base44.functions.invoke("runRaceDayIntegritySync", { target_offset: 0, stage: "pre" })
+      .catch(() => {});
+  }, [tab, loading, races, analyses]);
 
   const sortedRaces = useMemo(() => {
     const now = Date.now();
