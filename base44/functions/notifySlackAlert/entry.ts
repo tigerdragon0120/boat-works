@@ -106,7 +106,17 @@ export default async function(req) {
         `締切 ${fmtJstTime(race.deadline)}（締切5分前の最終判定）`,
       ].join('\n');
     } else {
-      const results = await base44.asServiceRole.entities.RaceResult.filter({ race_id: raceId, data_source: 'official' }, '-created_date', 5);
+      let results = await base44.asServiceRole.entities.RaceResult.filter({ race_id: raceId, data_source: 'official' }, '-created_date', 5);
+      // Historical/result取得系では race_id が YYYY-MM-DD_JCD_R の複合キーになる場合があるため、
+      // 本体Race.idで見つからないときは日付＋場＋R番号で公式結果を照合する。
+      if (!results.length) {
+        results = await base44.asServiceRole.entities.RaceResult.filter({
+          race_date: race.race_date,
+          venue_code: String(race.venue_code).padStart(2, '0'),
+          race_number: Number(race.race_number),
+          data_source: 'official',
+        }, '-created_date', 5);
+      }
       const result = results[0];
       if (!result) return Response.json({ sent: false, reason: 'no_result' });
       const r1 = Number(result.result_1 || 0), r2 = Number(result.result_2 || 0), r3 = Number(result.result_3 || 0);
