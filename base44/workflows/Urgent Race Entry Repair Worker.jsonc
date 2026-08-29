@@ -1,0 +1,48 @@
+{
+  "name": "Urgent Race Entry Repair Worker",
+  "description": "\u5f53\u65e5\u306e\u7de0\u5207\u304c\u8fd1\u3044\u51fa\u8d70\u8868\u672a\u53d6\u5f97\u30ec\u30fc\u30b9\u309210\u5206\u3054\u3068\u306b\u6700\u512a\u5148\u3067\u81ea\u5df1\u4fee\u5fa9\u3057\u30016\u8247\u63c3\u3063\u305f\u3089\u5373v8\u5206\u6790\u3059\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/10 0-23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "urgent_race_entry_repair_worker",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "repair_urgent_today": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runRaceDayIntegritySync",
+            "args": {
+              "target_offset": 0,
+              "stage": "pre"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u7de0\u5207\u8fd1\u63a5\u30ec\u30fc\u30b9\u7dca\u6025\u4fee\u5fa9",
+            "description": "\u7de0\u520790\u5206\u4ee5\u5185\u306e\u672a\u53d6\u5f97\u30ec\u30fc\u30b9\u3092\u5168\u5834\u30b9\u30ad\u30e3\u30f3\u3088\u308a\u5148\u306b\u53d6\u5f97\u3057\u3001\u5373\u5206\u6790\u3059\u308b"
+          }
+        }
+      }
+    ]
+  }
+}
