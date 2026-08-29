@@ -101,6 +101,18 @@
     },
     "tilt": {
       "type": "number"
+    },
+    "exhibition_st": {
+      "type": "number"
+    },
+    "exhibition_st_raw": {
+      "type": "string"
+    },
+    "exhibition_rank": {
+      "type": "number"
+    },
+    "is_scratched": {
+      "type": "boolean"
     }
   },
   "required": [
