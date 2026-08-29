@@ -99,7 +99,7 @@ export default function Home() {
     const last = Number(sessionStorage.getItem(key) || 0);
     if (now - last < 5 * 60 * 1000) return;
     sessionStorage.setItem(key, String(now));
-    base44.functions.invoke("runRaceDayIntegritySync", { target_offset: 0, stage: "pre" })
+    base44.functions.invoke("runUrgentEntryRepair", { race_date: dateStr(0), stage: "pre" })
       .catch(() => {});
   }, [tab, loading, races, analyses]);
 
