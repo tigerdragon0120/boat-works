@@ -61,6 +61,20 @@ async function processDate(base44, raceDate, nowMs) {
     { race_date: raceDate, data_source: 'official' }, 'race_number', 500
   ).catch(() => []);
   const refreshedKeys = new Set(refreshed.map(resultKey));
+  // 公式結果が揃ったAlertは、resolved化の前にBUY的中Slack通知を試す。
+  // notifySlackAlert側でBUYかつ推奨パターン的中のみ送信し、重複も防止する。
+  let slackResultSent = 0;
+  for (const a of alerts.filter(a => refreshedKeys.has(resultKey(a)))) {
+    try {
+      const res = await base44.asServiceRole.functions.invoke('notifySlackAlert', {
+        race_id: a.race_id,
+        stage: 'result',
+      });
+      const data = res?.data || res;
+      if (data?.sent) slackResultSent++;
+    } catch {}
+  }
+
   const updates = alerts
     .filter(a => refreshedKeys.has(resultKey(a)) && a.status !== 'resolved')
     .map(a => ({ id: a.id, status: 'resolved' }));
@@ -99,6 +113,7 @@ async function processDate(base44, raceDate, nowMs) {
     fetch_errors: errors,
     fetched_races: saved,
     resolved_alerts: updates.length,
+    slack_result_sent: slackResultSent,
     learning_samples_updated: learningUpdates.length,
     total_results: refreshed.length,
   };
