@@ -599,8 +599,12 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   }
   const ev = stage === "pre" || recommendedPattern === "NEUTRAL" ? null : expectedValue(recommendedRate, synthOdds);
 
+  const scratchedBoats = Array.isArray(odds?.scratched_boats) ? odds.scratched_boats : [];
+  const hasScratch = scratchedBoats.length > 0 || odds?.has_scratch === true;
+
   let judgment = "PENDING";
   if (stage === "pre") judgment = "PENDING";
+  else if (hasScratch) judgment = "SKIP";
   else if (recommendedPattern === "NEUTRAL") judgment = "SKIP";
   else if (minOk) judgment = judgeWithSample(ev, similarCount, settings);
   else judgment = "SKIP";
@@ -646,6 +650,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     boat1_trust_score: trust?.score ?? 0,
     condition_match_score: trust?.condition_match?.score ?? 0,
     weighted_probability: weightedProbability,
+    has_scratch: hasScratch,
+    scratched_boats: scratchedBoats,
     recommended_pattern: recommendedPattern,
     recommended_rate: recommendedRate,
     recommended_structure: recommendedStructure,
