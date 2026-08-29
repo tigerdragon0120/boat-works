@@ -1,13 +1,13 @@
 {
   "name": "Final Judge Worker",
-  "description": "1\u5206\u3054\u3068\u306b\u7de0\u52075\u5206\u4ee5\u5185\u3092\u78ba\u8a8d\u3002\u672a\u5224\u5b9a\u306ffinal\u5206\u6790\u3001\u78ba\u5b9a\u6e08\u307f\u306f\u6b20\u5834\u767a\u751f\u306e\u307f\u518d\u5206\u6790\u3057\u5f37\u5236SKIP\u3078\u66f4\u65b0\u3059\u308b\u3002",
+  "description": "5\u5206\u3054\u3068\u306b\u7de0\u52075\u5206\u4ee5\u5185\u3092\u78ba\u8a8d\u3002\u672a\u5224\u5b9a\u306ffinal\u5206\u6790\u3001\u78ba\u5b9a\u6e08\u307f\u306f\u6b20\u5834\u767a\u751f\u306e\u307f\u518d\u5206\u6790\u3057\u5f37\u5236SKIP\u3078\u66f4\u65b0\u3059\u308b\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "* 7-21 * * *",
+      "cron_expression": "*/5 7-21 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
