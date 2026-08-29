@@ -6,7 +6,7 @@ import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate,
   getAlerts,
-  getBackfillProgressLight,
+  getBackfillProgressLight, invalidateCache,
 } from "@/lib/boatService";
 import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
@@ -109,6 +109,7 @@ export default function Home() {
         await base44.functions.invoke("repairRaceEntries", {
           race_date: dateStr(0), race_ids: missingIds, stage: "pre",
         });
+        invalidateCache(`races_${dateStr(0)}`);
         const [freshRaces, freshAnalyses] = await Promise.all([
           getRacesByDate(dateStr(0)), getCachedAnalysesByDate(dateStr(0)),
         ]);
