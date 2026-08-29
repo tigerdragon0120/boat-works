@@ -268,6 +268,9 @@ export default async function(req) {
               // v4再分析でS/Aから外れた旧候補はHome/Slack対象から外す。
               await base44.asServiceRole.entities.Alert.update(existingAlert.id, { status: "filtered_out" });
             }
+          } else if (stage === "final" && alertByRace[r.id]) {
+            // 欠場などで一度のBUY/WATCHがSKIPへ変わった場合も、Alertの最終判定を必ず同期する。
+            await ensureAlert(base44, r, a, stage, settings, alertByRace);
           }
         } catch (e) {
           errors++;
