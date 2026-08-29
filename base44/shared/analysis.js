@@ -597,10 +597,16 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
       oddsValues = [];
     }
   }
-  const ev = stage === "pre" || recommendedPattern === "NEUTRAL" ? null : expectedValue(recommendedRate, synthOdds);
+  let ev = stage === "pre" || recommendedPattern === "NEUTRAL" ? null : expectedValue(recommendedRate, synthOdds);
 
   const scratchedBoats = Array.isArray(odds?.scratched_boats) ? odds.scratched_boats : [];
   const hasScratch = scratchedBoats.length > 0 || odds?.has_scratch === true;
+  if (hasScratch && stage !== "pre") {
+    // 欠場レースは期待値・合成オッズ自体を買い判断に使わせない。
+    synthOdds = 0;
+    ev = null;
+    oddsValues = [];
+  }
 
   let judgment = "PENDING";
   if (stage === "pre") judgment = "PENDING";
