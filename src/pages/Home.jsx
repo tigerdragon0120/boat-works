@@ -100,6 +100,14 @@ export default function Home() {
     if (now - last < 5 * 60 * 1000) return;
     sessionStorage.setItem(key, String(now));
     base44.functions.invoke("runUrgentEntryRepair", { race_date: dateStr(0), stage: "pre" })
+      .then(async () => {
+        const [freshRaces, freshAnalyses] = await Promise.all([
+          getRacesByDate(dateStr(0)), getCachedAnalysesByDate(dateStr(0)),
+        ]);
+        setRaces(freshRaces);
+        setAnalyses(freshAnalyses);
+        setCacheHitRate(computeCacheHitRate(freshRaces, freshAnalyses));
+      })
       .catch(() => {});
   }, [tab, loading, races, analyses]);
 
