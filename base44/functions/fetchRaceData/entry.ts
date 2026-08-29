@@ -54,7 +54,7 @@ function inferScratchedBoats(allOdds) {
   const active = [...seen].sort((a,b)=>a-b);
   const scratched = [1,2,3,4,5,6].filter(n => !seen.has(n));
   const expected = active.length >= 3 ? active.length * (active.length - 1) * (active.length - 2) : 0;
-  const count = Object.keys(allOdds || {}).length;
+  const count = Object.values(allOdds || {}).filter(v => Number(v) > 1).length;
   return { active, scratched, expected, count, isConsistent: scratched.length > 0 && expected === count };
 }
 
@@ -127,13 +127,16 @@ export default async function(req) {
         ).catch(() => []);
         const cached = snapshots[0];
         const cachedOdds = cached?.all_trifecta_odds || {};
-        if (Object.keys(cachedOdds).length >= 120) {
+        const cachedScratch = inferScratchedBoats(cachedOdds);
+        const cachedValidCount = cachedScratch.count;
+        if (cachedValidCount >= 120 || cachedScratch.isConsistent) {
+          const cachedScratched = cachedScratch.isConsistent ? cachedScratch.scratched : (cached.scratched_boats || []);
           return Response.json({
-            status: "success", race: currentRace, entries: 6, odds_count: Object.keys(cachedOdds).length,
+            status: "success", race: currentRace, entries: 6, odds_count: cachedValidCount,
             synthetic_odds: cached.synthetic_odds ?? null,
             captured_at: cached.captured_at,
-            scratched_boats: cached.scratched_boats || [],
-            has_scratch: cached.has_scratch === true,
+            scratched_boats: cachedScratched,
+            has_scratch: cachedScratched.length > 0 || cached.has_scratch === true,
             cached: true,
           });
         }
@@ -152,15 +155,15 @@ export default async function(req) {
     // オッズ取得。120通り揃わない途中レスポンスは即エラーにせず最大2回再試行する。
     const odFetched = await fetchTextWithRetry(oddsUrl, (html) => {
       const value = parseOdds3t(html);
-      const count = Object.keys(value).length;
-      if (count >= 120) return { ok: true, value };
       const scratch = inferScratchedBoats(value);
+      const count = scratch.count;
+      if (count >= 120) return { ok: true, value };
       if (scratch.isConsistent) return { ok: true, value };
       return { ok: false, message: `オッズ取得失敗：${count}件（120通り未満）` };
     }, "オッズ");
     const allOdds = odFetched.value;
-    const oddsCount = Object.keys(allOdds).length;
     const scratchInfo = inferScratchedBoats(allOdds);
+    const oddsCount = scratchInfo.count;
     const scratchedBoats = oddsCount < 120 && scratchInfo.isConsistent ? scratchInfo.scratched : [];
 
     // ういち買い6点抽出
