@@ -1,13 +1,13 @@
 {
   "name": "Daily Result Aggregation",
-  "description": "v10\u591c\u9593\u7b2c3\u6bb5\u968e\u3002\u6bce\u65e523:50 JST\u306b\u7fcc\u65e5\u306e\u51fa\u8d70\u8868\u3092\u5168\u5834\u53d6\u5f97\u3057\u300123:35\u78ba\u5b9a\u6e08\u307f\u30b7\u30ea\u30fc\u30ba\u30dd\u30a4\u30f3\u30c8\u3092\u4f7f\u3063\u3066v10\u4e8b\u524d\u5206\u6790\u30fb\u30a2\u30e9\u30fc\u30c8\u9078\u51fa\u3092\u78ba\u5b9a\u3059\u308b\u3002",
+  "description": "\u4eca\u65e5\u306e\u5168\u5834\u7d50\u679c\u8a73\u7d30\u30fb\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u304c\u5b8c\u6210\u3057\u305f\u5f8c\u3060\u3051\u300123:50\u306823:58\u306b\u7fcc\u65e5\u306e\u51fa\u8d70\u8868\u3092\u78ba\u5b9a\u53d6\u5f97\u3057\u3066v10\u4e8b\u524d\u5206\u6790\u30fb\u30a2\u30e9\u30fc\u30c8\u9078\u51fa\u3078\u9032\u3080\u3002\u672a\u5b8c\u4e86\u306a\u3089\u5f85\u6a5f\u3059\u308b\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "50 23 * * *",
+      "cron_expression": "50,58 23 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
@@ -22,7 +22,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "daily_result_aggregation",
-      "version": "2.0",
+      "version": "3.0",
       "namespace": "base44"
     },
     "do": [
@@ -33,13 +33,14 @@
             "function_name": "runDailyOvernight",
             "args": {
               "target_offset": 1,
-              "skip_aggregate": true
+              "skip_aggregate": true,
+              "require_collection": true
             }
           },
           "then": "end",
           "x-base44": {
-            "title": "\u7fcc\u65e5v10\u4e88\u60f3\u78ba\u5b9a",
-            "description": "\u7fcc\u65e5\u51fa\u8d70\u8868\u53d6\u5f97\u2192\u30b7\u30ea\u30fc\u30ba\u30dd\u30a4\u30f3\u30c8\u7167\u5408\u2192v10\u4e8b\u524d\u5206\u6790\u2192\u30a2\u30e9\u30fc\u30c8\u78ba\u5b9a"
+            "title": "\u7fcc\u65e5v10\u30a2\u30e9\u30fc\u30c8\u78ba\u5b9a",
+            "description": "\u4eca\u65e5\u306e\u5168\u30c7\u30fc\u30bf\u30fb\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u5b8c\u6210\u3092\u78ba\u8a8d\u2192\u7fcc\u65e5\u51fa\u8d70\u8868\u2192v10\u5206\u6790\u2192\u30a2\u30e9\u30fc\u30c8\u78ba\u5b9a"
           }
         }
       }
