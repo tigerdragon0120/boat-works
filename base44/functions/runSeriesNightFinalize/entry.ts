@@ -38,9 +38,22 @@ export default async function(req) {
           const d=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:raceDate,jcd,force:true});
           detail=d?.data||d;
 
-          // 今日の展示データも学習資産として残す。過去のオッズ更新で消えた展示欄もここで復元する。
+          // 今日の展示データも学習資産として残す。欠損レースだけを再取得し、公式サイトへ無駄な負荷をかけない。
           let beforeinfoRestored=0, beforeinfoErrors=0;
-          for (const race of scheduled) {
+          const venueEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_date:raceDate, venue_code:jcd }, 'race_number', 500).catch(()=>[]);
+          const exByRace = new Map();
+          for (const e of venueEntries) {
+            const key=Number(e.race_number);
+            const cur=exByRace.get(key)||{times:0,sts:0};
+            if (e.exhibition_time != null) cur.times++;
+            if (e.exhibition_st != null) cur.sts++;
+            exByRace.set(key,cur);
+          }
+          const missingBeforeinfo = scheduled.filter(r=>{
+            const x=exByRace.get(Number(r.race_number))||{times:0,sts:0};
+            return x.times < 3 || x.sts < 3;
+          });
+          for (const race of missingBeforeinfo) {
             try {
               const b=await base44.asServiceRole.functions.invoke('fetchBeforeInfo',{race_date:raceDate,jcd,race_number:race.race_number});
               const bd=b?.data||b;
@@ -81,7 +94,20 @@ export default async function(req) {
         const d=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:raceDate,jcd:row.jcd,force:true});
         const detail=d?.data||d;
         let beforeinfoRestored=0, beforeinfoErrors=0;
-        for (const race of scheduled) {
+        const venueEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_date:raceDate, venue_code:row.jcd }, 'race_number', 500).catch(()=>[]);
+        const exByRace = new Map();
+        for (const e of venueEntries) {
+          const key=Number(e.race_number);
+          const cur=exByRace.get(key)||{times:0,sts:0};
+          if (e.exhibition_time != null) cur.times++;
+          if (e.exhibition_st != null) cur.sts++;
+          exByRace.set(key,cur);
+        }
+        const missingBeforeinfo=scheduled.filter(r=>{
+          const x=exByRace.get(Number(r.race_number))||{times:0,sts:0};
+          return x.times<3 || x.sts<3;
+        });
+        for (const race of missingBeforeinfo) {
           try {
             const b=await base44.asServiceRole.functions.invoke('fetchBeforeInfo',{race_date:raceDate,jcd:row.jcd,race_number:race.race_number});
             const bd=b?.data||b;
