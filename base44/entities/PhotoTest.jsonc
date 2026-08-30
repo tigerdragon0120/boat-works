@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "registration_number": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "name": "PhotoTest"
+}
