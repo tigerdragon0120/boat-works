@@ -21,6 +21,41 @@
     "grade": {
       "type": "string"
     },
+    "event_name": {
+      "type": "string"
+    },
+    "series_key": {
+      "type": "string"
+    },
+    "series_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_total_days": {
+      "type": "number"
+    },
+    "series_day": {
+      "type": "number"
+    },
+    "is_final_day": {
+      "type": "boolean"
+    },
+    "race_phase": {
+      "type": "string",
+      "enum": [
+        "QUALIFYING",
+        "GENERAL",
+        "SEMIFINAL",
+        "FINAL",
+        "SELECTION",
+        "DREAM",
+        "OTHER"
+      ]
+    },
     "deadline": {
       "type": "string",
       "format": "date-time"
