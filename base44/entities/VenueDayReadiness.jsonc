@@ -1,0 +1,80 @@
+{
+  "name": "VenueDayReadiness",
+  "type": "object",
+  "properties": {
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "time_slot": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "day",
+        "night"
+      ]
+    },
+    "first_deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expected_races": {
+      "type": "number"
+    },
+    "races_collected": {
+      "type": "number"
+    },
+    "complete_entry_races": {
+      "type": "number"
+    },
+    "core_complete_races": {
+      "type": "number"
+    },
+    "series_points_ready": {
+      "type": "boolean"
+    },
+    "collection_status": {
+      "type": "string",
+      "enum": [
+        "WAITING",
+        "COMPLETE",
+        "BASELINE_CAPTURED",
+        "LATE_BASELINE"
+      ]
+    },
+    "collection_completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "baseline_captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "missing_races": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "race_date",
+    "venue_code"
+  ]
+}
