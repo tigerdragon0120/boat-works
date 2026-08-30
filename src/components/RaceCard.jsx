@@ -39,6 +39,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
           <div className="flex items-center gap-2">
             <span className="text-base font-bold tracking-tight">{race.venue_name}</span>
             <span className="text-sm text-muted-foreground">{race.race_number}R</span>
+            <RacePhaseBadge race={race} />
             {race.data_source === "official" ? (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">LIVE</span>
             ) : (
@@ -181,6 +182,27 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
       <RacerDetailDialog open={racerOpen} onOpenChange={setRacerOpen} entry={dialogEntry} trust={dialogTrust} />
     </>
   );
+}
+
+function racePhaseLabel(race) {
+  const map = { QUALIFYING: "予選", GENERAL: "一般", SEMIFINAL: "準優勝戦", FINAL: "優勝戦", SELECTION: "選抜戦", DREAM: "ドリーム" };
+  if (race?.race_phase && map[race.race_phase]) return map[race.race_phase];
+  const name = String(race?.race_name || "").replace(/\s*1800m\s*/g, "");
+  if (name.includes("準優")) return "準優勝戦";
+  if (name.includes("優勝戦")) return "優勝戦";
+  if (name.includes("予選")) return "予選";
+  if (name.includes("一般")) return "一般";
+  return null;
+}
+
+function RacePhaseBadge({ race }) {
+  const label = racePhaseLabel(race);
+  if (!label) return null;
+  const cls = label === "優勝戦" ? "border-amber-300 bg-amber-50 text-amber-700" :
+    label === "準優勝戦" ? "border-violet-300 bg-violet-50 text-violet-700" :
+    label === "予選" ? "border-sky-300 bg-sky-50 text-sky-700" :
+    "border-slate-300 bg-slate-50 text-slate-600";
+  return <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded border", cls)}>{label}</span>;
 }
 
 function CardStat({ label, value, sub, unit, accent }) {
