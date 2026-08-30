@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValu
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v9";
+export const ANALYSIS_VERSION = "v10";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -235,9 +235,62 @@ function computeExhibitionGate(race, entries, racerEscape, motorBoat1, weatherSt
   };
 }
 
-function computeUichiDirection(entries, trustScore, vrs) {
+function computeSeriesRaceContext(race, entries, stats) {
+  const points = stats?.seriesPointsBySeries?.[race?.series_key] || {};
+  const byBoat = {};
+  for (const e of entries) if (e?.registration_number) byBoat[e.boat_number] = points[e.registration_number] || null;
+  const b1 = byBoat[1];
+  const b1Runs = Number(b1?.races_run || 0);
+  const b1Score = b1Runs > 0 ? Number(b1?.series_score ?? 50) : 50;
+  const pressure = Number(b1?.rank_pressure_score ?? 50);
+  const phase = race?.race_phase || 'OTHER';
+  const grade = race?.grade || 'GENERAL';
+
+  const routineOuter = [5,6].filter(n => {
+    const e = entries.find(x=>Number(x.boat_number)===n);
+    const p = byBoat[n];
+    if (!e || e.grade_class !== 'B2') return false;
+    return p?.alert_exclusion === true || (Number(p?.races_run||0) >= 2 && Number(p?.avg_lane||0) >= 4.5 && Number(p?.inner_lane_count||0) === 0);
+  });
+  const outerB2 = [5,6].filter(n => entries.find(x=>Number(x.boat_number)===n)?.grade_class === 'B2');
+  const routineOuterExclusion = grade === 'GENERAL' && (
+    routineOuter.length >= 2 ||
+    (routineOuter.length >= 1 && outerB2.length >= 2)
+  );
+
+  // 予選ボーダー付近で翌日1号艇を与えられた場合は「軸配置の意図」の補強材料。
+  // 能力そのものへの大加点はせず、番組意図の信頼度だけを上げる。
+  const placementSignal = phase === 'QUALIFYING' && pressure >= 80 && (
+    Number(b1?.avg_lane || 0) >= 3.3 || Number(b1?.inner_lane_count || 0) <= 1
+  );
+
+  const scoreAdj = b1Runs >= 2 ? clamp((b1Score - 50) * 0.20, -8, 8) : 0;
+  const weakSeries = b1Runs >= 2 && b1Score < 35;
+  const reasons = [];
+  const concerns = [];
+  if (b1Runs > 0) reasons.push({ label:`今節指数 ${Math.round(b1Score)} (${b1?.series_label || '—'})`, strength:Math.round(50 + Math.abs(b1Score-50)/2), layer:'series' });
+  if (b1?.rank != null && b1?.point_rate != null) reasons.push({ label:`得点率${Number(b1.point_rate).toFixed(2)} / ${b1.rank}位 / 勝負度${Math.round(pressure)}`, strength:Math.round(pressure), layer:'series' });
+  if (placementSignal) reasons.push({ label:'勝負がけ圏で翌日1号艇の番組配置', strength:88, layer:'series' });
+  if (routineOuterExclusion) concerns.push({ label:'一般戦のB2外枠通常配置（偽シグナル）', severity:20, layer:'series' });
+  if (weakSeries) concerns.push({ label:`1号艇 今節指数${Math.round(b1Score)}で低調`, severity:10, layer:'series' });
+
+  return {
+    by_boat:byBoat, boat1:b1 || null, boat1_score:b1Score, boat1_runs:b1Runs,
+    pressure, score_adjustment:scoreAdj, placement_signal:placementSignal,
+    routine_outer_exclusion:routineOuterExclusion, weak_series:weakSeries,
+    reasons, concerns,
+  };
+}
+
+function computeUichiDirection(entries, trustScore, vrs, seriesCtx = null) {
   const intent = computeProgramIntent(entries, vrs);
   const racer = computeRacerExecution(entries, trustScore);
+  if (seriesCtx && seriesCtx.boat1_runs >= 2) {
+    const adj = seriesCtx.score_adjustment || 0;
+    racer.escape = Math.round(clamp(racer.escape + adj, 0, 100));
+    racer.main_execution = Math.round(clamp(racer.main_execution + adj * 0.7, 0, 100));
+    racer.ura_execution = Math.round(clamp(racer.ura_execution + adj * 0.7, 0, 100));
+  }
   const motor = computeMotorSupport(entries);
 
   // 番組意図が主役。選手は「そのシナリオを実現できるか」、モーターは最後の裏付け。
@@ -272,6 +325,12 @@ function computeUichiDirection(entries, trustScore, vrs) {
     scenarioLabel = "番組意図弱化（モーター）";
     scenarioPenalty = 22;
     directionIndex = Math.round(directionIndex * 0.72);
+  }
+  if (seriesCtx?.placement_signal) {
+    intent.axis_placement = Math.round(clamp(intent.axis_placement + 8, 0, 100));
+    intent.confidence = Math.round(clamp(intent.confidence + 6, 0, 100));
+    intent.main_intent = Math.round(clamp(intent.main_intent + 4, 0, 100));
+    intent.ura_intent = Math.round(clamp(intent.ura_intent + 4, 0, 100));
   }
   const confidence = Math.round(clamp(intent.confidence*.50 + chosenExecution*.32 + chosenMotor*.18 - scenarioPenalty, 0, 100));
 
@@ -616,7 +675,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     b5 ? Math.round(clamp(((b5.national_2rate || 0) * 0.35 + (b5.local_2rate || 0) * 0.25 + (b5.motor_2rate || 0) * 0.25 + clamp((0.22 - (b5.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0,
     b6 ? Math.round(clamp(((b6.national_2rate || 0) * 0.35 + (b6.local_2rate || 0) * 0.25 + (b6.motor_2rate || 0) * 0.25 + clamp((0.22 - (b6.avg_st || 0.22)) / 0.12, 0, 1) * 100 * 0.15), 0, 100)) : 0
   );
-  const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs);
+  const seriesContext = computeSeriesRaceContext(race, entries, stats);
+  const uichiDirection = computeUichiDirection(entries, trust?.score || 0, vrs, seriesContext);
   const exhibitionGate = computeExhibitionGate(
     race, entries,
     uichiDirection.racer_escape_execution,
@@ -708,6 +768,11 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     else if (scenarioOk && recommendedPattern !== "NEUTRAL" && ar >= preThr && intentConf >= 50 && escape >= 60 && recommendedStructure >= 62 && motorSupport >= 45 && conf >= 52) preGrade = "A";
     else if (ar >= preThr) preGrade = "B";
     else preGrade = "C";
+
+    // v10: 一般戦でB2が普段通り5/6枠に置かれているだけの構成は番組意図として扱わない。
+    // また1号艇が今節明確に低調ならS/Aアラートへ上げない。
+    if (seriesContext.routine_outer_exclusion) preGrade = "C";
+    else if (seriesContext.weak_series && (preGrade === "S" || preGrade === "A")) preGrade = "B";
   }
 
   // ランキングは推奨側の出現率・構造・方向信頼度で並べる。
@@ -739,8 +804,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     recommended_rate: recommendedRate,
     recommended_structure: recommendedStructure,
     pre_grade: preGrade,
-    reasons: trust?.reasons || [],
-    concerns: trust?.concerns || [],
+    reasons: [...(seriesContext.reasons || []), ...(trust?.reasons || [])].slice(0, 9),
+    concerns: [...(seriesContext.concerns || []), ...(trust?.concerns || [])].slice(0, 9),
     condition_matches: trust?.condition_match?.conditions || [],
     outer_boat_score: outer?.score ?? 0,
     outer_boat_number: outer?.boat_number ?? null,
