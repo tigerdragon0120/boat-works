@@ -541,7 +541,7 @@ export function parseRaceResultDetail(html) {
     }
   }
 
-  const winningMethods = ['逃げ','差し','まくり','まくり差し','抜き','恵まれ'];
+  const winningMethods = ['まくり差し','逃げ','差し','まくり','抜き','恵まれ'];
   let winningMethod = null;
   for (const method of winningMethods) {
     if (html.includes(method)) { winningMethod = method; break; }
