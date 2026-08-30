@@ -93,6 +93,76 @@
     },
     "boat1_motor_3rate": {
       "type": "number"
+    },
+    "finishers": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u51686\u8247\u306e\u7740\u9806\u30fb\u9078\u624b\u30fb\u53d6\u5f97\u3067\u304d\u305f\u30ec\u30fc\u30b9\u30bf\u30a4\u30e0"
+    },
+    "finish_time_count": {
+      "type": "number",
+      "description": "\u516c\u5f0f\u304b\u3089\u53d6\u5f97\u3067\u304d\u305f\u30ec\u30fc\u30b9\u30bf\u30a4\u30e0\u6570"
+    },
+    "race_time_1_raw": {
+      "type": "string"
+    },
+    "race_time_2_raw": {
+      "type": "string"
+    },
+    "race_time_3_raw": {
+      "type": "string"
+    },
+    "race_time_1_seconds": {
+      "type": "number"
+    },
+    "race_time_2_seconds": {
+      "type": "number"
+    },
+    "race_time_3_seconds": {
+      "type": "number"
+    },
+    "margin_1_2_seconds": {
+      "type": "number",
+      "description": "1\u7740\u30682\u7740\u306e\u30bf\u30a4\u30e0\u5dee\uff08\u79d2\uff09"
+    },
+    "margin_1_3_seconds": {
+      "type": "number",
+      "description": "1\u7740\u30683\u7740\u306e\u30bf\u30a4\u30e0\u5dee\uff08\u79d2\uff09"
+    },
+    "winning_method": {
+      "type": "string",
+      "description": "\u9003\u3052/\u5dee\u3057/\u307e\u304f\u308a/\u307e\u304f\u308a\u5dee\u3057/\u629c\u304d/\u6075\u307e\u308c"
+    },
+    "start_info": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u5168\u8247\u306e\u672c\u756aST"
+    },
+    "weather": {
+      "type": "string"
+    },
+    "wind_dir": {
+      "type": "string"
+    },
+    "wind_speed": {
+      "type": "number"
+    },
+    "wave_height": {
+      "type": "number"
+    },
+    "air_temperature": {
+      "type": "number"
+    },
+    "water_temperature": {
+      "type": "number"
+    },
+    "detail_fetched_at": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "required": [
