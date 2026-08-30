@@ -33,6 +33,29 @@ export default async function(req) {
     const targetOffset = Number(body.target_offset ?? 1);
     const skipAggregate = body.skip_aggregate === true;
 
+    // 翌日アラートへ進む前に、今日の全開催場の詳細収集＋節間ポイント完成を必須条件にする。
+    // 途中データのまま翌日予想を作らない。
+    let collectionGate:any=null;
+    if (targetOffset === 1 && body.require_collection !== false) {
+      const sourceDate = localDateStr(0);
+      try {
+        const c = await base44.asServiceRole.functions.invoke('runSeriesNightFinalize', { race_date: sourceDate });
+        collectionGate = c?.data || c;
+      } catch (e) {
+        collectionGate = { status:'error', message:e?.message || String(e) };
+      }
+      if (collectionGate?.status !== 'complete') {
+        return Response.json({
+          status:'waiting_today_collection',
+          source_date:sourceDate,
+          target_date:localDateStr(1),
+          collection:collectionGate,
+          message:'今日の全レース詳細・節間ポイントが未完了のため、翌日アラート分析は待機しています',
+          elapsed_ms:Date.now()-t0,
+        });
+      }
+    }
+
     // 夜間処理では、まず昨日の公式結果を自動保存してから集計を更新する。
     // これにより過去RaceResultは毎日増え続け、手動バックフィル不要になる。
     let yesterdayResultUpdate = null;
@@ -279,6 +302,7 @@ export default async function(req) {
       yesterday_result_update: yesterdayResultUpdate,
       aggregate_update: aggregateUpdate,
       learning_metrics_update: learningMetricsUpdate,
+      collection_gate: collectionGate,
       analysis: analysisResult,
       elapsed_ms: Date.now() - t0,
     });
