@@ -245,6 +245,15 @@ function computeSeriesRaceContext(race, entries, stats) {
   const pressure = Number(b1?.rank_pressure_score ?? 50);
   const phase = race?.race_phase || 'OTHER';
   const grade = race?.grade || 'GENERAL';
+  const previousDate = (() => {
+    if (!race?.race_date) return null;
+    const d = new Date(`${race.race_date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0,10);
+  })();
+  // 2日目以降は「前日全レース終了後のsnapshot」が必須。
+  // 18時台に翌日表が先に公開されても、古いシリーズ状態でアラートを確定しない。
+  const snapshotReady = Number(race?.series_day || 1) <= 1 || (!!b1 && b1.as_of_date === previousDate);
 
   const routineOuter = [5,6].filter(n => {
     const e = entries.find(x=>Number(x.boat_number)===n);
@@ -271,12 +280,14 @@ function computeSeriesRaceContext(race, entries, stats) {
   if (b1Runs > 0) reasons.push({ label:`今節指数 ${Math.round(b1Score)} (${b1?.series_label || '—'})`, strength:Math.round(50 + Math.abs(b1Score-50)/2), layer:'series' });
   if (b1?.rank != null && b1?.point_rate != null) reasons.push({ label:`得点率${Number(b1.point_rate).toFixed(2)} / ${b1.rank}位 / 勝負度${Math.round(pressure)}`, strength:Math.round(pressure), layer:'series' });
   if (placementSignal) reasons.push({ label:'勝負がけ圏で翌日1号艇の番組配置', strength:88, layer:'series' });
+  if (!snapshotReady) concerns.push({ label:'前日全結果・今節ポイントの確定待ち', severity:30, layer:'series' });
   if (routineOuterExclusion) concerns.push({ label:'一般戦のB2外枠通常配置（偽シグナル）', severity:20, layer:'series' });
   if (weakSeries) concerns.push({ label:`1号艇 今節指数${Math.round(b1Score)}で低調`, severity:10, layer:'series' });
 
   return {
     by_boat:byBoat, boat1:b1 || null, boat1_score:b1Score, boat1_runs:b1Runs,
     pressure, score_adjustment:scoreAdj, placement_signal:placementSignal,
+    snapshot_ready:snapshotReady,
     routine_outer_exclusion:routineOuterExclusion, weak_series:weakSeries,
     reasons, concerns,
   };
@@ -771,7 +782,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
 
     // v10: 一般戦でB2が普段通り5/6枠に置かれているだけの構成は番組意図として扱わない。
     // また1号艇が今節明確に低調ならS/Aアラートへ上げない。
-    if (seriesContext.routine_outer_exclusion) preGrade = "C";
+    if (!seriesContext.snapshot_ready) preGrade = "C";
+    else if (seriesContext.routine_outer_exclusion) preGrade = "C";
     else if (seriesContext.weak_series && (preGrade === "S" || preGrade === "A")) preGrade = "B";
   }
 
