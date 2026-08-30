@@ -34,6 +34,20 @@ export default async function(req) {
     const raceDate=body.race_date || jstDateStr(targetOffset);
     const t0=Date.now();
 
+    // 前夜に翌日分析を始める場合は、まず当日全場の結果詳細→節間ポイント完成を必須にする。
+    // 23:50時点で未完なら翌日アラートは一切開始しない。
+    let sourceCollection:any=null;
+    if (body.require_source_collection === true) {
+      const sourceDate=jstDateStr(targetOffset-1);
+      try {
+        const c=await base44.asServiceRole.functions.invoke('runSeriesNightFinalize',{race_date:sourceDate});
+        sourceCollection=c?.data||c;
+      } catch(e) { sourceCollection={status:'error',message:e?.message||String(e)}; }
+      if (sourceCollection?.status !== 'complete') {
+        return Response.json({status:'waiting_source_collection',source_date:sourceDate,race_date:raceDate,source_collection:sourceCollection,message:'当日全場の結果詳細・節間ポイントが未完了のため翌日アラート開始を待機',elapsed_ms:Date.now()-t0});
+      }
+    }
+
     // まず対象日のRace/出走表を徹底収集。ここでは分析を一切しない。
     const sync=await base44.asServiceRole.functions.invoke('runRaceDayIntegritySync',{
       race_date:raceDate, stage:'pre', collect_only:true,
@@ -153,6 +167,7 @@ export default async function(req) {
     const finalReadiness=await base44.asServiceRole.entities.VenueDayReadiness.filter({race_date:raceDate},'first_deadline',100).catch(()=>[]);
     return Response.json({
       status:'success', race_date:raceDate,
+      source_collection:sourceCollection,
       sync:syncData,
       venues:finalReadiness.length,
       morning:finalReadiness.filter(x=>x.time_slot==='morning').length,
