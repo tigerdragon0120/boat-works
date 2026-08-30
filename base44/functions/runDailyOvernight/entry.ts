@@ -237,7 +237,9 @@ export default async function(req) {
     let analysisResult = null;
     try {
       const anRes = await base44.asServiceRole.functions.invoke("analyzeAllRacesForDate", {
-        race_date: raceDate, stage: "pre", race_ids: completeRaceIds,
+        // 18時台の暫定分析があっても、23:50に当日全結果→シリーズ指数を確定した後は
+        // 必ず全レースをv10で再計算する。前夜確定前の古い番組評価を残さない。
+        race_date: raceDate, stage: "pre", race_ids: completeRaceIds, force: true,
       });
       analysisResult = anRes?.data || anRes;
     } catch (e) {
