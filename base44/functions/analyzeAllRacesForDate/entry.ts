@@ -17,6 +17,7 @@ export default async function(req) {
 
     const body = await req.json().catch(() => ({}));
     const { race_date, stage = "pre", race_ids = null, force = false } = body;
+    const rebuildBaseline = body.rebuild_baseline === true;
     if (!race_date) return Response.json({ status: "error", message: "race_date が必要です" }, { status: 400 });
 
     const t0 = Date.now();
@@ -41,6 +42,24 @@ export default async function(req) {
     const allEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_date }, "boat_number", 2000);
     const entriesByRace = {};
     for (const e of allEntries) (entriesByRace[e.race_id] = entriesByRace[e.race_id] || []).push(e);
+
+    // pre分析は「場の全12R・各6艇」が揃った後だけ許可する。
+    // 1Rずつ先に分析すると展示前基準点が不揃いになるため、中央関数でも場単位ゲートを掛ける。
+    if (stage === "pre") {
+      const racesByVenue = {};
+      for (const r of races) (racesByVenue[r.venue_code] = racesByVenue[r.venue_code] || []).push(r);
+      const completeVenues = new Set();
+      for (const [jcd, rows] of Object.entries(racesByVenue)) {
+        const nums = new Set(rows.map(r => Number(r.race_number)));
+        const all12 = rows.length === 12 && Array.from({length:12},(_,i)=>i+1).every(n=>nums.has(n));
+        const entries12 = all12 && rows.every(r => (entriesByRace[r.id] || []).length >= 6);
+        if (entries12) completeVenues.add(jcd);
+      }
+      targetRaces = targetRaces.filter(r => completeVenues.has(r.venue_code));
+      if (targetRaces.length === 0) {
+        return Response.json({ status:"waiting_venue_complete", race_date, stage, analyzed:0, message:"場の全12R・各6艇が揃うまでpre分析を開始しません", elapsed_ms:Date.now()-t0 });
+      }
+    }
 
     // オッズ一括取得（final時のみ）
     let oddsByRace = {};
@@ -151,7 +170,13 @@ export default async function(req) {
       const batchRaces = targetRaces.slice(i, i + BATCH);
       await Promise.all(batchRaces.map(async (r) => {
         try {
-          if (!force && existingMap[r.id] && existingMap[r.id].settings_version === settingsVersion) { skipped++; return; }
+          // 展示前基準点(pre)は一度作ったら通常処理では上書きしない。
+          // 明示的rebuild_baseline=trueの場合も、展示情報が既に入ったレースは基準点再作成を禁止する。
+          if (stage === "pre" && existingMap[r.id]) {
+            if (!rebuildBaseline || r.exhibition_ready === true || (entriesByRace[r.id] || []).some(e => e.exhibition_time != null || e.exhibition_st != null)) {
+              skipped++; return;
+            }
+          } else if (!force && existingMap[r.id] && existingMap[r.id].settings_version === settingsVersion) { skipped++; return; }
           const entries = entriesByRace[r.id] || [];
           if (entries.length < 6) {
             errors++;
@@ -159,6 +184,15 @@ export default async function(req) {
             return;
           }
           const odds = stage === "pre" ? null : (oddsByRace[r.id] || null);
+          // 2日目以降は前日までの節間ポイントが無い状態でpre分析しない。
+          if (stage === "pre" && Number(r.series_day || 1) > 1) {
+            const bySeries = seriesPointsBySeries[r.series_key] || {};
+            if (Object.keys(bySeries).length === 0) {
+              skipped++;
+              errorDetails.push({ race_id:r.id, venue_code:r.venue_code, race_number:r.race_number, phase:"series_points", message:"前日までの節間ポイント未確定のためpre分析待機" });
+              return;
+            }
+          }
           const a = computeRaceAnalysis(r, entries, odds, stats, settings, stage);
 
           const payload = {
