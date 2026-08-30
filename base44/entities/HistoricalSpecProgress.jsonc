@@ -1,0 +1,78 @@
+{
+  "name": "HistoricalSpecProgress",
+  "type": "object",
+  "properties": {
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "result_ready": {
+      "type": "boolean"
+    },
+    "result_detail_ready": {
+      "type": "boolean"
+    },
+    "entry_context_ready": {
+      "type": "boolean"
+    },
+    "series_context_ready": {
+      "type": "boolean"
+    },
+    "exhibition_status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "AVAILABLE",
+        "DONE",
+        "UNAVAILABLE",
+        "ERROR"
+      ]
+    },
+    "results_count": {
+      "type": "number"
+    },
+    "detail_count": {
+      "type": "number"
+    },
+    "entry_race_count": {
+      "type": "number"
+    },
+    "series_context_count": {
+      "type": "number"
+    },
+    "exhibition_race_count": {
+      "type": "number"
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "PROCESSING",
+        "PARTIAL",
+        "COMPLETE",
+        "ERROR"
+      ]
+    },
+    "last_checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error_msg": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "race_date",
+    "venue_code"
+  ]
+}
