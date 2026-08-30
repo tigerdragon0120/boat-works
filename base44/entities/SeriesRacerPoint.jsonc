@@ -105,7 +105,15 @@
     },
     "series_score": {
       "type": "number",
-      "description": "BOAT WORKS\u30b7\u30ea\u30fc\u30ba\u6307\u6570 0-100\u300150\u4e2d\u7acb"
+      "description": "BOAT WORKS\u30b7\u30ea\u30fc\u30ba\u6307\u6570 0-100\u300150\u4e2d\u7acb\u3002\u8d70\u6570\u4fe1\u983c\u88dc\u6b63\u5f8c"
+    },
+    "raw_series_score": {
+      "type": "number",
+      "description": "\u8d70\u6570\u4fe1\u983c\u88dc\u6b63\u524d\u306e\u77ed\u671f\u6307\u6570"
+    },
+    "series_sample_confidence": {
+      "type": "number",
+      "description": "\u4eca\u7bc0\u8d70\u6570\u306b\u57fa\u3065\u304f\u6307\u6570\u4fe1\u983c\u5ea6 0-100"
     },
     "series_label": {
       "type": "string",
