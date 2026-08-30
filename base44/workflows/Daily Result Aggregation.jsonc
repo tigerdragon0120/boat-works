@@ -1,6 +1,6 @@
 {
   "name": "Daily Result Aggregation",
-  "description": "\u6bce\u65e523\u664250\u5206\u306b\u5f53\u65e5\u307e\u3067\u306e\u516c\u5f0f\u7d50\u679c\u4fdd\u5b58\u30fb\u65e5\u6b21\u96c6\u8a08\u30fb\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u66f4\u65b0\u3092\u884c\u3046\u3002\u51fa\u8d70\u8868\u76e3\u8996\u3068\u306f\u5206\u96e2\u3059\u308b\u3002",
+  "description": "v10\u591c\u9593\u7b2c3\u6bb5\u968e\u3002\u6bce\u65e523:50 JST\u306b\u7fcc\u65e5\u306e\u51fa\u8d70\u8868\u3092\u5168\u5834\u53d6\u5f97\u3057\u300123:35\u78ba\u5b9a\u6e08\u307f\u30b7\u30ea\u30fc\u30ba\u30dd\u30a4\u30f3\u30c8\u3092\u4f7f\u3063\u3066v10\u4e8b\u524d\u5206\u6790\u30fb\u30a2\u30e9\u30fc\u30c8\u9078\u51fa\u3092\u78ba\u5b9a\u3059\u308b\u3002",
   "trigger": {
     "condition": null,
     "config": {
@@ -22,7 +22,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "daily_result_aggregation",
-      "version": "1.0",
+      "version": "2.0",
       "namespace": "base44"
     },
     "do": [
@@ -33,13 +33,13 @@
             "function_name": "runDailyOvernight",
             "args": {
               "target_offset": 1,
-              "skip_aggregate": false
+              "skip_aggregate": true
             }
           },
           "then": "end",
           "x-base44": {
-            "title": "\u65e5\u6b21\u7d50\u679c\u30fb\u5b66\u7fd2\u96c6\u8a08",
-            "description": "\u516c\u5f0f\u7d50\u679c\u4fdd\u5b58\u2192\u96c6\u8a08\u66f4\u65b0\u2192\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u66f4\u65b0"
+            "title": "\u7fcc\u65e5v10\u4e88\u60f3\u78ba\u5b9a",
+            "description": "\u7fcc\u65e5\u51fa\u8d70\u8868\u53d6\u5f97\u2192\u30b7\u30ea\u30fc\u30ba\u30dd\u30a4\u30f3\u30c8\u7167\u5408\u2192v10\u4e8b\u524d\u5206\u6790\u2192\u30a2\u30e9\u30fc\u30c8\u78ba\u5b9a"
           }
         }
       }
