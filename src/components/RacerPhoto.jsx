@@ -56,8 +56,10 @@ async function loadPhoto(registrationNumber) {
 
 export default function RacerPhoto({ registrationNumber, racerName, size = "md", className, lazy = true, onClick }) {
   const reg = String(registrationNumber || "").trim();
-  const [url, setUrl] = useState(() => photoCache.get(reg) || null);
-  const [loaded, setLoaded] = useState(() => photoCache.has(reg) || failureCache.has(reg));
+  const directUrl = /^\d{4}$/.test(reg) ? `https://www.boatrace.jp/owpc/pc/racer/${reg}/portrait.jpg` : null;
+  const [url, setUrl] = useState(() => directUrl || photoCache.get(reg) || null);
+  const [loaded, setLoaded] = useState(() => !!directUrl || photoCache.has(reg) || failureCache.has(reg));
+  const [triedProxy, setTriedProxy] = useState(false);
   const sizeClass = SIZE_CLASSES[size] || SIZE_CLASSES.md;
   const iconSize = ICON_SIZES[size] || ICON_SIZES.md;
   const initial = racerName ? racerName.charAt(0) : null;
@@ -65,17 +67,21 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
 
   useEffect(() => {
     let active = true;
-    setUrl(photoCache.get(reg) || null);
-    setLoaded(photoCache.has(reg) || failureCache.has(reg));
+    setUrl(directUrl || photoCache.get(reg) || null);
+    setLoaded(!!directUrl || photoCache.has(reg) || failureCache.has(reg));
+    setTriedProxy(false);
     if (!/^\d{4}$/.test(reg)) {
       setLoaded(true);
       return () => { active = false; };
     }
-    loadPhoto(reg).then((nextUrl) => {
-      if (!active) return;
-      setUrl(nextUrl);
-      setLoaded(true);
-    });
+    if (!directUrl) {
+      loadPhoto(reg).then((nextUrl) => {
+        if (!active) return;
+        setUrl(nextUrl);
+        setLoaded(true);
+        setTriedProxy(true);
+      });
+    }
     return () => { active = false; };
   }, [reg]);
 
@@ -99,7 +105,18 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
       alt={racerName ? `${racerName}の選手写真` : "選手写真"}
       loading={lazy ? "lazy" : "eager"}
       onClick={onClick}
-      onError={() => { photoCache.delete(reg); failureCache.set(reg, Date.now()); setUrl(null); setLoaded(true); }}
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (!triedProxy) {
+          setTriedProxy(true);
+          loadPhoto(reg).then((nextUrl) => { setUrl(nextUrl); setLoaded(true); });
+          return;
+        }
+        photoCache.delete(reg);
+        failureCache.set(reg, Date.now());
+        setUrl(null);
+        setLoaded(true);
+      }}
       className={cn(
         "rounded-full object-cover border border-border shrink-0 bg-muted",
         sizeClass, clickable && "cursor-pointer", className
