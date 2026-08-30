@@ -1,0 +1,47 @@
+{
+  "name": "Morning Baseline Priority Worker",
+  "description": "\u6bce\u65e55:00\u301c10:55 JST\u306b5\u5206\u3054\u3068\u306b\u5f53\u65e5\u5168\u5834\u53ce\u96c6\u3092\u518d\u78ba\u8a8d\u3002\u30e2\u30fc\u30cb\u30f3\u30b0\u5834\u306e\u7b2c1R\u524d\u306b\u5c55\u793a\u524d\u57fa\u6e96\u70b9\u3092\u5fc5\u305a\u4f5c\u308b\u3053\u3068\u3092\u6700\u512a\u5148\u3068\u3057\u3001\u901a\u5e38\u5834\u30fb\u30ca\u30a4\u30bf\u30fc\u5834\u3082\u4e26\u884c\u3057\u3066\u4e0d\u8db3\u5206\u3092\u57cb\u3081\u308b\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 5-10 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "morning_baseline_priority_worker",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "priority_collect_today": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runPreRaceBaselineCoordinator",
+            "args": {
+              "target_offset": 0
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u30e2\u30fc\u30cb\u30f3\u30b0\u5834\u6700\u512a\u5148\u53ce\u96c6",
+            "description": "5\u5206\u9593\u9694\u3067\u958b\u59cb\u6642\u523b\u306e\u65e9\u3044\u5834\u304b\u308912R\u5b8c\u5168\u53ce\u96c6\u3068\u5c55\u793a\u524d\u57fa\u6e96\u70b9\u3092\u78ba\u5b9a"
+          }
+        }
+      }
+    ]
+  }
+}
