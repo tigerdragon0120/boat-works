@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { Waves, Bell, BarChart3, Settings, Home, CheckCircle2, LineChart } from "lucide-react";
+import { Waves, Bell, BarChart3, Settings, Home, CheckCircle2, LineChart, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Layout() {
@@ -8,6 +8,7 @@ export default function Layout() {
     { to: "/", label: "ホーム", icon: Home },
     { to: "/alerts", label: "アラート", icon: Bell },
     { to: "/analysis", label: "分析", icon: BarChart3 },
+    { to: "/series", label: "今節", icon: Activity },
     { to: "/trends", label: "傾向", icon: LineChart },
     { to: "/verification", label: "検証", icon: CheckCircle2 },
     { to: "/admin", label: "設定", icon: Settings },
@@ -39,7 +40,7 @@ export default function Layout() {
 
       {/* Bottom nav (mobile-first) */}
       <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur-md">
-        <div className="mx-auto max-w-5xl grid grid-cols-6">
+        <div className="mx-auto max-w-5xl grid grid-cols-7">
           {nav.map((n) => {
             const active = isActive(n.to);
             const Icon = n.icon;
