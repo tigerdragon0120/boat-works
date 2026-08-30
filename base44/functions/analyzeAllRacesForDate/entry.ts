@@ -79,6 +79,13 @@ export default async function(req) {
       if (!existingMap[a.race_id]) existingMap[a.race_id] = a;
     }
 
+    // final時は展示前pre基準点を別に読む。これを使って展示後の変化量を明示する。
+    const preBaselineMap = {};
+    if (stage === "final") {
+      const preRows = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_date, stage:"pre" }, "-captured_at", 500).catch(() => []);
+      for (const p of preRows) if (!preBaselineMap[p.race_id]) preBaselineMap[p.race_id] = p;
+    }
+
     // 学習用原本。pre時点の特徴量を固定保存し、final/結果で後から追記する。
     const learningRows = await base44.asServiceRole.entities.UichiLearningSample.filter(
       { race_date }, "race_number", 500
@@ -253,6 +260,10 @@ export default async function(req) {
             exhibition_ready: a.exhibition_ready === true,
             exhibition_reasons: a.exhibition_reasons || [],
             uichi_direction_reasons: a.uichi_direction_reasons || [],
+            pre_exhibition_escape_score: stage === "final" ? (preBaselineMap[r.id]?.racer_escape_execution ?? null) : null,
+            exhibition_escape_delta: stage === "final" && a.final_escape_score != null && preBaselineMap[r.id]?.racer_escape_execution != null
+              ? Math.round((Number(a.final_escape_score) - Number(preBaselineMap[r.id].racer_escape_execution)) * 10) / 10
+              : null,
             boat1_registration_number: a.boat1?.registration_number,
             boat1_racer_name: a.boat1?.racer_name, boat1_grade_class: a.boat1?.grade_class,
             total_pool: a.total_pool, valid_pool: a.valid_pool,
