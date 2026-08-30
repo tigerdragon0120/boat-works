@@ -1,0 +1,82 @@
+{
+  "name": "SeriesContext",
+  "type": "object",
+  "properties": {
+    "series_key": {
+      "type": "string"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "event_name": {
+      "type": "string"
+    },
+    "grade": {
+      "type": "string",
+      "enum": [
+        "SG",
+        "PG1",
+        "G1",
+        "G2",
+        "G3",
+        "GENERAL",
+        "OTHER"
+      ]
+    },
+    "series_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_dates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "series_total_days": {
+      "type": "number"
+    },
+    "as_of_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_day": {
+      "type": "number"
+    },
+    "is_final_day": {
+      "type": "boolean"
+    },
+    "point_rank_available": {
+      "type": "boolean"
+    },
+    "point_rank_as_of": {
+      "type": "string"
+    },
+    "qualifying_cut": {
+      "type": "number"
+    },
+    "standings_count": {
+      "type": "number"
+    },
+    "refreshed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "context_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "series_key",
+    "venue_code",
+    "series_start_date",
+    "as_of_date"
+  ]
+}
