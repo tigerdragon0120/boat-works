@@ -137,6 +137,7 @@ export default async function(req) {
     for (const venue of activeVenues) {
       const jcd = venue.jcd;
       const venueName = VENUE_NAMES[jcd] || jcd;
+      const seriesCtx = venue.seriesCtx || {};
       for (const s of venue.schedule) {
         const key = `${jcd}_${Number(s.race_number)}`;
         const old = raceMap.get(key);
@@ -146,6 +147,14 @@ export default async function(req) {
           venue_name: venueName,
           race_number: s.race_number,
           deadline: s.deadline || old?.deadline || null,
+          event_name: seriesCtx.event_name || old?.event_name || null,
+          grade: seriesCtx.grade || old?.grade || 'GENERAL',
+          series_key: `${jcd}_${seriesCtx.series_start_date || old?.series_start_date || raceDate}`,
+          series_start_date: seriesCtx.series_start_date || old?.series_start_date || raceDate,
+          series_end_date: seriesCtx.series_end_date || old?.series_end_date || raceDate,
+          series_total_days: seriesCtx.series_total_days || old?.series_total_days || 1,
+          series_day: seriesCtx.series_day || old?.series_day || 1,
+          is_final_day: seriesCtx.is_final_day === true,
           status: 'scheduled',
           data_source: 'official',
           last_updated: new Date().toISOString(),
