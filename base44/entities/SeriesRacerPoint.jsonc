@@ -1,0 +1,154 @@
+{
+  "name": "SeriesRacerPoint",
+  "type": "object",
+  "properties": {
+    "series_key": {
+      "type": "string",
+      "description": "venue_code + series_start_date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "series_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_total_days": {
+      "type": "number"
+    },
+    "series_day": {
+      "type": "number"
+    },
+    "grade": {
+      "type": "string"
+    },
+    "as_of_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "grade_class": {
+      "type": "string"
+    },
+    "rank": {
+      "type": "number"
+    },
+    "point_rate": {
+      "type": "number"
+    },
+    "total_points": {
+      "type": "number"
+    },
+    "penalty_points": {
+      "type": "number"
+    },
+    "races_run": {
+      "type": "number"
+    },
+    "remaining_races": {
+      "type": "number"
+    },
+    "lane_history": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "finish_history": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "lane_finish_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "avg_lane": {
+      "type": "number"
+    },
+    "inner_lane_count": {
+      "type": "number"
+    },
+    "outer_lane_count": {
+      "type": "number"
+    },
+    "lane_difficulty_score": {
+      "type": "number",
+      "description": "\u4eca\u7bc0\u306e\u67a0\u756a\u96e3\u6613\u5ea6 0-100"
+    },
+    "result_quality_score": {
+      "type": "number",
+      "description": "\u67a0\u756a\u3092\u8003\u616e\u3057\u305f\u7740\u9806\u8a55\u4fa1 0-100"
+    },
+    "rank_pressure_score": {
+      "type": "number",
+      "description": "\u6e96\u512a\u30dc\u30fc\u30c0\u30fc\u7b49\u3092\u8003\u616e\u3057\u305f\u52dd\u8ca0\u304c\u3051\u5ea6 0-100"
+    },
+    "series_momentum_score": {
+      "type": "number",
+      "description": "\u76f4\u8fd1\u8d70\u306e\u6d41\u308c 0-100"
+    },
+    "series_score": {
+      "type": "number",
+      "description": "BOAT WORKS\u30b7\u30ea\u30fc\u30ba\u6307\u6570 0-100\u300150\u4e2d\u7acb"
+    },
+    "series_label": {
+      "type": "string",
+      "enum": [
+        "HOT",
+        "UP",
+        "NEUTRAL",
+        "DOWN",
+        "COLD"
+      ]
+    },
+    "score_components": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u52a0\u6e1b\u70b9\u306e\u5185\u8a33"
+    },
+    "score_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "alert_exclusion": {
+      "type": "boolean",
+      "description": "\u756a\u7d44\u610f\u56f3\u30a2\u30e9\u30fc\u30c8\u304b\u3089\u9664\u5916\u5019\u88dc"
+    },
+    "alert_exclusion_reason": {
+      "type": "string"
+    },
+    "snapshot_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "algorithm_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "series_key",
+    "venue_code",
+    "as_of_date",
+    "registration_number"
+  ]
+}
