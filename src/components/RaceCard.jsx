@@ -151,7 +151,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
                 value={analysis.stage === "final" ? (analysis.final_escape_score ?? "—") : "待機"}
                 score={analysis.final_escape_score}
                 sub={analysis.stage === "final"
-                  ? `${analysis.exhibition_gate_status || "—"} / 展示${analysis.exhibition_rank ?? "—"}位`
+                  ? `${analysis.exhibition_gate_status || "—"} / 展示${analysis.exhibition_rank ?? "—"}位 / 展示前${analysis.pre_exhibition_escape_score ?? "—"}→${analysis.final_escape_score ?? "—"}${analysis.exhibition_escape_delta != null ? ` (${analysis.exhibition_escape_delta >= 0 ? "+" : ""}${analysis.exhibition_escape_delta})` : ""}`
                   : "締切前に判定"}
               />
             </div>
