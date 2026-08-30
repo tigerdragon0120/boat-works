@@ -3,7 +3,7 @@
 // 重要: 勝負がけ度(rankPressure)は最初はseriesScoreに直接加点しない。
 //       プレッシャーで強くなる/弱くなる個人差を、後で学習できるよう分離保存する。
 
-export const SERIES_SCORE_VERSION = 'v10.1';
+export const SERIES_SCORE_VERSION = 'v10.2';
 
 const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, Number(v) || 0));
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -96,9 +96,11 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
   }, 0) / recent.length;
   const momentum = clamp(50 + recentDelta * 5);
 
-  // 初期版のシリーズ指数。順位/勝負がけは混ぜない。
   // 今節全体70%、直近30%。枠難易度は各走補正済みなので二重加点しない。
-  const score = clamp(resultQuality * 0.7 + momentum * 0.3);
+  // 1〜2走だけの偶然で指数が極端にならないよう、走数に応じて50へ縮小する。
+  const rawScore = clamp(resultQuality * 0.7 + momentum * 0.3);
+  const sampleConfidence = clamp(valid.length / (valid.length + 2), 0, 1);
+  const score = clamp(50 + (rawScore - 50) * sampleConfidence);
   const label = score >= 75 ? 'HOT' : score >= 60 ? 'UP' : score >= 42 ? 'NEUTRAL' : score >= 28 ? 'DOWN' : 'COLD';
 
   const reasons = [];
@@ -113,6 +115,8 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
 
   return {
     series_score: round1(score),
+    raw_series_score: round1(rawScore),
+    series_sample_confidence: round1(sampleConfidence * 100),
     series_label: label,
     result_quality_score: round1(resultQuality),
     lane_difficulty_score: round1(laneDifficulty),
