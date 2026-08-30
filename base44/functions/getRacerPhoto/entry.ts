@@ -19,10 +19,11 @@ function toBase64(bytes: Uint8Array) {
 
 export default async function(req) {
   let base44;
+  let reg = '';
   try {
     base44 = createClientFromRequest(req); // app context initialization; public read is allowed
     const body = await req.json().catch(() => ({}));
-    const reg = String(body.registration_number || body.registrationNumber || '').trim();
+    reg = String(body.registration_number || body.registrationNumber || '').trim();
     if (!/^\d{4}$/.test(reg)) {
       return Response.json({ status: 'error', message: 'registration_number は4桁の数字が必要です' }, { status: 400 });
     }
@@ -91,8 +92,6 @@ export default async function(req) {
     });
   } catch (error) {
     try {
-      const body = await req.clone().json().catch(() => ({}));
-      const reg = String(body.registration_number || body.registrationNumber || '').trim();
       if (base44 && /^\d{4}$/.test(reg)) {
         const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
         const payload = { status: 'exception', fetched_at: new Date().toISOString(), bytes: 0, error_msg: error?.message || '写真取得失敗' };
