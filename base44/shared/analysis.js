@@ -263,8 +263,8 @@ function computeSeriesRaceContext(race, entries, stats) {
   });
   const outerB2 = [5,6].filter(n => entries.find(x=>Number(x.boat_number)===n)?.grade_class === 'B2');
   const routineOuterExclusion = grade === 'GENERAL' && (
-    routineOuter.length >= 2 ||
-    (routineOuter.length >= 1 && outerB2.length >= 2)
+    outerB2.length >= 2 ||       // 5・6号艇がともにB2なら、序盤でも「弱い外枠」を意図シグナルにしない
+    routineOuter.length >= 1     // 今節履歴から外枠常態が確認できたB2がいれば除外
   );
 
   // 予選ボーダー付近で翌日1号艇を与えられた場合は「軸配置の意図」の補強材料。
