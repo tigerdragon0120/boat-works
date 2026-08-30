@@ -21,23 +21,32 @@ const ICON_SIZES = {
 
 const photoCache = new Map();
 const pendingCache = new Map();
+const failureCache = new Map();
+const FAILURE_TTL = 60 * 1000; // 一時失敗は1分後に再試行。nullを永久キャッシュしない
 
 async function loadPhoto(registrationNumber) {
   const reg = String(registrationNumber || "").trim();
   if (!/^\d{4}$/.test(reg)) return null;
   if (photoCache.has(reg)) return photoCache.get(reg);
+  const failedAt = failureCache.get(reg);
+  if (failedAt && Date.now() - failedAt < FAILURE_TTL) return null;
   if (pendingCache.has(reg)) return pendingCache.get(reg);
 
   const p = base44.functions.invoke("getRacerPhoto", { registration_number: reg })
     .then((res) => {
       const data = res?.data || res;
       const url = data?.status === "success" ? data.data_url : null;
-      photoCache.set(reg, url);
+      if (url) {
+        photoCache.set(reg, url);
+        failureCache.delete(reg);
+      } else {
+        failureCache.set(reg, Date.now());
+      }
       pendingCache.delete(reg);
       return url;
     })
     .catch(() => {
-      photoCache.set(reg, null);
+      failureCache.set(reg, Date.now());
       pendingCache.delete(reg);
       return null;
     });
@@ -48,7 +57,7 @@ async function loadPhoto(registrationNumber) {
 export default function RacerPhoto({ registrationNumber, racerName, size = "md", className, lazy = true, onClick }) {
   const reg = String(registrationNumber || "").trim();
   const [url, setUrl] = useState(() => photoCache.get(reg) || null);
-  const [loaded, setLoaded] = useState(() => photoCache.has(reg));
+  const [loaded, setLoaded] = useState(() => photoCache.has(reg) || failureCache.has(reg));
   const sizeClass = SIZE_CLASSES[size] || SIZE_CLASSES.md;
   const iconSize = ICON_SIZES[size] || ICON_SIZES.md;
   const initial = racerName ? racerName.charAt(0) : null;
@@ -57,7 +66,7 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
   useEffect(() => {
     let active = true;
     setUrl(photoCache.get(reg) || null);
-    setLoaded(photoCache.has(reg));
+    setLoaded(photoCache.has(reg) || failureCache.has(reg));
     if (!/^\d{4}$/.test(reg)) {
       setLoaded(true);
       return () => { active = false; };
@@ -90,7 +99,7 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
       alt={racerName ? `${racerName}の選手写真` : "選手写真"}
       loading={lazy ? "lazy" : "eager"}
       onClick={onClick}
-      onError={() => { photoCache.set(reg, null); setUrl(null); setLoaded(true); }}
+      onError={() => { photoCache.delete(reg); failureCache.set(reg, Date.now()); setUrl(null); setLoaded(true); }}
       className={cn(
         "rounded-full object-cover border border-border shrink-0 bg-muted",
         sizeClass, clickable && "cursor-pointer", className
