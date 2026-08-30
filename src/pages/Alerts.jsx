@@ -25,6 +25,7 @@ export default function Alerts() {
   const [todayAlerts, setTodayAlerts] = useState([]);
   const [tomorrowAlerts, setTomorrowAlerts] = useState([]);
   const [todayRaces, setTodayRaces] = useState([]);
+  const [tomorrowRaces, setTomorrowRaces] = useState([]);
   const [analyses, setAnalyses] = useState({});
   const finalStatusMap = useFinalAutoJudge(todayRaces, analyses, (raceId, finalAn) => setAnalyses(prev => ({ ...prev, [raceId]: finalAn })));
   const [tick, setTick] = useState(0);
@@ -36,11 +37,12 @@ export default function Alerts() {
     (async () => {
       setLoading(true);
       try {
-        const [todayR, tomA, cachedAn] = await Promise.all([
-          getRacesByDate(dateStr(0)), getAlerts(dateStr(1)), getCachedAnalysesByDate(dateStr(0)),
+        const [todayR, tomorrowR, tomA, cachedAn] = await Promise.all([
+          getRacesByDate(dateStr(0)), getRacesByDate(dateStr(1)), getAlerts(dateStr(1)), getCachedAnalysesByDate(dateStr(0)),
         ]);
         if (!m) return;
         setTodayRaces(todayR);
+        setTomorrowRaces(tomorrowR);
         setTomorrowAlerts(tomA);
         setAnalyses(cachedAn);
         setLoading(false);
@@ -100,7 +102,10 @@ export default function Alerts() {
               return (
                 <Link key={r.id} to={`/race/${r.id}`} className="rounded-2xl bg-card border border-border p-4 hover:border-primary/40">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold">{r.venue_name} {r.race_number}R</span>
+                    <div className="min-w-0">
+                      <div className="font-bold">{r.venue_name} {r.race_number}R <RacePhaseLabel race={r} /></div>
+                      {r.race_name && <div className="text-[10px] text-muted-foreground truncate mt-0.5">{cleanRaceName(r.race_name)}</div>}
+                    </div>
                     {a?.stage === "final" ? (
                       <JudgmentBadge judgment={a.judgment} size="md" />
                     ) : (
@@ -179,10 +184,14 @@ export default function Alerts() {
           <div className="grid gap-3 sm:grid-cols-2">
             {tomorrowAlerts.map((al) => {
               const finalJudgeAt = finalJudgeTime(al.deadline);
+              const race = tomorrowRaces.find(r => r.id === al.race_id);
               return (
                 <Link key={al.id} to={`/race/${al.race_id}`} className="rounded-2xl bg-card border border-border p-4 hover:border-primary/40">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold">{al.venue_name} {al.race_number}R</span>
+                    <div className="min-w-0">
+                      <div className="font-bold">{al.venue_name} {al.race_number}R <RacePhaseLabel race={race} /></div>
+                      {race?.race_name && <div className="text-[10px] text-muted-foreground truncate mt-0.5">{cleanRaceName(race.race_name)}</div>}
+                    </div>
                     <span className={cn("text-base font-bold px-2 py-0.5 rounded border", GRADE_STYLE[al.pre_grade])}>{al.pre_grade}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
@@ -229,6 +238,38 @@ export default function Alerts() {
       />
     </div>
   );
+}
+
+function cleanRaceName(name) {
+  return String(name || "").replace(/\s*1800m\s*/g, "").trim();
+}
+
+function phaseLabel(race) {
+  const map = {
+    QUALIFYING: "予選",
+    GENERAL: "一般",
+    SEMIFINAL: "準優勝戦",
+    FINAL: "優勝戦",
+    SELECTION: "選抜戦",
+    DREAM: "ドリーム",
+  };
+  if (race?.race_phase && map[race.race_phase]) return map[race.race_phase];
+  const name = cleanRaceName(race?.race_name);
+  if (name.includes("準優")) return "準優勝戦";
+  if (name.includes("優勝戦")) return "優勝戦";
+  if (name.includes("予選")) return "予選";
+  if (name.includes("一般")) return "一般";
+  return null;
+}
+
+function RacePhaseLabel({ race }) {
+  const label = phaseLabel(race);
+  if (!label) return null;
+  const cls = label === "優勝戦" ? "border-amber-300 bg-amber-50 text-amber-700" :
+    label === "準優勝戦" ? "border-violet-300 bg-violet-50 text-violet-700" :
+    label === "予選" ? "border-sky-300 bg-sky-50 text-sky-700" :
+    "border-slate-300 bg-slate-50 text-slate-600";
+  return <span className={cn("inline-flex align-middle ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded border", cls)}>{label}</span>;
 }
 
 function Mini({ label, value, sub }) {
