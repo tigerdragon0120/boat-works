@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { VENUE_NAMES, parseDailyVenueList, parseDaySchedule, parseRacelist, fetchWithRetry, sleep } from "../../shared/scraper.js";
+import { VENUE_NAMES, parseDailyVenueList, parseDaySchedule, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from "../../shared/scraper.js";
 
 // BOAT WORKS 日次夜間一括処理（ワークフロー用・サービスロール実行）
 // 1. 翌日の開催場一覧取得
@@ -13,11 +13,11 @@ const BASE = "https://boatrace.jp/owpc/pc/race";
 const INDEX_URL = "https://boatrace.jp/owpc/pc/race/index";
 
 function localDateStr(offset = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  jst.setUTCDate(jst.getUTCDate() + offset);
+  const y = jst.getUTCFullYear();
+  const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(jst.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -39,7 +39,8 @@ export default async function(req) {
     let aggregateUpdate = null;
     let learningMetricsUpdate = null;
     if (!skipAggregate) {
-      const yStr = localDateStr(-1);
+      // 23:50 JST実行なので、その日の全リザルトを当日分として確定する。
+      const yStr = localDateStr(0);
       try {
         const venueRes = await base44.asServiceRole.functions.invoke("fetchDailyVenues", { race_date: yStr });
         const yVenues = venueRes?.data?.venues || venueRes?.venues || [];
@@ -57,6 +58,13 @@ export default async function(req) {
                 data.detail_enrichment = d?.data || d;
               } catch (e) {
                 data.detail_enrichment = { status: "error", message: e?.message || String(e) };
+              }
+              // 場ごとに結果詳細が揃った直後、シリーズ選手ポイントを確定する。
+              try {
+                const s = await base44.asServiceRole.functions.invoke("refreshSeriesRacerPoints", { as_of_date: yStr, jcd });
+                data.series_points = s?.data || s;
+              } catch (e) {
+                data.series_points = { status: "error", message: e?.message || String(e) };
               }
               return data;
             } catch (e) {
@@ -116,6 +124,7 @@ export default async function(req) {
         const sRes = await fetchWithRetry(schedUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
         const sHtml = await sRes.text();
         schedule = parseDaySchedule(sHtml, raceDate);
+        var seriesCtx = parseSeriesContext(sHtml, raceDate);
       } catch { fetchErrors++; continue; }
       if (schedule.length === 0) continue;
 
@@ -133,6 +142,14 @@ export default async function(req) {
         const raceData = {
           race_date: raceDate, venue_code: jcd, venue_name: venueName,
           race_number: s.race_number, deadline: s.deadline,
+          event_name: seriesCtx?.event_name || null,
+          grade: seriesCtx?.grade || "GENERAL",
+          series_key: `${jcd}_${seriesCtx?.series_start_date || raceDate}`,
+          series_start_date: seriesCtx?.series_start_date || raceDate,
+          series_end_date: seriesCtx?.series_end_date || raceDate,
+          series_total_days: seriesCtx?.series_total_days || 1,
+          series_day: seriesCtx?.series_day || 1,
+          is_final_day: seriesCtx?.is_final_day === true,
           status: "scheduled", data_source: "official", last_updated: now,
         };
         let r;
@@ -160,7 +177,8 @@ export default async function(req) {
             if (!parsed.entries.length || parsed.entries.length < 6) return;
             // Race更新（race_name, deadline, entries_fetched_at）
             await base44.asServiceRole.entities.Race.update(s.race_id, {
-              race_name: parsed.raceName, deadline: parsed.deadline, entries_fetched_at: new Date().toISOString(),
+              race_name: parsed.raceName, race_phase: parsed.racePhase || "OTHER",
+              deadline: parsed.deadline, entries_fetched_at: new Date().toISOString(),
             });
             // RaceEntry再保存
             await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: s.race_id });
@@ -194,6 +212,7 @@ export default async function(req) {
           if (!parsed.entries || parsed.entries.length < 6) { fetchErrors++; return; }
           await base44.asServiceRole.entities.Race.update(r.race_id, {
             race_name: parsed.raceName,
+            race_phase: parsed.racePhase || "OTHER",
             deadline: parsed.deadline,
             entries_fetched_at: new Date().toISOString(),
           });
