@@ -14,23 +14,33 @@ export default function DataCollection(){
   const [races,setRaces]=useState([]);
   const [analyses,setAnalyses]=useState([]);
   const [series,setSeries]=useState([]);
+  const [histSpec,setHistSpec]=useState([]);
+  const [histFetch,setHistFetch]=useState([]);
   const [error,setError]=useState("");
   const date=tab==="today"?jstDate(0):jstDate(1);
 
   async function load(){
     setLoading(true); setError("");
     try{
-      const [rd,rr,aa,sp]=await Promise.all([
-        base44.entities.VenueDayReadiness.filter({race_date:date},"first_deadline",100).catch(()=>[]),
-        base44.entities.Race.filter({race_date:date,data_source:"official"},"deadline",300).catch(()=>[]),
-        base44.entities.UichiAnalysis.filter({race_date:date,stage:"pre"},"race_number",500).catch(()=>[]),
-        base44.entities.SeriesRacerPoint.filter({as_of_date:{"$lt":date}},"-as_of_date",1000).catch(()=>[]),
-      ]);
-      setRows(rd); setRaces(rr); setAnalyses(aa); setSeries(sp);
+      if(tab==="history"){
+        const [hs,hf]=await Promise.all([
+          base44.entities.HistoricalSpecProgress.list("-race_date",5000).catch(()=>[]),
+          base44.entities.FetchProgress.list("-race_date",5000).catch(()=>[]),
+        ]);
+        setHistSpec(hs); setHistFetch(hf);
+      } else {
+        const [rd,rr,aa,sp]=await Promise.all([
+          base44.entities.VenueDayReadiness.filter({race_date:date},"first_deadline",100).catch(()=>[]),
+          base44.entities.Race.filter({race_date:date,data_source:"official"},"deadline",300).catch(()=>[]),
+          base44.entities.UichiAnalysis.filter({race_date:date,stage:"pre"},"race_number",500).catch(()=>[]),
+          base44.entities.SeriesRacerPoint.filter({as_of_date:{"$lt":date}},"-as_of_date",1000).catch(()=>[]),
+        ]);
+        setRows(rd); setRaces(rr); setAnalyses(aa); setSeries(sp);
+      }
     }catch(e){setError(e?.message||"取得に失敗しました");}
     finally{setLoading(false);}
   }
-  useEffect(()=>{load(); const t=setInterval(load,30000); return()=>clearInterval(t);},[date]);
+  useEffect(()=>{load(); const t=setInterval(load,30000); return()=>clearInterval(t);},[date,tab]);
 
   const venues=useMemo(()=>{
     const by={};
@@ -64,16 +74,29 @@ export default function DataCollection(){
   const done=venues.filter(v=>v.complete).length;
   const morning=venues.filter(v=>v.time_slot==="morning");
   const beforeStartOk=venues.filter(v=>v.complete && new Date(v.baseline_captured_at||v.collection_completed_at||0)<new Date(v.first_deadline)).length;
+  const historical=useMemo(()=>{
+    const from=new Date(Date.now()+9*3600000); from.setUTCMonth(from.getUTCMonth()-6); const fromStr=from.toISOString().slice(0,10); const toStr=jstDate(-1);
+    const fetchRows=histFetch.filter(x=>x.venue_code!=="00"&&x.race_date>=fromStr&&x.race_date<=toStr&&(x.result_fetch_status==="done"||x.status==="done"));
+    const uniq=new Map(); for(const x of fetchRows) uniq.set(`${x.race_date}_${x.venue_code}`,x);
+    const specMap=new Map(histSpec.filter(x=>x.race_date>=fromStr&&x.race_date<=toStr).map(x=>[`${x.race_date}_${x.venue_code}`,x]));
+    const total=uniq.size, basic=total;
+    let complete=0,detail=0,entries=0,seriesCount=0,exhibitionDone=0,exhibitionUnavailable=0;
+    for(const k of uniq.keys()){const s=specMap.get(k); if(!s)continue; if(s.result_detail_ready)detail++; if(s.entry_context_ready)entries++; if(s.series_context_ready)seriesCount++; if(s.exhibition_status==="DONE")exhibitionDone++; if(s.exhibition_status==="UNAVAILABLE")exhibitionUnavailable++; if(s.overall_status==="COMPLETE")complete++;}
+    const recent=[...specMap.values()].sort((a,b)=>String(b.last_checked_at||"").localeCompare(String(a.last_checked_at||""))).slice(0,12);
+    return {fromStr,toStr,total,basic,complete,detail,entries,seriesCount,exhibitionDone,exhibitionUnavailable,recent};
+  },[histSpec,histFetch]);
 
   return <div className="space-y-5">
     <div className="flex items-center gap-2"><Database className="w-5 h-5 text-primary"/><div><h1 className="text-xl font-bold">データ収集状況</h1><p className="text-xs text-muted-foreground">競艇場ごとに「レース開始前に必要データが揃ったか」を監視します</p></div><button onClick={load} className="ml-auto p-2 rounded-xl border border-border bg-card"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/></button></div>
 
-    <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-card border border-border">
+    <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-card border border-border">
       <button onClick={()=>setTab("today")} className={cn("py-2.5 rounded-xl text-sm font-bold",tab==="today"?"bg-primary text-white":"text-muted-foreground")}>今日</button>
       <button onClick={()=>setTab("tomorrow")} className={cn("py-2.5 rounded-xl text-sm font-bold",tab==="tomorrow"?"bg-primary text-white":"text-muted-foreground")}>明日</button>
+      <button onClick={()=>setTab("history")} className={cn("py-2.5 rounded-xl text-sm font-bold",tab==="history"?"bg-primary text-white":"text-muted-foreground")}>過去6ヶ月</button>
     </div>
 
     {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-600">{error}</div>}
+    {tab==="history" ? <HistoricalPanel h={historical}/> : <>
     <div className="grid grid-cols-3 gap-2">
       <Summary label="開催場" value={`${venues.length}場`}/><Summary label="全工程完了" value={`${done}/${venues.length}`} good={done===venues.length&&venues.length>0}/><Summary label="開始前完了" value={`${beforeStartOk}/${venues.length}`} good={beforeStartOk===venues.length&&venues.length>0}/>
     </div>
@@ -84,6 +107,7 @@ export default function DataCollection(){
       {venues.map(v=><VenueCard key={v.venue_code} v={v}/>) }
       {!loading&&venues.length===0&&<div className="p-8 text-center border border-dashed rounded-2xl text-muted-foreground">この日の開催データはまだありません</div>}
     </div>
+    </>}
     <div className="text-[11px] text-muted-foreground text-center">30秒ごとに自動更新</div>
   </div>;
 }
@@ -101,3 +125,9 @@ function VenueCard({v}){ const meta=slotMeta[v.time_slot]||slotMeta.day; const I
 </div> }
 function Step({label,ok,sub}){return <div className={cn("rounded-xl border p-2.5",ok?"border-emerald-200 bg-emerald-50/60":"border-rose-200 bg-rose-50/60")}><div className="flex items-center gap-1.5 text-xs font-semibold">{ok?<CheckCircle2 className="w-3.5 h-3.5 text-emerald-600"/>:<XCircle className="w-3.5 h-3.5 text-rose-500"/>}{label}</div><div className={cn("mt-1 text-xs tabular-nums",ok?"text-emerald-700":"text-rose-600")}>{sub}</div></div>}
 function Summary({label,value,good}){return <div className="rounded-2xl border border-border bg-card p-3"><div className="text-[10px] text-muted-foreground">{label}</div><div className={cn("text-xl font-bold mt-1",good&&"text-emerald-600")}>{value}</div></div>}
+function HistBar({label,value,total}){const pct=total?Math.round(value/total*100):0;return <div><div className="flex justify-between text-xs mb-1"><span>{label}</span><b>{value}/{total} ({pct}%)</b></div><div className="h-2 rounded-full bg-muted overflow-hidden"><div className="h-full bg-primary rounded-full" style={{width:`${pct}%`}}/></div></div>}
+function HistoricalPanel({h}){return <div className="space-y-4">
+  <div className="rounded-2xl border border-border bg-card p-4"><div className="font-bold">過去6ヶ月・現在仕様への格上げ</div><div className="text-xs text-muted-foreground mt-1">{h.fromStr}〜{h.toStr}。基本結果だけで「完了」にせず、現在のBOAT WORKSで使う詳細情報まで追跡します。</div><div className="grid grid-cols-3 gap-2 mt-4"><Summary label="対象開催場日" value={h.total}/><Summary label="フル仕様完了" value={`${h.complete}/${h.total}`} good={h.total>0&&h.complete===h.total}/><Summary label="基本結果" value={`${h.basic}/${h.total}`} good={h.total>0}/></div></div>
+  <div className="rounded-2xl border border-border bg-card p-4 space-y-3"><HistBar label="結果詳細（全艇ST・時計・決まり手・天候）" value={h.detail} total={h.total}/><HistBar label="全6艇・出走表情報" value={h.entries} total={h.total}/><HistBar label="シリーズ文脈" value={h.seriesCount} total={h.total}/><HistBar label="過去展示（公式保存分）" value={h.exhibitionDone} total={h.total}/><div className="text-[11px] text-muted-foreground">過去展示が公式側に残っていない開催場日は「取得不能」として区別します：{h.exhibitionUnavailable}開催場日</div></div>
+  <div className="rounded-2xl border border-border bg-card p-4"><div className="font-bold text-sm mb-3">直近の補完処理</div>{h.recent.length===0?<div className="text-xs text-muted-foreground">フルスペック補完はこれから開始します</div>:<div className="space-y-2">{h.recent.map((x,i)=><div key={`${x.race_date}_${x.venue_code}_${i}`} className="flex items-center gap-2 text-xs border-b border-border/50 pb-2"><span className={cn("w-2 h-2 rounded-full",x.overall_status==="COMPLETE"?"bg-emerald-500":"bg-amber-500")}/><b>{x.race_date} {x.venue_name}</b><span className="ml-auto">詳細 {x.detail_count||0}/{x.results_count||0}・出走表 {x.entry_race_count||0}R・展示 {x.exhibition_status||"PENDING"}</span></div>)}</div>}</div>
+</div>}
