@@ -24,6 +24,13 @@ const pendingCache = new Map();
 const failureCache = new Map();
 const FAILURE_TTL = 60 * 1000; // 一時失敗は1分後に再試行。nullを永久キャッシュしない
 
+function base64ToBlobUrl(base64, contentType = "image/jpeg") {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: contentType }));
+}
+
 async function loadPhoto(registrationNumber) {
   const reg = String(registrationNumber || "").trim();
   if (!/^\d{4}$/.test(reg)) return null;
@@ -35,7 +42,9 @@ async function loadPhoto(registrationNumber) {
   const p = base44.functions.invoke("getRacerPhoto", { registration_number: reg })
     .then((res) => {
       const data = res?.data || res;
-      const url = data?.status === "success" ? data.data_url : null;
+      const url = data?.status === "success" && data?.base64
+        ? base64ToBlobUrl(data.base64, data.content_type || "image/jpeg")
+        : null;
       if (url) {
         photoCache.set(reg, url);
         failureCache.delete(reg);
@@ -56,10 +65,8 @@ async function loadPhoto(registrationNumber) {
 
 export default function RacerPhoto({ registrationNumber, racerName, size = "md", className, lazy = true, onClick }) {
   const reg = String(registrationNumber || "").trim();
-  const directUrl = /^\d{4}$/.test(reg) ? `https://www.boatrace.jp/racerphoto/${reg}.jpg` : null;
-  const [url, setUrl] = useState(() => directUrl || photoCache.get(reg) || null);
-  const [loaded, setLoaded] = useState(() => !!directUrl || photoCache.has(reg) || failureCache.has(reg));
-  const [triedProxy, setTriedProxy] = useState(false);
+  const [url, setUrl] = useState(() => photoCache.get(reg) || null);
+  const [loaded, setLoaded] = useState(() => photoCache.has(reg) || failureCache.has(reg));
   const sizeClass = SIZE_CLASSES[size] || SIZE_CLASSES.md;
   const iconSize = ICON_SIZES[size] || ICON_SIZES.md;
   const initial = racerName ? racerName.charAt(0) : null;
@@ -67,21 +74,17 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
 
   useEffect(() => {
     let active = true;
-    setUrl(directUrl || photoCache.get(reg) || null);
-    setLoaded(!!directUrl || photoCache.has(reg) || failureCache.has(reg));
-    setTriedProxy(false);
+    setUrl(photoCache.get(reg) || null);
+    setLoaded(photoCache.has(reg) || failureCache.has(reg));
     if (!/^\d{4}$/.test(reg)) {
       setLoaded(true);
       return () => { active = false; };
     }
-    if (!directUrl) {
-      loadPhoto(reg).then((nextUrl) => {
-        if (!active) return;
-        setUrl(nextUrl);
-        setLoaded(true);
-        setTriedProxy(true);
-      });
-    }
+    loadPhoto(reg).then((nextUrl) => {
+      if (!active) return;
+      setUrl(nextUrl);
+      setLoaded(true);
+    });
     return () => { active = false; };
   }, [reg]);
 
@@ -105,13 +108,7 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
       alt={racerName ? `${racerName}の選手写真` : "選手写真"}
       loading={lazy ? "lazy" : "eager"}
       onClick={onClick}
-      referrerPolicy="no-referrer"
       onError={() => {
-        if (!triedProxy) {
-          setTriedProxy(true);
-          loadPhoto(reg).then((nextUrl) => { setUrl(nextUrl); setLoaded(true); });
-          return;
-        }
         photoCache.delete(reg);
         failureCache.set(reg, Date.now());
         setUrl(null);
