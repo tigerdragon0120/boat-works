@@ -107,11 +107,23 @@ export default async function(req) {
       }
     }
 
+    // v10: 前夜確定したシリーズ選手ポイント。予想対象日より前の最新snapshotだけ使い、未来情報を混ぜない。
+    const seriesKeys = [...new Set(targetRaces.map(r=>r.series_key).filter(Boolean))];
+    const seriesPointsBySeries = {};
+    if (seriesKeys.length > 0) {
+      const allSP = await base44.asServiceRole.entities.SeriesRacerPoint.filter({ series_key: { $in: seriesKeys } }, '-as_of_date', 3000).catch(()=>[]);
+      for (const p of allSP) {
+        if (!p.series_key || !p.registration_number || !p.as_of_date || p.as_of_date >= race_date) continue;
+        seriesPointsBySeries[p.series_key] = seriesPointsBySeries[p.series_key] || {};
+        if (!seriesPointsBySeries[p.series_key][p.registration_number]) seriesPointsBySeries[p.series_key][p.registration_number] = p;
+      }
+    }
+
     // AggregationMeta
     const metaList = await base44.asServiceRole.entities.AggregationMeta.filter({ config_id: "main" });
     const totalRaces = metaList[0]?.total_races_processed ?? 0;
 
-    const stats = { venueRaceStats, racerStats, racerVenueStats, racerWeatherStats, venueStats, totalRaces };
+    const stats = { venueRaceStats, racerStats, racerVenueStats, racerWeatherStats, venueStats, totalRaces, seriesPointsBySeries };
 
     // 既存Alert一括取得。
     // resolved/filtered_outも含めてrace_id単位で再利用し、再分析のたびに重複Alertを作らない。
