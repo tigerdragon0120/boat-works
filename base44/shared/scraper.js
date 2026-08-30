@@ -390,18 +390,26 @@ export function parseSeriesContext(html, raceDate) {
   else if (hc.includes('ippan')) grade = 'GENERAL';
 
   const dates = [];
-  const seen = new Set();
-  const re = /href="\/owpc\/pc\/race\/raceindex\?[^\"]*hd=(\d{8})[^\"]*"[^>]*>([\s\S]*?)<\/a>/g;
+  const tabStart = html.indexOf('tab2 is-type1');
+  const tabEnd = tabStart >= 0 ? html.indexOf('</ul>', tabStart) : -1;
+  const tabHtml = tabStart >= 0 ? html.substring(tabStart, tabEnd > tabStart ? tabEnd : tabStart + 5000) : '';
+  const liRe = /<li[^>]*>([\s\S]*?)<\/li>/g;
   let m;
-  while ((m = re.exec(html)) !== null) {
-    const hd = m[1];
-    const label = stripTags(m[2]);
-    if (!/(初日|\d+日目|[２３４５６７８９]日目|最終日)/.test(label)) continue;
-    if (seen.has(hd)) continue;
-    seen.add(hd);
-    dates.push({ hd, date: `${hd.slice(0,4)}-${hd.slice(4,6)}-${hd.slice(6,8)}`, label });
+  const base = raceDate ? new Date(`${raceDate}T00:00:00Z`) : new Date();
+  while ((m = liRe.exec(tabHtml)) !== null) {
+    const label = stripTags(m[1]);
+    if (!/(初日|日目|最終日)/.test(label)) continue;
+    const z = zenToHalf(label);
+    const md = z.match(/(\d{1,2})月(\d{1,2})日/);
+    if (!md) continue;
+    let year = base.getUTCFullYear();
+    const month = Number(md[1]), day = Number(md[2]);
+    // 年跨ぎシリーズにも耐えるよう、基準日から最も近い年を採用。
+    const candidates = [year - 1, year, year + 1].map(y => ({ y, diff: Math.abs(new Date(Date.UTC(y, month - 1, day)) - base) }));
+    year = candidates.sort((a,b)=>a.diff-b.diff)[0].y;
+    const hd = `${year}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}`;
+    dates.push({ hd, date: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`, label });
   }
-  dates.sort((a,b)=>a.hd.localeCompare(b.hd));
   const idx = dates.findIndex(x => x.date === raceDate);
   return {
     event_name: eventName,
@@ -419,8 +427,8 @@ export function parseSeriesContext(html, raceDate) {
 export function classifyRacePhase(raceName) {
   const n = String(raceName || '').replace(/\s+/g, '');
   if (!n) return 'OTHER';
-  if (n.includes('優勝戦')) return 'FINAL';
   if (n.includes('準優')) return 'SEMIFINAL';
+  if (n.includes('優勝戦')) return 'FINAL';
   if (n.includes('ドリーム')) return 'DREAM';
   if (n.includes('選抜')) return 'SELECTION';
   if (n.includes('予選')) return 'QUALIFYING';
