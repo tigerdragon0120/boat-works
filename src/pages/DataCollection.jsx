@@ -45,8 +45,9 @@ export default function DataCollection(){
   const venues=useMemo(()=>{
     const by={};
     for(const r of races){
-      if(!by[r.venue_code]) by[r.venue_code]={venue_code:r.venue_code,venue_name:r.venue_name,races:[],first_deadline:r.deadline};
+      if(!by[r.venue_code]) by[r.venue_code]={venue_code:r.venue_code,venue_name:r.venue_name,event_name:r.event_name||null,races:[],first_deadline:r.deadline};
       by[r.venue_code].races.push(r);
+      if(!by[r.venue_code].event_name && r.event_name) by[r.venue_code].event_name=r.event_name;
       if(r.deadline && (!by[r.venue_code].first_deadline || new Date(r.deadline)<new Date(by[r.venue_code].first_deadline))) by[r.venue_code].first_deadline=r.deadline;
     }
     const readyMap=Object.fromEntries(rows.map(x=>[x.venue_code,x]));
@@ -113,7 +114,7 @@ export default function DataCollection(){
 }
 
 function VenueCard({v}){ const meta=slotMeta[v.time_slot]||slotMeta.day; const Icon=meta.Icon; return <div className={cn("rounded-2xl border bg-card p-4",v.complete?"border-emerald-300":"border-amber-200")}>
-  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.complete?"bg-emerald-50 text-emerald-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div><div className={cn("text-xs font-bold mt-1",v.complete?"text-emerald-600":"text-amber-600")}>{v.complete?"✓ レース開始前データ準備完了":"収集中・未完了あり"}</div></div></div>
+  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.complete?"bg-emerald-50 text-emerald-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div>{v.event_name&&<div className="text-xs font-medium text-foreground/80 mt-1 leading-snug">{v.event_name}</div>}<div className={cn("text-xs font-bold mt-1",v.complete?"text-emerald-600":"text-amber-600")}>{v.complete?"✓ レース開始前データ準備完了":"収集中・未完了あり"}</div></div></div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
     <Step label="翌日出走表" ok={v.racesComplete} sub={`${v.races.length}/12R`}/>
     <Step label="基本情報" ok={v.coreComplete===12} sub={`${v.coreComplete}/12R`}/>
