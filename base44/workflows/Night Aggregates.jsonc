@@ -1,0 +1,47 @@
+{
+  "name": "Night Aggregates",
+  "description": "\u6bce\u65e523:45 JST\u306b\u5f53\u65e5\u7d50\u679c\u306e\u96c6\u8a08\u3068\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u66f4\u65b0\u3092\u5b9f\u884c\u300223:35\u306e\u30b7\u30ea\u30fc\u30ba\u78ba\u5b9a\u5f8c\u300123:50\u306e\u7fcc\u65e5v10\u5206\u6790\u524d\u306b\u884c\u3046\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "45 23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "night_aggregates",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "update_night_aggregates": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runNightAggregates",
+            "args": {
+              "target_offset": 0
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u65e5\u6b21\u96c6\u8a08\u30fb\u5b66\u7fd2\u66f4\u65b0",
+            "description": "\u5f53\u65e5\u7d50\u679c\u3092\u96c6\u8a08\u3057\u5b66\u7fd2\u30e1\u30c8\u30ea\u30af\u30b9\u3092\u66f4\u65b0"
+          }
+        }
+      }
+    ]
+  }
+}
