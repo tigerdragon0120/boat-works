@@ -17,9 +17,12 @@ export default async function(req){
     const venueName=VENUE_NAMES[jcd]||jcd;
 
     const oldProg=(await base44.asServiceRole.entities.HistoricalSpecProgress.filter({race_date:raceDate,venue_code:jcd},'-updated_date',5).catch(()=>[]))[0];
-    const setProgress=async(data:any)=> oldProg
-      ? base44.asServiceRole.entities.HistoricalSpecProgress.update(oldProg.id,data)
-      : base44.asServiceRole.entities.HistoricalSpecProgress.create({race_date:raceDate,venue_code:jcd,venue_name:venueName,...data});
+    let progressId=oldProg?.id||null;
+    const setProgress=async(data:any)=>{
+      if(progressId) return base44.asServiceRole.entities.HistoricalSpecProgress.update(progressId,data);
+      const created=await base44.asServiceRole.entities.HistoricalSpecProgress.create({race_date:raceDate,venue_code:jcd,venue_name:venueName,...data});
+      progressId=created.id; return created;
+    };
     await setProgress({overall_status:'PROCESSING',last_checked_at:now,error_msg:null});
 
     // 1) 既存の結果一覧を、現在仕様の詳細結果へ格上げする。
