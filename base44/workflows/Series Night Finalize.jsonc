@@ -1,13 +1,13 @@
 {
   "name": "Series Night Finalize",
-  "description": "\u6bce\u65e523:35 JST\u306b\u5f53\u65e5\u5168\u5834\u306e\u516c\u5f0f\u7d50\u679c\u2192\u8a73\u7d30\u2192\u30b7\u30ea\u30fc\u30ba\u9078\u624b\u30dd\u30a4\u30f3\u30c8\u3092\u5834\u5358\u4f4d\u3067\u78ba\u5b9a\u3057\u300123:50\u306e\u7fcc\u65e5v10\u5206\u6790\u3088\u308a\u5148\u306b\u524d\u591c\u30b9\u30ca\u30c3\u30d7\u30b7\u30e7\u30c3\u30c8\u3092\u5b8c\u6210\u3055\u305b\u308b\u3002",
+  "description": "\u6bce\u65e520:00\u301c23:50 JST\u306b10\u5206\u3054\u3068\u306b\u5f53\u65e5\u306e\u5168\u958b\u50ac\u5834\u3092\u8ffd\u8de1\u3057\u3001\u7d50\u679c\u4e00\u89a7\u2192\u5168\u8247\u8a73\u7d30\u2192\u672c\u756aST\u2192\u52dd\u3061\u6642\u8a08/\u7740\u5dee\u2192\u6c7a\u307e\u308a\u624b\u2192\u81ea\u7136\u6761\u4ef6\u307e\u3067\u53ce\u96c6\u3059\u308b\u3002\u5404\u5834\u306f\u5f53\u65e5\u306e\u5168\u4e88\u5b9a\u30ec\u30fc\u30b9\u8a73\u7d30\u304c\u63c3\u3063\u305f\u6642\u70b9\u3067\u306e\u307f\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u3092\u78ba\u5b9a\u3059\u308b\u3002",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "35 23 * * *",
+      "cron_expression": "*/10 20-23 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
@@ -22,12 +22,12 @@
     "document": {
       "dsl": "1.0.0",
       "name": "series_night_finalize",
-      "version": "1.0",
+      "version": "2.0",
       "namespace": "base44"
     },
     "do": [
       {
-        "finalize_series_today": {
+        "deep_collect_today": {
           "call": "invoke_backend_function",
           "with": {
             "function_name": "runSeriesNightFinalize",
@@ -37,8 +37,8 @@
           },
           "then": "end",
           "x-base44": {
-            "title": "\u5f53\u65e5\u30b7\u30ea\u30fc\u30ba\u78ba\u5b9a",
-            "description": "\u5168\u7d50\u679c\u30fb\u52dd\u3061\u6642\u8a08\u30fb\u7740\u5dee\u30fb\u672c\u756aST\u30fb\u81ea\u7136\u6761\u4ef6\u3092\u53ce\u96c6\u3057\u3001\u5834\u3054\u3068\u306e\u30b7\u30ea\u30fc\u30ba\u9078\u624b\u30dd\u30a4\u30f3\u30c8\u3092\u78ba\u5b9a"
+            "title": "\u4eca\u65e5\u306e\u5168\u30ec\u30fc\u30b9\u5fb9\u5e95\u53ce\u96c6",
+            "description": "\u5834\u3054\u3068\u306b\u5168\u4e88\u5b9aR\u306e\u7d50\u679c\u8a73\u7d30\u304c\u63c3\u3046\u307e\u3067\u8ffd\u8de1\u3002\u5b8c\u4e86\u5834\u3060\u3051\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u3092\u78ba\u5b9a"
           }
         }
       }
