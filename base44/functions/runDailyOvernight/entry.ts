@@ -142,11 +142,12 @@ export default async function(req) {
       // スケジュール取得
       const schedUrl = `${BASE}/raceindex?jcd=${jcd}&hd=${hd}`;
       let schedule = [];
+      let seriesCtx = null;
       try {
         const sRes = await fetchWithRetry(schedUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, 10000, 2);
         const sHtml = await sRes.text();
         schedule = parseDaySchedule(sHtml, raceDate);
-        var seriesCtx = parseSeriesContext(sHtml, raceDate);
+        seriesCtx = parseSeriesContext(sHtml, raceDate);
       } catch { fetchErrors++; continue; }
       if (schedule.length === 0) continue;
 
