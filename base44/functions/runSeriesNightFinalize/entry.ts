@@ -28,17 +28,29 @@ export default async function(req) {
       const rows=await Promise.all(batch.map(async (jcd)=>{
         let result:any=null, detail:any=null, series:any=null;
         try {
+          const scheduled = await base44.asServiceRole.entities.Race.filter({ race_date:raceDate, venue_code:jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
+          const cancelledCount = scheduled.filter(x=>x.status==='cancelled').length;
+          const expected = Math.max(0, scheduled.length - cancelledCount);
+
           const r=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:raceDate,jcd});
           result=r?.data||r;
           if (result?.status !== 'success' && result?.status !== 'no_races') throw new Error(result?.message||'結果取得失敗');
           const d=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:raceDate,jcd,force:true});
           detail=d?.data||d;
-          const s=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd});
-          series=s?.data||s;
-          const expected=Number(result?.races||0);
-          const enriched=Number(detail?.enriched||0)+Number(detail?.skipped||0);
-          const ok = expected===0 || enriched>=expected;
-          return {jcd,status:ok?'complete':'partial',result,detail,series};
+
+          const detailRows = await base44.asServiceRole.entities.RaceResult.filter({ race_date:raceDate, venue_code:jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
+          const detailed = detailRows.filter(x => Array.isArray(x.finishers) && x.finishers.length >= 3 && Array.isArray(x.start_info) && x.start_info.length >= 3 && x.race_time_1_seconds != null && !!x.winning_method).length;
+          const resultCount = detailRows.length;
+          const ok = expected > 0 && resultCount >= expected && detailed >= expected;
+
+          // 節間ポイントはその場の今日分が完全に揃ってからだけ作る。
+          if (ok) {
+            const s=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd});
+            series=s?.data||s;
+          } else {
+            series={ status:'waiting', reason:'today_collection_incomplete' };
+          }
+          return {jcd,status:ok?'complete':'partial',expected_races:expected,result_count:resultCount,detailed_count:detailed,result,detail,series};
         } catch(e) {
           return {jcd,status:'error',message:e?.message||String(e),result,detail,series};
         }
@@ -50,16 +62,25 @@ export default async function(req) {
     // 一度失敗/不足した場だけ再試行する。成功した場は触らない。
     for (const row of outputs.filter(x=>x.status!=='complete')) {
       try {
+        const scheduled = await base44.asServiceRole.entities.Race.filter({ race_date:raceDate, venue_code:row.jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
+        const cancelledCount = scheduled.filter(x=>x.status==='cancelled').length;
+        const expected=Math.max(0,scheduled.length-cancelledCount);
         const r=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:raceDate,jcd:row.jcd});
         const result=r?.data||r;
         const d=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:raceDate,jcd:row.jcd,force:true});
         const detail=d?.data||d;
-        const s=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd:row.jcd});
-        const series=s?.data||s;
-        const expected=Number(result?.races||0);
-        const enriched=Number(detail?.enriched||0)+Number(detail?.skipped||0);
+        const detailRows = await base44.asServiceRole.entities.RaceResult.filter({ race_date:raceDate, venue_code:row.jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
+        const detailed = detailRows.filter(x => Array.isArray(x.finishers) && x.finishers.length >= 3 && Array.isArray(x.start_info) && x.start_info.length >= 3 && x.race_time_1_seconds != null && !!x.winning_method).length;
+        const resultCount=detailRows.length;
+        const ok=expected>0 && resultCount>=expected && detailed>=expected;
+        let series:any={status:'waiting',reason:'today_collection_incomplete'};
+        if (ok) {
+          const s=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd:row.jcd});
+          series=s?.data||s;
+        }
+        row.expected_races=expected; row.result_count=resultCount; row.detailed_count=detailed;
         row.result=result; row.detail=detail; row.series=series;
-        row.status=(expected===0||enriched>=expected)?'complete':'partial';
+        row.status=ok?'complete':'partial';
       } catch(e) { row.status='error'; row.message=e?.message||String(e); }
       await sleep(200);
     }
