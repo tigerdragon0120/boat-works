@@ -65,8 +65,8 @@ export default function SeriesPoints() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2"><Activity className="w-5 h-5 text-primary" /><h1 className="text-xl font-bold">今節スコア</h1></div>
-          <p className="text-xs text-muted-foreground mt-1">年間勝率とは別の、BOAT WORKS独自「開催中の今」を見る指数</p>
+          <div className="flex items-center gap-2"><Activity className="w-5 h-5 text-primary" /><h1 className="text-xl font-bold">節間ポイント</h1></div>
+          <p className="text-xs text-muted-foreground mt-1">年間勝率とは別の、BOAT WORKS独自「開催中の今」を見る節間ポイント</p>
         </div>
       </div>
 
@@ -124,7 +124,7 @@ function RacerSeriesCard({ racer: r, position }) {
           <div className="text-[10px] text-muted-foreground mt-1">登録 {r.registration_number}・今節{r.races_run || 0}走</div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-[10px] text-muted-foreground">シリーズ指数</div>
+          <div className="text-[10px] text-muted-foreground">節間ポイント</div>
           <div className="text-3xl font-bold tabular-nums leading-none">{r.series_score != null ? Number(r.series_score).toFixed(1) : "—"}</div>
           <div className="text-[9px] text-muted-foreground mt-1">信頼度 {r.series_sample_confidence != null ? `${Math.round(r.series_sample_confidence)}%` : "—"}</div>
         </div>
