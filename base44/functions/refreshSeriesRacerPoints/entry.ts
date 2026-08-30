@@ -58,6 +58,8 @@ export default async function(req) {
     const histories = new Map();
     for (const r of results) {
       const finishers = Array.isArray(r.finishers) ? r.finishers : [];
+      const validStarts = Array.isArray(r.start_info) ? r.start_info.map(x=>Number(x.st)).filter(x=>Number.isFinite(x) && x >= 0) : [];
+      const fieldAvgSt = validStarts.length ? validStarts.reduce((a,b)=>a+b,0)/validStarts.length : null;
       for (const f of finishers) {
         const reg = String(f.registration_number || '');
         if (!/^\d{4}$/.test(reg)) continue;
@@ -68,6 +70,8 @@ export default async function(req) {
           lane:Number(f.boat_number), finish:Number(f.finish),
           race_time_seconds:f.race_time_seconds ?? null,
           st:st?.st ?? null, st_raw:st?.st_raw ?? null,
+          field_avg_st:fieldAvgSt,
+          st_advantage:fieldAvgSt != null && st?.st != null && Number(st.st) >= 0 ? Math.round((fieldAvgSt - Number(st.st)) * 1000) / 1000 : null,
           winning_method:Number(f.finish) === 1 ? (r.winning_method || null) : null,
           margin_1_2_seconds:Number(f.finish) === 1 ? (r.margin_1_2_seconds ?? null) : null,
           weather:r.weather || null, wind_speed:r.wind_speed ?? null, wave_height:r.wave_height ?? null,
