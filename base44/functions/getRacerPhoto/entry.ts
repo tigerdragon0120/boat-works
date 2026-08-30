@@ -18,8 +18,9 @@ function toBase64(bytes: Uint8Array) {
 }
 
 export default async function(req) {
+  let base44;
   try {
-    createClientFromRequest(req); // app context initialization; public read is allowed
+    base44 = createClientFromRequest(req); // app context initialization; public read is allowed
     const body = await req.json().catch(() => ({}));
     const reg = String(body.registration_number || body.registrationNumber || '').trim();
     if (!/^\d{4}$/.test(reg)) {
@@ -44,28 +45,60 @@ export default async function(req) {
     }
 
     if (!res.ok) {
+      try {
+        const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
+        const payload = { status: 'http_error', source_url: url, fetched_at: new Date().toISOString(), http_status: res.status, bytes: 0, error_msg: `HTTP ${res.status}` };
+        if (old) await base44.asServiceRole.entities.RacerPhotoCache.update(old.id, payload); else await base44.asServiceRole.entities.RacerPhotoCache.create({ registration_number: reg, ...payload });
+      } catch {}
       return Response.json({ status: 'not_found', registration_number: reg, message: `写真取得失敗 HTTP ${res.status}` }, { status: 404 });
     }
 
     const contentType = res.headers.get('content-type') || 'image/jpeg';
     if (!contentType.startsWith('image/')) {
+      try {
+        const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
+        const payload = { status: 'invalid_content_type', source_url: url, fetched_at: new Date().toISOString(), http_status: res.status, bytes: 0, error_msg: contentType };
+        if (old) await base44.asServiceRole.entities.RacerPhotoCache.update(old.id, payload); else await base44.asServiceRole.entities.RacerPhotoCache.create({ registration_number: reg, ...payload });
+      } catch {}
       return Response.json({ status: 'not_found', registration_number: reg, message: '画像データではありません' }, { status: 404 });
     }
 
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length < 100) {
+      try {
+        const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
+        const payload = { status: 'empty', source_url: url, fetched_at: new Date().toISOString(), http_status: res.status, bytes: bytes.length, error_msg: '画像データが空です' };
+        if (old) await base44.asServiceRole.entities.RacerPhotoCache.update(old.id, payload); else await base44.asServiceRole.entities.RacerPhotoCache.create({ registration_number: reg, ...payload });
+      } catch {}
       return Response.json({ status: 'not_found', registration_number: reg, message: '画像データが空です' }, { status: 404 });
     }
+
+    const base64 = toBase64(bytes);
+    try {
+      const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
+      const payload = { status: 'success', source_url: url, fetched_at: new Date().toISOString(), http_status: res.status, bytes: bytes.length, content_type: contentType, error_msg: null };
+      if (old) await base44.asServiceRole.entities.RacerPhotoCache.update(old.id, payload); else await base44.asServiceRole.entities.RacerPhotoCache.create({ registration_number: reg, ...payload });
+    } catch {}
 
     return Response.json({
       status: 'success',
       registration_number: reg,
       content_type: contentType,
-      data_url: `data:${contentType};base64,${toBase64(bytes)}`,
+      base64,
+      data_url: `data:${contentType};base64,${base64}`, 
     }, {
       headers: { 'Cache-Control': 'public, max-age=86400' }
     });
   } catch (error) {
+    try {
+      const body = await req.clone().json().catch(() => ({}));
+      const reg = String(body.registration_number || body.registrationNumber || '').trim();
+      if (base44 && /^\d{4}$/.test(reg)) {
+        const old = (await base44.asServiceRole.entities.RacerPhotoCache.filter({ registration_number: reg }, '-updated_date', 1))[0];
+        const payload = { status: 'exception', fetched_at: new Date().toISOString(), bytes: 0, error_msg: error?.message || '写真取得失敗' };
+        if (old) await base44.asServiceRole.entities.RacerPhotoCache.update(old.id, payload); else await base44.asServiceRole.entities.RacerPhotoCache.create({ registration_number: reg, ...payload });
+      }
+    } catch {}
     return Response.json({ status: 'error', message: error?.message || '写真取得失敗' }, { status: 500 });
   }
 }
