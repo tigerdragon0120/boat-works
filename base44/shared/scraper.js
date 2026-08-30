@@ -174,7 +174,7 @@ export function parseRacelist(html, raceNumber, raceDate) {
     });
   }
 
-  return { deadline, raceName, entries };
+  return { deadline, raceName, racePhase: classifyRacePhase(raceName), entries };
 }
 
 // 直前情報パース（展示タイム・スタート展示・気象・欠場）
@@ -375,6 +375,101 @@ export function parseResultList(html) {
 // 重要: 公式は上位3着だけでなく4着までタイムが出るケースもあるため、
 //       「何着まで」と決め打ちせず取得できた全タイムを保存する。
 //       1-2着差 / 1-3着差は後段で使いやすいよう秒で別途算出する。
+// 開催日程・グレード・開催何日目をraceindexから読む。
+export function parseSeriesContext(html, raceDate) {
+  const heading = html.match(/<div class="heading2_title\s+([^"]*)"[^>]*>\s*<h2[^>]*class="heading2_titleName"[^>]*>([\s\S]*?)<\/h2>/i);
+  const headingClass = (heading?.[1] || '').trim();
+  const eventName = heading ? stripTags(heading[2]) : null;
+  const hc = headingClass.toLowerCase();
+  let grade = 'GENERAL';
+  if (hc.includes('sga') || /\bsg\b/i.test(headingClass)) grade = 'SG';
+  else if (hc.includes('pg1')) grade = 'PG1';
+  else if (hc.includes('g1')) grade = 'G1';
+  else if (hc.includes('g2')) grade = 'G2';
+  else if (hc.includes('g3')) grade = 'G3';
+  else if (hc.includes('ippan')) grade = 'GENERAL';
+
+  const dates = [];
+  const seen = new Set();
+  const re = /href="\/owpc\/pc\/race\/raceindex\?[^\"]*hd=(\d{8})[^\"]*"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const hd = m[1];
+    const label = stripTags(m[2]);
+    if (!/(初日|\d+日目|[２３４５６７８９]日目|最終日)/.test(label)) continue;
+    if (seen.has(hd)) continue;
+    seen.add(hd);
+    dates.push({ hd, date: `${hd.slice(0,4)}-${hd.slice(4,6)}-${hd.slice(6,8)}`, label });
+  }
+  dates.sort((a,b)=>a.hd.localeCompare(b.hd));
+  const idx = dates.findIndex(x => x.date === raceDate);
+  return {
+    event_name: eventName,
+    grade,
+    series_dates: dates.map(x=>x.date),
+    series_labels: dates.map(x=>x.label),
+    series_start_date: dates[0]?.date || raceDate || null,
+    series_end_date: dates[dates.length - 1]?.date || raceDate || null,
+    series_total_days: dates.length || 1,
+    series_day: idx >= 0 ? idx + 1 : null,
+    is_final_day: idx >= 0 ? idx === dates.length - 1 : false,
+  };
+}
+
+export function classifyRacePhase(raceName) {
+  const n = String(raceName || '').replace(/\s+/g, '');
+  if (!n) return 'OTHER';
+  if (n.includes('優勝戦')) return 'FINAL';
+  if (n.includes('準優')) return 'SEMIFINAL';
+  if (n.includes('ドリーム')) return 'DREAM';
+  if (n.includes('選抜')) return 'SELECTION';
+  if (n.includes('予選')) return 'QUALIFYING';
+  if (n.includes('一般')) return 'GENERAL';
+  return 'OTHER';
+}
+
+// 公式の得点率一覧。一般開催などページ自体が無い場合はavailable=falseで返し、推測順位を作らない。
+export function parsePointRank(html) {
+  if (!html || html.includes('※ データはありません')) {
+    return { available: false, as_of_label: null, standings: [] };
+  }
+  const note = html.match(/<ul class="notes2[^>]*>[\s\S]*?<li>([\s\S]*?)<\/li>/);
+  const asOfLabel = note ? stripTags(note[1]).split('※')[0].trim() : null;
+  const standings = [];
+  const bodyRe = /<tbody[^>]*>\s*<tr[^>]*class="[^"]*is-p10-0[^"]*"[^>]*>([\s\S]*?)<\/tr>\s*<\/tbody>/g;
+  let bm;
+  while ((bm = bodyRe.exec(html)) !== null) {
+    const cells = [];
+    const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/g;
+    let cm;
+    while ((cm = tdRe.exec(bm[1])) !== null) cells.push(cm[1]);
+    if (cells.length < 8) continue;
+    const regMatch = cells[1].match(/toban=(\d{4})/) || stripTags(cells[1]).match(/(\d{4})/);
+    if (!regMatch) continue;
+    const rankText = zenToHalf(stripTags(cells[0])).trim();
+    const pointRateText = zenToHalf(stripTags(cells[4])).trim();
+    const nextRace = (cell) => {
+      if (!cell) return null;
+      const mm = stripTags(cell).match(/(\d{1,2})R/);
+      return mm ? Number(mm[1]) : null;
+    };
+    standings.push({
+      rank: /^\d+$/.test(rankText) ? Number(rankText) : null,
+      registration_number: regMatch[1],
+      racer_name: stripTags(cells[2]).replace(/\s+/g, ' '),
+      grade_class: stripTags(cells[3]) || null,
+      point_rate: /^\d+(\.\d+)?$/.test(pointRateText) ? Number(pointRateText) : null,
+      finish_record: stripTags(cells[5]).replace(/\s+/g, ''),
+      total_points: toFloat(cells[6]),
+      penalty_points: toFloat(cells[7]) ?? 0,
+      next_race_1: nextRace(cells[8]),
+      next_race_2: nextRace(cells[9]),
+      note: stripTags(cells[10] || '') || null,
+    });
+  }
+  return { available: standings.length > 0, as_of_label: asOfLabel, standings };
+}
+
 export function parseRaceResultDetail(html) {
   if (!html || !html.includes('レースタイム')) return null;
 
