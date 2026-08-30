@@ -21,12 +21,13 @@ export default async function(req) {
       { race_date: raceDate, data_source: 'official' }, 'deadline', 300
     );
 
-    // 展示公開を狙って締切15分前〜締切までを対象にする。
+    // 展示公開の初動を取り逃さないよう締切25分前〜締切までを対象にする。
+    // 前夜/朝の展示前基準点との差を明確にするため、公開直後から取得する。
     const targets = races.filter(r => {
       if (!r?.deadline) return false;
       const d = new Date(r.deadline).getTime();
       if (!Number.isFinite(d) || d <= now) return false;
-      return d - now <= 15 * 60 * 1000;
+      return d - now <= 25 * 60 * 1000;
     });
 
     let success = 0, pending = 0, errors = 0, scratches = 0;
