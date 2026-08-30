@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { ALL_VENUE_JCDS, VENUE_NAMES, parseDaySchedule, parseRacelist, fetchWithRetry, sleep } from '../../shared/scraper.js';
+import { ALL_VENUE_JCDS, VENUE_NAMES, parseDaySchedule, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from '../../shared/scraper.js';
 
 // BOAT WORKS 当日/翌日の自己修復同期
 // - トップページの開催場一覧だけを信用せず、24場の raceindex を直接確認
@@ -77,6 +77,7 @@ export default async function(req) {
         }
         await base44.asServiceRole.entities.Race.update(r.id, {
           race_name: parsed.raceName,
+          race_phase: parsed.racePhase || 'OTHER',
           deadline: parsed.deadline || r.deadline,
           entries_fetched_at: new Date().toISOString(),
           last_updated: new Date().toISOString(),
@@ -112,7 +113,8 @@ export default async function(req) {
           return { jcd, schedule: [] };
         }
         const schedule = parseDaySchedule(html, raceDate);
-        return { jcd, schedule };
+        const seriesCtx = schedule.length > 0 ? parseSeriesContext(html, raceDate) : null;
+        return { jcd, schedule, seriesCtx };
       } catch (e) {
         errors.push({ phase: 'venue_scan', jcd, message: e?.message || '取得失敗' });
         return { jcd, schedule: [] };
@@ -233,6 +235,7 @@ export default async function(req) {
         }
         await base44.asServiceRole.entities.Race.update(r.id, {
           race_name: parsed.raceName,
+          race_phase: parsed.racePhase || 'OTHER',
           deadline: parsed.deadline || r.deadline,
           entries_fetched_at: new Date().toISOString(),
           last_updated: new Date().toISOString(),
@@ -284,6 +287,7 @@ export default async function(req) {
 
         await base44.asServiceRole.entities.Race.update(r.id, {
           race_name: parsed.raceName,
+          race_phase: parsed.racePhase || 'OTHER',
           deadline: parsed.deadline || r.deadline,
           entries_fetched_at: new Date().toISOString(),
           last_updated: new Date().toISOString(),
