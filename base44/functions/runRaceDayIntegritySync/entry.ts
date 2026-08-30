@@ -40,6 +40,7 @@ export default async function(req) {
     const body = await req.json().catch(() => ({}));
     const raceDate = body.race_date || jstDateStr(Number(body.target_offset || 0));
     const stage = body.stage || 'pre';
+    const collectOnly = body.collect_only === true;
     const hd = raceDate.replace(/-/g, '');
     const t0 = Date.now();
     const errors:any[] = [];
@@ -93,7 +94,7 @@ export default async function(req) {
         return null;
       }
     }, 100);
-    if (urgentRepairedIds.length > 0) {
+    if (!collectOnly && urgentRepairedIds.length > 0) {
       try {
         await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
           race_date: raceDate, stage, race_ids: urgentRepairedIds, force: true,
@@ -190,7 +191,7 @@ export default async function(req) {
     const changedIds:any[] = [];
     let initialAnalysis = null;
 
-    if (alreadyCompleteIds.length > 0) {
+    if (!collectOnly && alreadyCompleteIds.length > 0) {
       try {
         const preRes = await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
           race_date: raceDate,
@@ -314,7 +315,7 @@ export default async function(req) {
       }
     }, 180);
 
-    if (changedIds.length > 0) {
+    if (!collectOnly && changedIds.length > 0) {
       try {
         await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
           race_date: raceDate, stage, race_ids: changedIds, force: true,
@@ -335,8 +336,8 @@ export default async function(req) {
     const initialSet = new Set(alreadyCompleteIds);
     const newlyCompleteIds = completeIds.filter(id => !initialSet.has(id));
 
-    let analysis = initialAnalysis;
-    if (newlyCompleteIds.length > 0) {
+    let analysis = collectOnly ? { status: 'skipped', reason: 'collect_only' } : initialAnalysis;
+    if (!collectOnly && newlyCompleteIds.length > 0) {
       try {
         const res = await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
           race_date: raceDate,
@@ -375,6 +376,7 @@ export default async function(req) {
       newly_complete_after_repair: newlyCompleteIds.length,
       complete_races: completeIds.length,
       incomplete_races: incompleteRows.map(r => ({ venue_code: r.venue_code, venue_name: r.venue_name, race_number: r.race_number })),
+      collect_only: collectOnly,
       analysis,
       errors: errors.slice(0, 50),
       elapsed_ms: Date.now() - t0,
