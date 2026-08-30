@@ -126,6 +126,7 @@ function RacerSeriesCard({ racer: r, position }) {
         <div className="text-right shrink-0">
           <div className="text-[10px] text-muted-foreground">シリーズ指数</div>
           <div className="text-3xl font-bold tabular-nums leading-none">{r.series_score != null ? Number(r.series_score).toFixed(1) : "—"}</div>
+          <div className="text-[9px] text-muted-foreground mt-1">信頼度 {r.series_sample_confidence != null ? `${Math.round(r.series_sample_confidence)}%` : "—"}</div>
         </div>
       </div>
 
