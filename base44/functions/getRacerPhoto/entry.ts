@@ -4,7 +4,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 // ブラウザからboatrace.jpへ直接画像アクセスさせず、バックエンドで公式写真を取得してdata URLで返す。
 // Web/PWA/モバイルで同じ経路を使うため、外部画像の参照制限差を回避する。
 
-const PHOTO_BASE = 'https://www.boatrace.jp/racerphoto';
+const PHOTO_BASE = 'https://www.boatrace.jp/owpc/pc/racer';
 
 function toBase64(bytes: Uint8Array) {
   let binary = '';
@@ -24,7 +24,7 @@ export default async function(req) {
       return Response.json({ status: 'error', message: 'registration_number は4桁の数字が必要です' }, { status: 400 });
     }
 
-    const url = `${PHOTO_BASE}/${reg}.jpg`;
+    const url = `${PHOTO_BASE}/${reg}/portrait.jpg`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     let res;
