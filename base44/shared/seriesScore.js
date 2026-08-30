@@ -31,6 +31,8 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
   if (!valid.length) {
     return {
       series_score: 50,
+      raw_series_score: 50,
+      series_sample_confidence: 0,
       series_label: 'NEUTRAL',
       result_quality_score: 50,
       lane_difficulty_score: 50,
