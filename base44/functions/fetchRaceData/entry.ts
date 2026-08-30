@@ -196,15 +196,28 @@ export default async function(req) {
       race = await base44.asServiceRole.entities.Race.create(raceData);
     }
 
-    // RaceEntry 再保存（古いものを削除）
+    // RaceEntry 再保存。
+    // 直前情報Workerが先に保存した展示タイム/ST/進入/欠場を、オッズ取得で消さない。
+    const previousEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: race.id }, 'boat_number', 20).catch(() => []);
+    const previousByBoat = Object.fromEntries(previousEntries.map(e => [Number(e.boat_number), e]));
     await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: race.id });
-    const entryRecords = parsed.entries.map((e) => ({
-      ...e,
-      race_id: race.id,
-      race_date: raceDate,
-      venue_code: jcd,
-      race_number: raceNumber,
-    }));
+    const entryRecords = parsed.entries.map((e) => {
+      const prev = previousByBoat[Number(e.boat_number)] || {};
+      return {
+        ...e,
+        entry_course: prev.entry_course ?? e.entry_course ?? null,
+        exhibition_time: prev.exhibition_time ?? e.exhibition_time ?? null,
+        exhibition_rank: prev.exhibition_rank ?? e.exhibition_rank ?? null,
+        exhibition_st: prev.exhibition_st ?? e.exhibition_st ?? null,
+        exhibition_st_raw: prev.exhibition_st_raw ?? e.exhibition_st_raw ?? null,
+        tilt: prev.tilt ?? e.tilt ?? null,
+        is_scratched: prev.is_scratched === true || e.is_scratched === true,
+        race_id: race.id,
+        race_date: raceDate,
+        venue_code: jcd,
+        race_number: raceNumber,
+      };
+    });
     await base44.asServiceRole.entities.RaceEntry.bulkCreate(entryRecords);
 
     // OddsSnapshot 保存
