@@ -44,7 +44,14 @@ async function processDate(base44, raceDate, nowMs) {
     const out = await Promise.all(batch.map(async (jcd) => {
       try {
         const res = await base44.asServiceRole.functions.invoke('fetchHistoricalResults', { race_date: raceDate, jcd });
-        return res?.data || res;
+        const data = res?.data || res;
+        try {
+          const detailRes = await base44.asServiceRole.functions.invoke('enrichRaceResultDetails', { race_date: raceDate, jcd });
+          data.detail_enrichment = detailRes?.data || detailRes;
+        } catch (e) {
+          data.detail_enrichment = { status: 'error', message: e?.message || String(e) };
+        }
+        return data;
       } catch (e) {
         return { status: 'error', message: e.message };
       }
