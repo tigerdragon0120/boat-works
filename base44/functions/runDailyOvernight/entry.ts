@@ -49,7 +49,16 @@ export default async function(req) {
           const results = await Promise.all(batch.map(async (jcd) => {
             try {
               const r = await base44.asServiceRole.functions.invoke("fetchHistoricalResults", { race_date: yStr, jcd });
-              return r?.data || r;
+              const data = r?.data || r;
+              // 結果一覧だけで終わらせず、詳細ページから全艇着順・レースタイム・ST・決まり手・自然条件まで保存する。
+              // この詳細が揃って初めて「ぶっちぎり/接戦」「勝負がけ時のST」「モーター状態」を後で学習できる。
+              try {
+                const d = await base44.asServiceRole.functions.invoke("enrichRaceResultDetails", { race_date: yStr, jcd });
+                data.detail_enrichment = d?.data || d;
+              } catch (e) {
+                data.detail_enrichment = { status: "error", message: e?.message || String(e) };
+              }
+              return data;
             } catch (e) {
               return { status: "error", message: e.message };
             }
