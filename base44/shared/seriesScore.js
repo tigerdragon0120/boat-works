@@ -46,7 +46,26 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
   for (const x of valid) {
     const finishDelta = FINISH_DELTA[Number(x.finish)] || 0;
     const laneDelta = laneAdjustment(x.lane, x.finish);
-    rawDelta += finishDelta + laneDelta;
+
+    // 同一レース内の相対情報だけを初期スコアへ小さく反映。
+    // 絶対時計は場・風・波・気温・水温の影響が大きいため、標準化データが貯まるまでは直接加点しない。
+    let marginDelta = 0;
+    if (Number(x.finish) === 1 && x.margin_1_2_seconds != null) {
+      const gap = Number(x.margin_1_2_seconds);
+      if (gap >= 1.5) marginDelta = 2.5;
+      else if (gap >= 0.8) marginDelta = 1.5;
+      else if (gap >= 0.4) marginDelta = 0.75;
+    }
+    let stDelta = 0;
+    if (x.st_advantage != null) {
+      const adv = Number(x.st_advantage); // + = 艇群平均より速い
+      if (adv >= 0.05) stDelta = 1.25;
+      else if (adv >= 0.03) stDelta = 0.75;
+      else if (adv <= -0.05) stDelta = -1.0;
+      else if (adv <= -0.03) stDelta = -0.5;
+    }
+    const contentDelta = marginDelta + stDelta;
+    rawDelta += finishDelta + laneDelta + contentDelta;
     components.push({
       race_date: x.race_date || null,
       race_number: x.race_number || null,
@@ -54,7 +73,9 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
       finish: Number(x.finish),
       finish_delta: finishDelta,
       lane_delta: laneDelta,
-      total_delta: round1(finishDelta + laneDelta),
+      margin_delta: round1(marginDelta),
+      st_relative_delta: round1(stDelta),
+      total_delta: round1(finishDelta + laneDelta + contentDelta),
     });
   }
 
@@ -68,7 +89,11 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
 
   // 直近最大3走は流れとして別表示。
   const recent = valid.slice(-3);
-  const recentDelta = recent.reduce((s, x) => s + (FINISH_DELTA[Number(x.finish)] || 0) + laneAdjustment(x.lane, x.finish), 0) / recent.length;
+  const componentMap = new Map(components.map(c => [`${c.race_date || ''}_${c.race_number || ''}_${c.lane}`, c]));
+  const recentDelta = recent.reduce((s, x) => {
+    const c = componentMap.get(`${x.race_date || ''}_${x.race_number || ''}_${Number(x.lane)}`);
+    return s + Number(c?.total_delta || 0);
+  }, 0) / recent.length;
   const momentum = clamp(50 + recentDelta * 5);
 
   // 初期版のシリーズ指数。順位/勝負がけは混ぜない。
@@ -83,6 +108,8 @@ export function computeSeriesRacerScore({ laneFinishHistory = [] } = {}) {
   if (momentum < 38) reasons.push('直近3走の流れが下降');
   if (avgLane >= 4.2) reasons.push('外枠を多く消化している');
   if (avgLane <= 2.8) reasons.push('内枠を多く消化している');
+  if (valid.some(x => Number(x.finish) === 1 && Number(x.margin_1_2_seconds || 0) >= 1.5)) reasons.push('着差をつけた強い1着がある');
+  if (valid.some(x => Number(x.st_advantage || 0) >= 0.05)) reasons.push('艇群平均より大きく速いST実績がある');
 
   return {
     series_score: round1(score),
