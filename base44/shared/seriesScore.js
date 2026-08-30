@@ -3,7 +3,7 @@
 // 重要: 勝負がけ度(rankPressure)は最初はseriesScoreに直接加点しない。
 //       プレッシャーで強くなる/弱くなる個人差を、後で学習できるよう分離保存する。
 
-export const SERIES_SCORE_VERSION = 'v10.0';
+export const SERIES_SCORE_VERSION = 'v10.1';
 
 const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, Number(v) || 0));
 const round1 = (v) => Math.round(v * 10) / 10;
