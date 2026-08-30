@@ -370,3 +370,110 @@ export function parseResultList(html) {
   }
   return results;
 }
+
+// レース結果詳細ページをパースする。
+// 重要: 公式は上位3着だけでなく4着までタイムが出るケースもあるため、
+//       「何着まで」と決め打ちせず取得できた全タイムを保存する。
+//       1-2着差 / 1-3着差は後段で使いやすいよう秒で別途算出する。
+export function parseRaceResultDetail(html) {
+  if (!html || !html.includes('レースタイム')) return null;
+
+  const normalizeTime = (raw) => {
+    const s = String(raw || '').trim();
+    const m = s.match(/(\d+)'(\d{2})"(\d)/);
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 10;
+  };
+
+  const finishers = [];
+  const tableStart = html.indexOf('レースタイム');
+  const tableEnd = html.indexOf('スタート情報', tableStart);
+  const finishSection = html.substring(tableStart, tableEnd > tableStart ? tableEnd : tableStart + 12000);
+  const tbodyRe = /<tbody[^>]*>([\s\S]*?)<\/tbody>/g;
+  let tm;
+  while ((tm = tbodyRe.exec(finishSection)) !== null) {
+    const cells = [];
+    const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/g;
+    let cm;
+    while ((cm = cellRe.exec(tm[1])) !== null) cells.push(cm[1]);
+    if (cells.length < 4) continue;
+    const finishRaw = stripTags(cells[0]).replace(/\s+/g, '');
+    const boat = Number(stripTags(cells[1]).replace(/\D/g, ''));
+    const regMatch = cells[2].match(/is-fs12">\s*(\d{4})\s*<\/span>/);
+    const nameMatch = cells[2].match(/is-lh24__3rdadd">([^<]+)<\/span>/);
+    const timeRaw = stripTags(cells[3]).replace(/\s+/g, '');
+    const finishMap = { '１': 1, '２': 2, '３': 3, '４': 4, '５': 5, '６': 6 };
+    const finish = finishMap[finishRaw] || Number(finishRaw);
+    if (!Number.isFinite(finish) || !Number.isFinite(boat) || boat < 1 || boat > 6) continue;
+    finishers.push({
+      finish,
+      boat_number: boat,
+      registration_number: regMatch ? regMatch[1] : null,
+      racer_name: nameMatch ? stripTags(nameMatch[1]).replace(/\s+/g, ' ') : null,
+      race_time_raw: timeRaw || null,
+      race_time_seconds: normalizeTime(timeRaw),
+    });
+  }
+  finishers.sort((a, b) => a.finish - b.finish);
+
+  const startInfo = [];
+  const startStart = html.indexOf('スタート情報');
+  if (startStart >= 0) {
+    const startEnd = html.indexOf('勝式', startStart);
+    const startSection = html.substring(startStart, startEnd > startStart ? startEnd : startStart + 12000);
+    const rowRe = /table1_boatImage1Number[^>]*>(\d)<\/span>[\s\S]{0,900}?table1_boatImage1TimeInner[^>]*>([\s\S]*?)<\/span>/g;
+    let sm;
+    while ((sm = rowRe.exec(startSection)) !== null) {
+      const boat = Number(sm[1]);
+      const rawText = stripTags(sm[2]).replace(/&nbsp;| /g, ' ').trim();
+      const stMatch = rawText.match(/F?\.?\d{1,2}/i);
+      const stRaw = stMatch ? stMatch[0] : null;
+      let st = null;
+      if (stRaw) {
+        const neg = /^F/i.test(stRaw);
+        const n = Number(stRaw.replace(/^F/i, ''));
+        if (Number.isFinite(n)) st = neg ? -Math.abs(n) : n;
+      }
+      startInfo.push({ boat_number: boat, st, st_raw: stRaw });
+    }
+  }
+
+  const winningMethods = ['逃げ','差し','まくり','まくり差し','抜き','恵まれ'];
+  let winningMethod = null;
+  for (const method of winningMethods) {
+    if (html.includes(method)) { winningMethod = method; break; }
+  }
+
+  const getNumberAfter = (label) => {
+    const re = new RegExp(`${label}<\\/span>\\s*<span[^>]*>([^<]+)<\\/span>`);
+    const m = html.match(re);
+    return m ? toFloat(m[1]) : null;
+  };
+  const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
+  const windClass = html.match(/weather1_bodyUnitImage\s+is-wind(\d+)/);
+
+  const t1 = finishers.find(x => x.finish === 1)?.race_time_seconds ?? null;
+  const t2 = finishers.find(x => x.finish === 2)?.race_time_seconds ?? null;
+  const t3 = finishers.find(x => x.finish === 3)?.race_time_seconds ?? null;
+
+  return {
+    finishers,
+    finish_time_count: finishers.filter(x => x.race_time_seconds != null).length,
+    race_time_1_raw: finishers.find(x => x.finish === 1)?.race_time_raw ?? null,
+    race_time_2_raw: finishers.find(x => x.finish === 2)?.race_time_raw ?? null,
+    race_time_3_raw: finishers.find(x => x.finish === 3)?.race_time_raw ?? null,
+    race_time_1_seconds: t1,
+    race_time_2_seconds: t2,
+    race_time_3_seconds: t3,
+    margin_1_2_seconds: t1 != null && t2 != null ? Math.round((t2 - t1) * 10) / 10 : null,
+    margin_1_3_seconds: t1 != null && t3 != null ? Math.round((t3 - t1) * 10) / 10 : null,
+    start_info: startInfo,
+    winning_method: winningMethod,
+    weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
+    wind_dir: windClass ? windClass[1] : null,
+    wind_speed: getNumberAfter('風速'),
+    air_temperature: getNumberAfter('気温'),
+    water_temperature: getNumberAfter('水温'),
+    wave_height: getNumberAfter('波高'),
+  };
+}
