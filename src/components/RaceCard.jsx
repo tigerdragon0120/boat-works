@@ -21,6 +21,8 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
   const gradeClass = analysis?.boat1_grade_class;
   const trustScore = analysis?.boat1_trust_score;
   const conditionMatch = analysis?.condition_match_score;
+  const seriesReason = analysis?.reasons?.find?.(r => r?.layer === "series");
+  const seriesConcern = analysis?.concerns?.find?.(r => r?.layer === "series");
 
   const dialogEntry = analysis ? { registration_number: regNum, racer_name: racerName, grade_class: gradeClass } : null;
   const dialogTrust = analysis ? { score: trustScore, reasons: analysis.reasons, concerns: analysis.concerns, condition_match: { score: conditionMatch, conditions: analysis.condition_matches } } : null;
@@ -107,6 +109,12 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
               <CardStat label="1号艇信頼" value={trustScore ?? "—"} accent={trustScore >= 75 ? "emerald" : trustScore >= 60 ? "sky" : "amber"} />
               <CardStat label="推奨" value={analysis.recommended_pattern === "MAIN" ? "本線" : analysis.recommended_pattern === "URA" ? "裏" : "中立"} sub={analysis.recommended_pattern === "MAIN" ? "1-234-56" : analysis.recommended_pattern === "URA" ? "1-56-234" : "見送り候補"} accent={analysis.recommended_pattern === "URA" ? "amber" : analysis.recommended_pattern === "MAIN" ? "sky" : "primary"} />
             </div>
+            {(seriesReason || seriesConcern) && (
+              <div className="grid sm:grid-cols-2 gap-2">
+                {seriesReason && <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700">今節：{seriesReason.label}</div>}
+                {seriesConcern && <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">今節注意：{seriesConcern.label}</div>}
+              </div>
+            )}
             {analysis.program_scenario_label && (
               <div className={cn(
                 "rounded-xl border px-3 py-2 text-xs font-bold",
