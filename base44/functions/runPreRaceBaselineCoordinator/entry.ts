@@ -134,7 +134,7 @@ export default async function(req) {
       const ids=v.venueRaces.map(r=>r.id);
       try {
         const a=await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate',{
-          race_date:raceDate,stage:'pre',race_ids:ids,force:true,venue_complete_required:true,
+          race_date:raceDate,stage:'pre',race_ids:ids,force:true,rebuild_baseline:true,venue_complete_required:true,
         });
         const ad=a?.data||a;
         const after=await base44.asServiceRole.entities.UichiAnalysis.filter({race_date:raceDate,venue_code:v.jcd,stage:'pre'},'-captured_at',100).catch(()=>[]);
