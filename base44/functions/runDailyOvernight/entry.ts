@@ -45,6 +45,7 @@ export default async function(req) {
         const venueRes = await base44.asServiceRole.functions.invoke("fetchDailyVenues", { race_date: yStr });
         const yVenues = venueRes?.data?.venues || venueRes?.venues || [];
         let success = 0, errors = 0, races = 0;
+        const failedVenues = [];
         for (let i = 0; i < yVenues.length; i += 3) {
           const batch = yVenues.slice(i, i + 3);
           const results = await Promise.all(batch.map(async (jcd) => {
@@ -66,20 +67,41 @@ export default async function(req) {
               } catch (e) {
                 data.series_points = { status: "error", message: e?.message || String(e) };
               }
-              return data;
+              return { ...data, _jcd: jcd };
             } catch (e) {
-              return { status: "error", message: e.message };
+              return { status: "error", message: e.message, _jcd: jcd };
             }
           }));
           for (const r of results) {
             if (r?.status === "success" || r?.status === "no_races") {
               success++;
               races += r?.races || 0;
-            } else errors++;
+            } else {
+              errors++;
+              if (r?._jcd) failedVenues.push(r._jcd);
+            }
           }
           await sleep(300);
         }
-        yesterdayResultUpdate = { status: errors === 0 ? "success" : "partial", venues: yVenues.length, success, errors, races };
+
+        // 一時的な公式サイト失敗で前夜スナップショットを欠損させないため、不成功場だけもう1回処理する。
+        // 2回目でも失敗した場はpartialとして明示し、成功したふりをしない。
+        let retryRecovered = 0;
+        for (const jcd of [...new Set(failedVenues)]) {
+          try {
+            const rr = await base44.asServiceRole.functions.invoke("fetchHistoricalResults", { race_date: yStr, jcd });
+            const rd = rr?.data || rr;
+            if (rd?.status !== "success" && rd?.status !== "no_races") continue;
+            try { await base44.asServiceRole.functions.invoke("enrichRaceResultDetails", { race_date: yStr, jcd }); } catch {}
+            try { await base44.asServiceRole.functions.invoke("refreshSeriesRacerPoints", { as_of_date: yStr, jcd }); } catch {}
+            retryRecovered++;
+            success++;
+            errors = Math.max(0, errors - 1);
+            races += rd?.races || 0;
+          } catch {}
+          await sleep(250);
+        }
+        yesterdayResultUpdate = { status: errors === 0 ? "success" : "partial", venues: yVenues.length, success, errors, races, retry_recovered: retryRecovered };
       } catch (e) {
         yesterdayResultUpdate = { status: "error", message: e.message };
       }
