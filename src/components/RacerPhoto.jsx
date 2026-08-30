@@ -56,7 +56,7 @@ async function loadPhoto(registrationNumber) {
 
 export default function RacerPhoto({ registrationNumber, racerName, size = "md", className, lazy = true, onClick }) {
   const reg = String(registrationNumber || "").trim();
-  const directUrl = /^\d{4}$/.test(reg) ? `https://www.boatrace.jp/owpc/pc/racer/${reg}/portrait.jpg` : null;
+  const directUrl = /^\d{4}$/.test(reg) ? `https://www.boatrace.jp/racerphoto/${reg}.jpg` : null;
   const [url, setUrl] = useState(() => directUrl || photoCache.get(reg) || null);
   const [loaded, setLoaded] = useState(() => !!directUrl || photoCache.has(reg) || failureCache.has(reg));
   const [triedProxy, setTriedProxy] = useState(false);
