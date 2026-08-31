@@ -38,6 +38,7 @@ export default function RaceDetail() {
   const [reloadKey, setReloadKey] = useState(0);
   const [racerOpen, setRacerOpen] = useState(false);
   const [preAnalysis, setPreAnalysis] = useState(null);
+  const [seriesPoint, setSeriesPoint] = useState(null);
 
   // キャッシュ済みUichiAnalysis → 表示用オブジェクト変換
   const cachedToObjects = (cached, s) => {
@@ -79,6 +80,7 @@ export default function RaceDetail() {
     setAnalysis(null);
     setTrust(null);
     setPreAnalysis(null);
+    setSeriesPoint(null);
     try {
       const s = await getSettings();
       const r = await base44.entities.Race.get(id);
@@ -88,6 +90,16 @@ export default function RaceDetail() {
         getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
       ]);
       setEntries(ents);
+      const b1 = (ents || []).find(e => Number(e.boat_number) === 1);
+      if (r.series_key && b1?.registration_number) {
+        try {
+          const sp = await base44.entities.SeriesRacerPoint.filter({
+            series_key: r.series_key,
+            registration_number: String(b1.registration_number),
+          }, "-snapshot_at", 1);
+          setSeriesPoint(sp?.[0] || null);
+        } catch {}
+      }
       setOdds(latestOdds);
       setOddsHistory(hist);
       setLoading(false);
@@ -395,6 +407,12 @@ export default function RaceDetail() {
                   <span className="text-xs font-bold px-2 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{boat1.grade_class}</span>
                 )}
                 {boat1?.branch && <span className="text-xs text-muted-foreground">{boat1.branch}支部</span>}
+                {seriesPoint?.series_score != null && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded border border-violet-300 bg-violet-50 text-violet-700 tabular-nums">
+                    節間ポイント {Number(seriesPoint.series_score).toFixed(1)}
+                    {seriesPoint.series_sample_confidence != null ? `・信頼${Math.round(seriesPoint.series_sample_confidence)}%` : ""}
+                  </span>
+                )}
               </div>
             </div>
             {(trust || analysis?.boat1_trust) && (
