@@ -6,6 +6,12 @@ function jstDateStr(offset=0) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
 }
 
+function previousDateStr(dateStr) {
+  const d=new Date(`${dateStr}T00:00:00+09:00`);
+  d.setUTCDate(d.getUTCDate()-1);
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+}
+
 function timeSlotFromDeadline(deadline) {
   if (!deadline) return 'day';
   const d=new Date(deadline);
@@ -54,13 +60,49 @@ export default async function(req) {
     }).catch(e=>({data:{status:'error',message:e?.message||String(e)}}));
     const syncData=sync?.data||sync;
 
-    const [races,entries,preAnalyses,seriesPoints,readinessRows]=await Promise.all([
+    const [races,entries,preAnalyses,initialSeriesPoints,readinessRows]=await Promise.all([
       base44.asServiceRole.entities.Race.filter({race_date:raceDate,data_source:'official'},'deadline',500).catch(()=>[]),
       base44.asServiceRole.entities.RaceEntry.filter({race_date:raceDate},'boat_number',5000).catch(()=>[]),
       base44.asServiceRole.entities.UichiAnalysis.filter({race_date:raceDate,stage:'pre'},'-captured_at',500).catch(()=>[]),
       base44.asServiceRole.entities.SeriesRacerPoint.filter({as_of_date:{$lt:raceDate}},'-as_of_date',3000).catch(()=>[]),
       base44.asServiceRole.entities.VenueDayReadiness.filter({race_date:raceDate},'venue_code',100).catch(()=>[]),
     ]);
+
+    // 2日目以降なのに前日までの節間ポイントが無い場は、朝の収集処理自身で前日分を自己修復する。
+    // 特にモーニング場は1Rが早いため、夜間処理の取りこぼしを朝まで放置しない。
+    let seriesPoints=initialSeriesPoints;
+    const existingSeriesKeys=new Set(seriesPoints.map(x=>x.series_key).filter(Boolean));
+    const repairTargets=[];
+    const seenRepair=new Set();
+    for (const r of races) {
+      const seriesDay=Number(r.series_day||1);
+      const seriesKey=r.series_key;
+      const jcd=String(r.venue_code).padStart(2,'0');
+      if (seriesDay<=1 || !seriesKey || existingSeriesKeys.has(seriesKey) || seenRepair.has(seriesKey)) continue;
+      seenRepair.add(seriesKey);
+      repairTargets.push({jcd,series_key:seriesKey,venue_name:r.venue_name||jcd,slot:timeSlotFromDeadline(r.deadline)});
+    }
+    repairTargets.sort((a,b)=>({morning:0,day:1,night:2}[a.slot]??9)-({morning:0,day:1,night:2}[b.slot]??9));
+
+    const seriesRepair=[];
+    const sourceDate=previousDateStr(raceDate);
+    for (const target of repairTargets) {
+      try {
+        // 前日結果と詳細を場単位で補完してから節間ポイントを再生成する。
+        const fr=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:sourceDate,jcd:target.jcd});
+        const fd=fr?.data||fr;
+        const er=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:sourceDate,jcd:target.jcd,force:true});
+        const ed=er?.data||er;
+        const sr=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:sourceDate,jcd:target.jcd});
+        const sd=sr?.data||sr;
+        seriesRepair.push({venue_code:target.jcd,venue_name:target.venue_name,time_slot:target.slot,status:sd?.status||'success',result_status:fd?.status||null,detail_status:ed?.status||null,series:sd});
+      } catch(e) {
+        seriesRepair.push({venue_code:target.jcd,venue_name:target.venue_name,time_slot:target.slot,status:'error',message:e?.message||String(e)});
+      }
+    }
+    if (repairTargets.length>0) {
+      seriesPoints=await base44.asServiceRole.entities.SeriesRacerPoint.filter({as_of_date:{$lt:raceDate}},'-as_of_date',3000).catch(()=>seriesPoints);
+    }
 
     const entriesByRace=new Map();
     for (const e of entries) {
@@ -178,6 +220,7 @@ export default async function(req) {
       late_baseline:finalReadiness.filter(x=>x.collection_status==='LATE_BASELINE').length,
       venue_status:finalReadiness.map(x=>({venue_code:x.venue_code,venue_name:x.venue_name,time_slot:x.time_slot,status:x.collection_status,races:x.races_collected,entries:x.complete_entry_races,core:x.core_complete_races,series_points_ready:x.series_points_ready,first_deadline:x.first_deadline,missing_races:x.missing_races||[]})),
       analyzed_venues:analyzedVenues,
+      series_repair:seriesRepair,
       elapsed_ms:Date.now()-t0,
     });
   } catch(error) {
