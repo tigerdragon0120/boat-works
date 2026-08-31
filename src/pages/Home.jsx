@@ -40,6 +40,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [backfillProgress, setBackfillProgress] = useState(null);
   const [cacheHitRate, setCacheHitRate] = useState(null);
+  const [seriesPoints, setSeriesPoints] = useState([]);
 
   useEffect(() => {
     let m = true;
@@ -58,14 +59,16 @@ export default function Home() {
         getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         // Homeは保存済みキャッシュだけを読む。外部取得・補修・再分析はバックグラウンド処理へ分離。
-        const [rs, al, cachedAn] = await Promise.all([
+        const [rs, al, cachedAn, sp] = await Promise.all([
           getRacesByDate(date), getAlerts(date), getCachedAnalysesByDate(date),
+          base44.entities.SeriesRacerPoint.list("-snapshot_at", 1000).catch(() => []),
         ]);
 
         if (!m) return;
         setRaces(rs);
         setAlerts(al);
         setAnalyses(cachedAn);
+        setSeriesPoints(sp || []);
         setCacheHitRate(computeCacheHitRate(rs, cachedAn));
         setLoading(false);
         console.log(`[Home] 高速表示完了: ${Math.round(performance.now() - t0)}ms / races=${rs.length}`);
@@ -205,6 +208,21 @@ export default function Home() {
       .sort((a, b) => (analyses[b.id]?.weighted_probability || 0) - (analyses[a.id]?.weighted_probability || 0));
   }, [sortedRaces, analyses]);
 
+  const seriesPointMap = useMemo(() => {
+    const map = {};
+    for (const p of seriesPoints) {
+      const key = `${p.series_key || ""}_${p.registration_number || ""}`;
+      if (!map[key]) map[key] = p; // snapshot_at降順の先頭を採用
+    }
+    return map;
+  }, [seriesPoints]);
+
+  const pointForRace = (race, analysis) => {
+    const reg = analysis?.boat1_registration_number;
+    if (!race?.series_key || !reg) return null;
+    return seriesPointMap[`${race.series_key}_${reg}`] || null;
+  }; 
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -312,7 +330,7 @@ export default function Home() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {alertRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} />
+              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} seriesPoint={pointForRace(r, analyses[r.id])} />
             ))}
           </div>
         )}
@@ -333,7 +351,7 @@ export default function Home() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {sortedRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} />
+              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} seriesPoint={pointForRace(r, analyses[r.id])} />
             ))}
           </div>
         )}
