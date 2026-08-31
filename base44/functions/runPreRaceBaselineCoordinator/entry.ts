@@ -182,15 +182,25 @@ export default async function(req) {
       venueStates.push({jcd,venue_name:first?.venue_name||jcd,slot,collectionComplete,seriesReady,exhibitionAlreadyStarted,status,missing,venueRaces});
     }
 
-    // モーニング→通常→ナイターの順で基準点分析。場の12R全部が揃った場合のみ実行。
+    // モーニング→通常→ナイターの順で基準点分析。
+    // 1R開始前は分析欠落レースだけを自動補修し、12/12を揃える。開始後は締切済みレースを後追いでアラート化しない。
     venueStates.sort((a,b)=>priority[a.slot]-priority[b.slot]);
     const analyzedVenues=[];
     for (const v of venueStates) {
-      if (!v.collectionComplete || v.status==='LATE_BASELINE' || v.status==='BASELINE_CAPTURED') continue;
-      const ids=v.venueRaces.map(r=>r.id);
+      if (!v.collectionComplete || v.status==='LATE_BASELINE') continue;
+      const nowMs=Date.now();
+      const firstDeadlineMs=new Date(v.venueRaces[0]?.deadline||0).getTime();
+      const beforeFirstRace=Number.isFinite(firstDeadlineMs) && nowMs < firstDeadlineMs;
+      const currentPre=await base44.asServiceRole.entities.UichiAnalysis.filter({race_date:raceDate,venue_code:v.jcd,stage:'pre'},'-captured_at',100).catch(()=>[]);
+      const analyzedRaceIds=new Set(currentPre.map(x=>x.race_id));
+      const targetRaces=beforeFirstRace
+        ? v.venueRaces.filter(r=>!analyzedRaceIds.has(r.id))
+        : v.venueRaces.filter(r=>!analyzedRaceIds.has(r.id) && (!r.deadline || new Date(r.deadline).getTime()>nowMs));
+      if (targetRaces.length===0) continue;
+      const ids=targetRaces.map(r=>r.id);
       try {
         const a=await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate',{
-          race_date:raceDate,stage:'pre',race_ids:ids,force:true,rebuild_baseline:true,venue_complete_required:true,
+          race_date:raceDate,stage:'pre',race_ids:ids,force:true,rebuild_baseline:beforeFirstRace,venue_complete_required:true,
         });
         const ad=a?.data||a;
         const after=await base44.asServiceRole.entities.UichiAnalysis.filter({race_date:raceDate,venue_code:v.jcd,stage:'pre'},'-captured_at',100).catch(()=>[]);
