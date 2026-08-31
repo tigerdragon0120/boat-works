@@ -54,21 +54,29 @@ export default function DataCollection(){
     const anCount={}; for(const a of analyses) anCount[a.venue_code]=(anCount[a.venue_code]||0)+1;
     return Object.values(by).map(v=>{
       const rd=readyMap[v.venue_code]||{};
-      const nums=new Set(v.races.map(r=>Number(r.race_number)));
-      const racesComplete=v.races.length===12 && Array.from({length:12},(_,i)=>i+1).every(n=>nums.has(n));
-      const coreComplete=v.races.filter(r=>r.race_name&&r.deadline&&r.series_key).length;
+      // 同一日・同一場・同一Rが二重登録されても、収集状況はrace_number単位で1Rとして数える。
+      const uniqueRaceMap=new Map();
+      for(const r of v.races){
+        const rn=Number(r.race_number);
+        const cur=uniqueRaceMap.get(rn);
+        if(!cur || new Date(r.updated_date||r.created_date||0)>new Date(cur.updated_date||cur.created_date||0)) uniqueRaceMap.set(rn,r);
+      }
+      const uniqueRaces=[...uniqueRaceMap.values()];
+      const nums=new Set(uniqueRaces.map(r=>Number(r.race_number)));
+      const racesComplete=uniqueRaces.length===12 && Array.from({length:12},(_,i)=>i+1).every(n=>nums.has(n));
+      const coreComplete=uniqueRaces.filter(r=>r.race_name&&r.deadline&&r.series_key).length;
       const slot=rd.time_slot || (()=>{const h=new Date(v.first_deadline).getHours(); return h<10?"morning":h>=14?"night":"day";})();
-      const seriesKeys=[...new Set(v.races.map(r=>r.series_key).filter(Boolean))];
-      const seriesReady=v.races.every(r=>Number(r.series_day||1)<=1) || series.some(p=>seriesKeys.includes(p.series_key));
+      const seriesKeys=[...new Set(uniqueRaces.map(r=>r.series_key).filter(Boolean))];
+      const seriesReady=uniqueRaces.every(r=>Number(r.series_day||1)<=1) || series.some(p=>seriesKeys.includes(p.series_key));
       const alertsComplete=(anCount[v.venue_code]||0)>=12;
       const previousDone=rd.series_points_ready===true || seriesReady;
       const complete=racesComplete&&coreComplete===12&&previousDone&&alertsComplete;
       const missing=[];
-      if(!racesComplete) missing.push(`翌日出走表 ${v.races.length}/12R`);
+      if(!racesComplete) missing.push(`翌日出走表 ${uniqueRaces.length}/12R`);
       if(coreComplete<12) missing.push(`レース基本情報 ${coreComplete}/12R`);
       if(!previousDone) missing.push("前日結果・節間ポイント");
       if(!alertsComplete) missing.push(`翌日アラート分析 ${anCount[v.venue_code]||0}/12R`);
-      return {...v,...rd,time_slot:slot,racesComplete,coreComplete,seriesReady:previousDone,analysisCount:anCount[v.venue_code]||0,alertsComplete,complete,missing};
+      return {...v,...rd,races:uniqueRaces,time_slot:slot,racesComplete,coreComplete,seriesReady:previousDone,analysisCount:anCount[v.venue_code]||0,alertsComplete,complete,missing};
     }).sort((a,b)=>new Date(a.first_deadline)-new Date(b.first_deadline));
   },[rows,races,analyses,series]);
 
