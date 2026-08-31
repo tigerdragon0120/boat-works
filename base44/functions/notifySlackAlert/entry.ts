@@ -93,7 +93,7 @@ export default async function(req) {
         `事前評価 *${a.pre_grade}* / ういち出現率 ${fmtPct(a.appearance_rate)}`,
         `1号艇 ${a.boat1_racer_name || '—'} / 信頼スコア *${a.boat1_trust_score ?? '—'}* / 条件一致 ${a.condition_match_score ?? '—'}%`,
         `5/6穴期待 *${a.outer_boat_score ?? '—'}* / 注目 ${a.outer_boat_number ? `${a.outer_boat_number}号艇 ${a.outer_boat_name || ''}` : '—'}`,
-        `締切 ${fmtJstTime(race.deadline)} / 最終判定 ${fmtJstTime(new Date(new Date(race.deadline).getTime() - 5 * 60 * 1000).toISOString())}`,
+        `締切 ${fmtJstTime(race.deadline)} / 最終判定 ${fmtJstTime(new Date(new Date(race.deadline).getTime() - 10 * 60 * 1000).toISOString())}`, 
       ].join('\n');
     } else if (stage === 'final') {
       const icon = a.judgment === 'BUY' ? '🔥' : '⚠️';
@@ -103,7 +103,7 @@ export default async function(req) {
         `推奨 *${side}*`,
         `合成オッズ *${fmtNum(a.synthetic_odds, 2)}倍* / EV *${fmtNum(a.expected_value, 0)}%* / 出現率 ${fmtPct(a.appearance_rate)}`,
         `1号艇 ${a.boat1_racer_name || '—'} / 信頼スコア *${a.boat1_trust_score ?? '—'}*`,
-        `締切 ${fmtJstTime(race.deadline)}（締切5分前の最終判定）`,
+        `締切 ${fmtJstTime(race.deadline)}（締切10分前までに最終判定）`, 
       ].join('\n');
     } else {
       let results = await base44.asServiceRole.entities.RaceResult.filter({ race_id: raceId, data_source: 'official' }, '-created_date', 5);
