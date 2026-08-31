@@ -219,7 +219,7 @@ export default function Home() {
 
   const pointForRace = (race, analysis) => {
     const reg = analysis?.boat1_registration_number;
-    if (!race?.series_key || !reg) return null;
+    if (!race?.series_key || !reg || Number(race.series_day || 1) < 2) return null;
     return seriesPointMap[`${race.series_key}_${reg}`] || null;
   }; 
 
