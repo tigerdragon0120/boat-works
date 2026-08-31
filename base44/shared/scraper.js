@@ -248,14 +248,15 @@ export function parseBeforeInfo(html) {
     return m ? toFloat(m[1]) : null;
   };
   const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
-  const windClass = html.match(/weather1_bodyUnitImage\s+is-wind(\d+)/);
+  const windBlock = html.match(/weather1_bodyUnit\s+is-wind[\s\S]{0,500}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/i);
+  const windDirText = windBlock ? stripTags(windBlock[1]) : null;
 
   return {
     entries: mergedEntries,
     scratched_boats: scratchedBoats,
     exhibition_ready: mergedEntries.some(e => e.exhibition_time != null) && startRows.length >= 3,
     weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
-    wind_dir: windClass ? windClass[1] : null,
+    wind_dir: windDirText || null,
     wind_speed: getNumberAfter("風速"),
     air_temperature: getNumberAfter("気温"),
     water_temperature: getNumberAfter("水温"),
@@ -553,7 +554,8 @@ export function parseRaceResultDetail(html) {
     return m ? toFloat(m[1]) : null;
   };
   const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
-  const windClass = html.match(/weather1_bodyUnitImage\s+is-wind(\d+)/);
+  const windBlock = html.match(/weather1_bodyUnit\s+is-wind[\s\S]{0,500}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/i);
+  const windDirText = windBlock ? stripTags(windBlock[1]) : null;
 
   const t1 = finishers.find(x => x.finish === 1)?.race_time_seconds ?? null;
   const t2 = finishers.find(x => x.finish === 2)?.race_time_seconds ?? null;
@@ -573,7 +575,7 @@ export function parseRaceResultDetail(html) {
     start_info: startInfo,
     winning_method: winningMethod,
     weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
-    wind_dir: windClass ? windClass[1] : null,
+    wind_dir: windDirText || null,
     wind_speed: getNumberAfter('風速'),
     air_temperature: getNumberAfter('気温'),
     water_temperature: getNumberAfter('水温'),
