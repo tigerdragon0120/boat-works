@@ -549,6 +549,15 @@ export default function RaceDetail() {
   );
 }
 
+function ExhibitWeather({ label, value }) {
+  return (
+    <div className="rounded-xl bg-background/50 px-2 py-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-bold tabular-nums mt-0.5">{value}</div>
+    </div>
+  );
+}
+
 function Stat({ label, value }) {
   return (
     <div className="flex items-center justify-between">
