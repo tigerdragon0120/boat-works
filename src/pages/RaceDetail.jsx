@@ -407,7 +407,7 @@ export default function RaceDetail() {
                   <span className="text-xs font-bold px-2 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{boat1.grade_class}</span>
                 )}
                 {boat1?.branch && <span className="text-xs text-muted-foreground">{boat1.branch}支部</span>}
-                {seriesPoint?.series_score != null && (
+                {Number(race?.series_day || 1) >= 2 && seriesPoint?.series_score != null && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded border border-violet-300 bg-violet-50 text-violet-700 tabular-nums">
                     節間ポイント {Number(seriesPoint.series_score).toFixed(1)}
                     {seriesPoint.series_sample_confidence != null ? `・信頼${Math.round(seriesPoint.series_sample_confidence)}%` : ""}
