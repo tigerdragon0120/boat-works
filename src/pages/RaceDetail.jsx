@@ -489,6 +489,61 @@ export default function RaceDetail() {
         </div>
       </div>
 
+      {/* 展示情報 */}
+      <div className="rounded-2xl bg-card border border-border p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-bold">展示情報</h3>
+            <div className="text-[11px] text-muted-foreground mt-0.5">展示前評価から直前評価へ変化した根拠を確認</div>
+          </div>
+          <span className={cn(
+            "text-[10px] font-bold px-2 py-1 rounded-full border",
+            race.exhibition_ready ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-slate-50 text-slate-500 border-slate-300"
+          )}>{race.exhibition_ready ? "取得済み" : "待機中"}</span>
+        </div>
+
+        {race.exhibition_ready ? (
+          <>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4 text-center">
+              <ExhibitWeather label="天候" value={race.weather || "—"} />
+              <ExhibitWeather label="風向" value={race.wind_dir || "—"} />
+              <ExhibitWeather label="風速" value={race.wind_speed != null ? `${race.wind_speed}m` : "—"} />
+              <ExhibitWeather label="波高" value={race.wave_height != null ? `${race.wave_height}cm` : "—"} />
+              <ExhibitWeather label="気温" value={race.air_temperature != null ? `${race.air_temperature}℃` : "—"} />
+              <ExhibitWeather label="水温" value={race.water_temperature != null ? `${race.water_temperature}℃` : "—"} />
+            </div>
+
+            <div className="overflow-x-auto">
+              <div className="min-w-[620px]">
+                <div className="grid grid-cols-[44px_1fr_62px_78px_72px_62px_58px] gap-2 px-2 pb-2 text-[10px] text-muted-foreground font-semibold">
+                  <span>艇</span><span>選手</span><span className="text-center">進入</span><span className="text-center">展示T</span><span className="text-center">展示ST</span><span className="text-center">チルト</span><span className="text-center">順位</span>
+                </div>
+                {entries.map((e) => (
+                  <div key={`ex-${e.id}`} className={cn(
+                    "grid grid-cols-[44px_1fr_62px_78px_72px_62px_58px] gap-2 items-center px-2 py-2.5 text-sm border-t border-border/60",
+                    e.boat_number === 1 && "bg-primary/5"
+                  )}>
+                    <span className="w-7 h-7 rounded-lg bg-primary/15 text-primary font-bold flex items-center justify-center text-xs">{e.boat_number}</span>
+                    <span className="font-semibold truncate">{e.racer_name}</span>
+                    <span className="text-center tabular-nums font-semibold">{e.entry_course ?? "—"}</span>
+                    <span className="text-center tabular-nums font-semibold">{e.exhibition_time != null ? fmtNum(e.exhibition_time, 2) : "—"}</span>
+                    <span className={cn("text-center tabular-nums font-semibold", String(e.exhibition_st_raw || "").startsWith("F") && "text-rose-600")}>{e.exhibition_st_raw || (e.exhibition_st != null ? fmtNum(e.exhibition_st, 2) : "—")}</span>
+                    <span className="text-center tabular-nums">{e.tilt != null ? fmtNum(e.tilt, 1) : "—"}</span>
+                    <span className="text-center tabular-nums font-bold">{e.exhibition_rank ?? "—"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {race.beforeinfo_fetched_at && <div className="mt-3 text-[10px] text-muted-foreground text-right">展示取得 {fmtTimeSec(race.beforeinfo_fetched_at)}</div>}
+          </>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-background/40 px-4 py-6 text-center">
+            <div className="text-sm font-semibold text-muted-foreground">展示情報待機中</div>
+            <div className="text-xs text-muted-foreground mt-1">展示公開後、進入・展示タイム・展示ST・チルト・自然条件を自動表示します</div>
+          </div>
+        )}
+      </div>
+
       <RacerDetailDialog open={racerOpen} onOpenChange={setRacerOpen} entry={boat1} trust={trust || analysis?.boat1_trust} />
     </div>
   );
