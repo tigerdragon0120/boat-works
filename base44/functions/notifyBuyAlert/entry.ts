@@ -63,7 +63,7 @@ export default async function(req) {
     const label = isBuy ? "BUY" : "WATCH";
     const title = `${isBuy ? "🔥" : "⚠️"} ${label} ${final.venue_name} ${final.race_number}R`;
     const evPct = final.expected_value != null ? Math.round(final.expected_value) : "—";
-    const content = `EV ${evPct}% / 1号艇信頼 ${final.boat1_trust_score ?? "—"} / 締切5分前です`;
+    const content = `EV ${evPct}% / 1号艇信頼 ${final.boat1_trust_score ?? "—"} / 締切10分前までに最終確定`;
 
     await base44.asServiceRole.integrations.Core.SendPushNotification({
       user_id: user.id,
