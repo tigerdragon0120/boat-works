@@ -48,8 +48,10 @@ export default function SeriesPoints() {
   const selectedKey = selected || latestContexts[0]?.series_key || "";
   const context = latestContexts.find(c => c.series_key === selectedKey);
 
+  const isFirstDay = Number(context?.series_day || 1) < 2;
+
   const racers = useMemo(() => {
-    if (!selectedKey) return [];
+    if (!selectedKey || isFirstDay) return [];
     const map = new Map();
     for (const p of points) {
       if (p.series_key !== selectedKey) continue;
@@ -57,7 +59,7 @@ export default function SeriesPoints() {
       if (!map.has(key)) map.set(key, p); // snapshot_at descなので最新のみ
     }
     return [...map.values()].sort((a,b) => Number(b.series_score || 0) - Number(a.series_score || 0));
-  }, [points, selectedKey]);
+  }, [points, selectedKey, isFirstDay]);
 
   if (loading) return <div className="py-24 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />今節データ読込中…</div>;
 
@@ -98,9 +100,17 @@ export default function SeriesPoints() {
             </div>
           )}
 
-          <div className="space-y-3">
-            {racers.map((r, idx) => <RacerSeriesCard key={`${r.series_key}_${r.registration_number}`} racer={r} position={idx + 1} />)}
-          </div>
+          {isFirstDay ? (
+            <div className="rounded-2xl border border-dashed bg-card p-8 text-center">
+              <div className="text-lg font-bold">初日・節間ポイント集計前</div>
+              <div className="text-sm text-muted-foreground mt-2">初日のレース結果を収集してから節間ポイントを作成します。</div>
+              <div className="text-xs text-muted-foreground mt-1">節間ポイントは2日目以降に表示されます。</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {racers.map((r, idx) => <RacerSeriesCard key={`${r.series_key}_${r.registration_number}`} racer={r} position={idx + 1} />)}
+            </div>
+          )}
         </>
       )}
     </div>
