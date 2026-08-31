@@ -248,16 +248,22 @@ export function parseBeforeInfo(html) {
     return m ? toFloat(m[1]) : null;
   };
   const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
-  const windBlock = html.match(/weather1_bodyUnit\s+is-wind[\s\S]{0,500}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/i);
-  const windDirText = windBlock ? stripTags(windBlock[1]) : null;
+  const windSpeed = getNumberAfter("風速");
+  const windDirectionBlock = html.match(/weather1_bodyUnit\s+is-windDirection[\s\S]{0,300}?weather1_bodyUnitImage(?:\s+is-wind(\d+))?/i);
+  const windCode = windDirectionBlock?.[1] ? Number(windDirectionBlock[1]) : null;
+  const WIND_DIR_MAP = {
+    1:'南', 2:'南南西', 3:'南西', 4:'西南西', 5:'西', 6:'西北西', 7:'北西', 8:'北北西',
+    9:'北', 10:'北北東', 11:'北東', 12:'東北東', 13:'東', 14:'東南東', 15:'南東', 16:'南南東'
+  };
+  const windDirText = windSpeed === 0 ? '無風' : (WIND_DIR_MAP[windCode] || null);
 
   return {
     entries: mergedEntries,
     scratched_boats: scratchedBoats,
     exhibition_ready: mergedEntries.some(e => e.exhibition_time != null) && startRows.length >= 3,
     weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
-    wind_dir: windDirText || null,
-    wind_speed: getNumberAfter("風速"),
+    wind_dir: windDirText,
+    wind_speed: windSpeed,
     air_temperature: getNumberAfter("気温"),
     water_temperature: getNumberAfter("水温"),
     wave_height: getNumberAfter("波高"),
@@ -554,8 +560,14 @@ export function parseRaceResultDetail(html) {
     return m ? toFloat(m[1]) : null;
   };
   const weatherMatch = html.match(/weather1_bodyUnit\s+is-weather[\s\S]{0,350}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/);
-  const windBlock = html.match(/weather1_bodyUnit\s+is-wind[\s\S]{0,500}?weather1_bodyUnitLabelTitle">([^<]+)<\/span>/i);
-  const windDirText = windBlock ? stripTags(windBlock[1]) : null;
+  const windSpeed = getNumberAfter('風速');
+  const windDirectionBlock = html.match(/weather1_bodyUnit\s+is-windDirection[\s\S]{0,300}?weather1_bodyUnitImage(?:\s+is-wind(\d+))?/i);
+  const windCode = windDirectionBlock?.[1] ? Number(windDirectionBlock[1]) : null;
+  const WIND_DIR_MAP = {
+    1:'南', 2:'南南西', 3:'南西', 4:'西南西', 5:'西', 6:'西北西', 7:'北西', 8:'北北西',
+    9:'北', 10:'北北東', 11:'北東', 12:'東北東', 13:'東', 14:'東南東', 15:'南東', 16:'南南東'
+  };
+  const windDirText = windSpeed === 0 ? '無風' : (WIND_DIR_MAP[windCode] || null);
 
   const t1 = finishers.find(x => x.finish === 1)?.race_time_seconds ?? null;
   const t2 = finishers.find(x => x.finish === 2)?.race_time_seconds ?? null;
@@ -575,8 +587,8 @@ export function parseRaceResultDetail(html) {
     start_info: startInfo,
     winning_method: winningMethod,
     weather: weatherMatch ? stripTags(weatherMatch[1]) : null,
-    wind_dir: windDirText || null,
-    wind_speed: getNumberAfter('風速'),
+    wind_dir: windDirText,
+    wind_speed: windSpeed,
     air_temperature: getNumberAfter('気温'),
     water_temperature: getNumberAfter('水温'),
     wave_height: getNumberAfter('波高'),
