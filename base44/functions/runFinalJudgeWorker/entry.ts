@@ -30,12 +30,12 @@ export default async function(req) {
       finals.filter(a => a?.judgment && a.judgment !== 'PENDING').map(a => a.race_id)
     );
 
-    // 締切5分以内は、確定済みfinalも欠場チェックのため対象に残す。
+    // 正式な最終判定は締切10分前から。5分前以降は欠場などの安全確認だけ行う。
     const targets = races.filter(r => {
       if (!r?.deadline) return false;
       const deadlineMs = new Date(r.deadline).getTime();
       if (!Number.isFinite(deadlineMs)) return false;
-      const finalAt = deadlineMs - 5 * 60 * 1000;
+      const finalAt = deadlineMs - 10 * 60 * 1000;
       return nowMs >= finalAt && nowMs < deadlineMs;
     });
 
@@ -52,8 +52,20 @@ export default async function(req) {
       const batch = targets.slice(i, i + 2);
       const result = await Promise.all(batch.map(async (r) => {
         try {
-          // v9: 最終判定の直前に展示・進入・天候を必ず再取得する。
-          // 展示Worker取りこぼし時もここで自己修復する。
+          const deadlineMs = new Date(r.deadline).getTime();
+          const withinSafetyWindow = Number.isFinite(deadlineMs) && nowMs >= deadlineMs - 5 * 60 * 1000;
+          const prevFinal = latestFinalByRace[r.id];
+          const alreadyDone = doneFinal.has(r.id)
+            && String(prevFinal?.analysis_version || '').startsWith('v10')
+            && prevFinal?.exhibition_gate_status
+            && prevFinal.exhibition_gate_status !== 'MISSING';
+
+          // 10分前で一度正式確定した後、5分前までは再取得しない。
+          // 5分前以降だけ欠場等の安全確認を行う。
+          if (alreadyDone && !withinSafetyWindow) {
+            return { id: r.id, hasScratch: false, alreadyDone: true, skippedSafety: true };
+          }
+
           try {
             await base44.asServiceRole.functions.invoke('fetchBeforeInfo', {
               race_date: raceDate,
@@ -70,14 +82,7 @@ export default async function(req) {
           const data = res?.data || res;
           if (data?.status !== 'success') return null;
           const hasScratch = data?.has_scratch === true || (Array.isArray(data?.scratched_boats) && data.scratched_boats.length > 0);
-          const prevFinal = latestFinalByRace[r.id];
-          // v9以前、または展示未取得で一度SKIPしただけのfinalは「完了」とみなさない。
-          // 展示が揃った次の巡回で必ず再判定する。
-          const alreadyDone = doneFinal.has(r.id)
-            && prevFinal?.analysis_version === 'v9'
-            && prevFinal?.exhibition_gate_status
-            && prevFinal.exhibition_gate_status !== 'MISSING';
-          return { id: r.id, hasScratch, alreadyDone };
+          return { id: r.id, hasScratch, alreadyDone, skippedSafety: false };
         } catch {
           return null;
         }
