@@ -8,7 +8,7 @@ import { GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline,
 import { cn } from "@/lib/utils";
 
 // race: Race, analysis: UichiAnalysis（cached）, mode: today|tomorrow, finalStatus: {status: fetching|failed|done}
-export default function RaceCard({ race, analysis, mode = "today", preGrade, finalStatus }) {
+export default function RaceCard({ race, analysis, mode = "today", preGrade, finalStatus, seriesPoint }) {
   const [racerOpen, setRacerOpen] = useState(false);
   const mins = minutesUntilDeadline(race.deadline);
 
@@ -67,7 +67,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
               <CardStat label="期待値" value={fmtNum(analysis.expected_value, 0) + "%"} accent="emerald" />
             </div>
             {racerName && (
-              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} onPhotoClick={() => setRacerOpen(true)} />
+              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} seriesPoint={seriesPoint} onPhotoClick={() => setRacerOpen(true)} />
             )}
             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
               <span>最終オッズ取得 <span className="tabular-nums">{fmtTimeSec(analysis.captured_at)}</span></span>
@@ -156,7 +156,7 @@ export default function RaceCard({ race, analysis, mode = "today", preGrade, fin
               />
             </div>
             {racerName && (
-              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} onPhotoClick={() => setRacerOpen(true)} />
+              <RacerBlock racerName={racerName} regNum={regNum} gradeClass={gradeClass} trustScore={trustScore} reasons={analysis.reasons} concerns={analysis.concerns} seriesPoint={seriesPoint} onPhotoClick={() => setRacerOpen(true)} />
             )}
             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
               <span>最終判定予定 <span className="tabular-nums">{finalJudgeAt ? fmtTime(finalJudgeAt.toISOString()) : "—"}</span></span>
@@ -236,7 +236,7 @@ function LayerStat({ label, value, score, sub }) {
   );
 }
 
-function RacerBlock({ racerName, regNum, gradeClass, trustScore, reasons, concerns, onPhotoClick }) {
+function RacerBlock({ racerName, regNum, gradeClass, trustScore, reasons, concerns, seriesPoint, onPhotoClick }) {
   return (
     <div className="flex items-center gap-3 rounded-xl bg-background/50 px-3 py-2.5">
       <RacerPhoto
@@ -248,9 +248,14 @@ function RacerBlock({ racerName, regNum, gradeClass, trustScore, reasons, concer
       />
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm truncate">{racerName || "1号艇"}</div>
-        <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           {gradeClass && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-300 bg-sky-50 text-sky-700">{gradeClass}</span>}
           {regNum && <span className="text-[10px] text-muted-foreground tabular-nums">#{regNum}</span>}
+          {seriesPoint?.series_score != null && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-violet-300 bg-violet-50 text-violet-700 tabular-nums">
+              節間P {Number(seriesPoint.series_score).toFixed(1)}
+            </span>
+          )}
         </div>
       </div>
       {trustScore != null && (
