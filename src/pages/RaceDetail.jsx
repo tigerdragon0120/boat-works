@@ -214,7 +214,7 @@ export default function RaceDetail() {
               <Clock className="w-3.5 h-3.5" /> 締切 <span className="tabular-nums text-foreground font-semibold">{fmtTime(race.deadline)}</span>
             </div>
             {mins != null && (
-              <div className={cn("text-xs mt-1 tabular-nums", mins <= 5 ? "text-amber-600" : "text-muted-foreground")}>
+              <div className={cn("text-xs mt-1 tabular-nums", mins <= 10 ? "text-amber-600" : "text-muted-foreground")}>
                 {mins > 0 ? `最終判定まで ${mins}分` : "締切"}
               </div>
             )}
