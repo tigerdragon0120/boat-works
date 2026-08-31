@@ -129,7 +129,13 @@ export default async function(req) {
     const existingRaces = await base44.asServiceRole.entities.Race.filter(
       { race_date: raceDate, data_source: 'official' }, 'race_number', 500
     ).catch(() => []);
-    const raceMap = new Map(existingRaces.map(r => [`${String(r.venue_code).padStart(2, '0')}_${Number(r.race_number)}`, r]));
+    // 同一日・同一場・同一Rが重複していても、最新の1件だけを正規Raceとして扱う。
+    const raceMap = new Map();
+    for (const r of existingRaces) {
+      const key = `${String(r.venue_code).padStart(2, '0')}_${Number(r.race_number)}`;
+      const cur = raceMap.get(key);
+      if (!cur || new Date(r.updated_date || r.created_date || 0).getTime() > new Date(cur.updated_date || cur.created_date || 0).getTime()) raceMap.set(key, r);
+    }
 
     let raceCreated = 0, raceUpdated = 0;
     const allRaceRows:any[] = [];
@@ -166,8 +172,20 @@ export default async function(req) {
             saved = await base44.asServiceRole.entities.Race.update(old.id, data);
             raceUpdated++;
           } else {
-            saved = await base44.asServiceRole.entities.Race.create(data);
-            raceCreated++;
+            // 並行ワーカーが同時に同じRaceを作るケースを防ぐため、create直前に再確認する。
+            const dup = await base44.asServiceRole.entities.Race.filter({
+              race_date: raceDate,
+              venue_code: jcd,
+              race_number: Number(s.race_number),
+              data_source: 'official',
+            }, '-updated_date', 5).catch(() => []);
+            if (dup.length > 0) {
+              saved = await base44.asServiceRole.entities.Race.update(dup[0].id, data);
+              raceUpdated++;
+            } else {
+              saved = await base44.asServiceRole.entities.Race.create(data);
+              raceCreated++;
+            }
           }
           raceMap.set(key, saved);
           allRaceRows.push(saved);
