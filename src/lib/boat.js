@@ -118,17 +118,17 @@ export function minutesUntilDeadline(deadlineIso) {
   return Math.round(diff / 60000);
 }
 
-// 5分前判定可能か
+// 10分前から最終判定可能か
 export function canFinalJudge(deadlineIso) {
   const m = minutesUntilDeadline(deadlineIso);
-  return m != null && m <= 5;
+  return m != null && m <= 10;
 }
 
-// 最終判定予定時刻（締切-5分）。getTimeベースで計算するためタイムゾーン影響なし
+// 最終判定予定時刻（締切-10分）。購入時間を確保するため10分前を正式な確定時刻とする
 export function finalJudgeTime(deadlineIso) {
   if (!deadlineIso) return null;
   const deadline = new Date(deadlineIso);
-  return new Date(deadline.getTime() - 5 * 60 * 1000);
+  return new Date(deadline.getTime() - 10 * 60 * 1000);
 }
 
 export function fmtTime(iso) {
