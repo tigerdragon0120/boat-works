@@ -30,12 +30,14 @@ export default async function(req) {
       finals.filter(a => a?.judgment && a.judgment !== 'PENDING').map(a => a.race_id)
     );
 
-    // 正式な最終判定は締切10分前から。5分前以降は欠場などの安全確認だけ行う。
+    // Base44の最短実行間隔は5分。2分ずらした安全ワーカーと合わせて実質2〜3分間隔で監視するため、
+    // 判定窓は13分前から開け、展示が揃った最初の巡回で確定する。これにより遅くとも10分前付近までの確定を狙う。
+    // 5分前以降は欠場などの安全確認だけ行う。
     const targets = races.filter(r => {
       if (!r?.deadline) return false;
       const deadlineMs = new Date(r.deadline).getTime();
       if (!Number.isFinite(deadlineMs)) return false;
-      const finalAt = deadlineMs - 10 * 60 * 1000;
+      const finalAt = deadlineMs - 13 * 60 * 1000;
       return nowMs >= finalAt && nowMs < deadlineMs;
     });
 
