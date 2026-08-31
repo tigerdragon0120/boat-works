@@ -81,9 +81,37 @@ export function getSettings() {
 }
 
 export function getRacesByDate(dateStr) {
-  return cached(`races_${dateStr}`, 30000, () =>
-    base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 300)
-  );
+  return cached(`races_${dateStr}`, 30000, async () => {
+    const [allRaces, analyses] = await Promise.all([
+      base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 300),
+      base44.entities.UichiAnalysis.filter({ race_date: dateStr, analysis_version: "v10" }, "-captured_at", 500).catch(() => []),
+    ]);
+
+    // 同一日・同一場・同一Rの重複Raceを1件に正規化する。
+    // 既に分析が紐づいているRace IDを最優先し、なければ更新日時が新しいRaceを採用。
+    const analyzedIds = new Set(analyses.map(a => a.race_id).filter(Boolean));
+    const byKey = new Map();
+    for (const r of allRaces) {
+      const key = `${String(r.venue_code).padStart(2, "0")}_${Number(r.race_number)}`;
+      const cur = byKey.get(key);
+      if (!cur) {
+        byKey.set(key, r);
+        continue;
+      }
+      const rHasAnalysis = analyzedIds.has(r.id);
+      const curHasAnalysis = analyzedIds.has(cur.id);
+      if (rHasAnalysis && !curHasAnalysis) {
+        byKey.set(key, r);
+        continue;
+      }
+      if (rHasAnalysis === curHasAnalysis) {
+        const rt = new Date(r.updated_date || r.created_date || 0).getTime();
+        const ct = new Date(cur.updated_date || cur.created_date || 0).getTime();
+        if (rt > ct) byKey.set(key, r);
+      }
+    }
+    return [...byKey.values()];
+  });
 }
 
 export async function getEntries(raceId) {
