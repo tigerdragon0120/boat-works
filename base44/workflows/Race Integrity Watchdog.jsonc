@@ -1,0 +1,49 @@
+{
+  "name": "Race Integrity Watchdog",
+  "description": "5\u5206\u3054\u3068\u306b\u5f53\u65e5\u30c7\u30fc\u30bf\u306e\u6574\u5408\u6027\u3092\u81ea\u5df1\u4fee\u5fa9\u3059\u308b\u3002Race\u91cd\u8907\u30fb\u5b64\u5150\u5206\u6790\u30fbAlert/\u5b66\u7fd2\u91cd\u8907\u30fb\u51fa\u8d70\u8868\u6b20\u640d\u3092\u4fee\u5fa9\u3057\u3001\u4e88\u60f3\u306e\u518d\u751f\u6210\u306f\u884c\u308f\u306a\u3044\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 0-23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "race_integrity_watchdog",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "repair_today_integrity": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runRaceDayIntegritySync",
+            "args": {
+              "target_offset": 0,
+              "stage": "pre",
+              "collect_only": true
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u5f53\u65e5\u30c7\u30fc\u30bf\u6574\u5408\u6027\u30c1\u30a7\u30c3\u30af",
+            "description": "Race\u30fbRaceEntry\u30fbUichiAnalysis\u30fbAlert\u30fb\u5b66\u7fd2\u539f\u672c\u306e\u6574\u5408\u6027\u30925\u5206\u3054\u3068\u306b\u81ea\u5df1\u4fee\u5fa9\u3059\u308b"
+          }
+        }
+      }
+    ]
+  }
+}
