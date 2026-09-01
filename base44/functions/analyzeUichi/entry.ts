@@ -1,10 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue, judge, similarityScore } from "../../shared/uichi.js";
 
-// BOAT WORKS ういち買い分析関数
-// 入力: { race_id, stage: "pre"|"day"|"final", odds?: {1_2_5, ...} }
-// 出現率を過去類似レースから算出し、合成オッズ・期待値・判定を計算。
-// stage=pre はオッズなし（前日予測）、day/final はオッズ使用。
+// BOAT WORKS 旧単発分析関数（互換用）
+// 現行v10の正式分析は analyzeAllRacesForDate が唯一の保存経路。
+// この関数は旧UI等から呼ばれてもv10分析を上書きしない。
 
 export default async function(req) {
   try {
@@ -70,7 +69,13 @@ export default async function(req) {
       judgment = "PENDING";
     }
 
-    // 分析結果保存。同一race_id/stageは必ず1件だけ。再計算はcreateではなくupdate。
+    // v10正式分析が既にある場合は旧ロジックで上書きしない。
+    const v10Rows = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_id, stage, analysis_version: "v10" }, "-captured_at", 1).catch(() => []);
+    if (v10Rows.length > 0) {
+      return Response.json({ status: "delegated", race_id, stage, analysis_id: v10Rows[0].id, message: "v10正式分析を保持" });
+    }
+
+    // 旧互換分析結果保存。同一race_id/stageは1件だけ。
     const payload = {
       race_id,
       race_date: race.race_date,
