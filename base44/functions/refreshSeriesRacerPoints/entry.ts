@@ -52,9 +52,13 @@ export default async function(req) {
     if (existingCtx[0]) await base44.asServiceRole.entities.SeriesContext.update(existingCtx[0].id, contextPayload);
     else await base44.asServiceRole.entities.SeriesContext.create(contextPayload);
 
-    // 今節の詳細結果をすべて読む。enrichRaceResultDetailsで全6艇のfinishersが保存されたレースが対象。
-    const allResults = await base44.asServiceRole.entities.RaceResult.filter({ venue_code:jcd, data_source:'official' }, 'race_date', 500).catch(()=>[]);
-    const results = allResults.filter(r => isBetween(r.race_date, ctx.series_start_date, asOfDate));
+    // 今節の詳細結果だけをDB側で直接取得する。
+    // 全期間500件→後段絞り込みだと最近の開催が上限外に落ちるため、開始日〜対象日で先に限定する。
+    const results = await base44.asServiceRole.entities.RaceResult.filter({
+      venue_code:jcd,
+      data_source:'official',
+      race_date:{ $gte:ctx.series_start_date, $lte:asOfDate },
+    }, 'race_date', 200).catch(()=>[]);
     const histories = new Map();
     for (const r of results) {
       const finishers = Array.isArray(r.finishers) ? r.finishers : [];
