@@ -81,48 +81,34 @@ async function normalizeDuplicateRaces(base44, raceDate) {
     }
     if (Object.keys(merged).length) await base44.asServiceRole.entities.Race.update(canonical.id, merged);
 
-    // RaceEntryは艇番ごとに最も情報量の多い1件だけ残す。
-    const groupEntries=entries.filter(e=>allIds.has(e.race_id));
-    if (groupEntries.length) {
-      const bestByBoat=new Map();
-      const scoreEntry=(e)=>['registration_number','racer_name','grade_class','motor_number','motor_2rate','national_win_rate','local_win_rate','exhibition_time','exhibition_st','entry_course'].reduce((n,k)=>n+(e?.[k]!=null?1:0),0);
-      for (const e of groupEntries) {
-        const bn=Number(e.boat_number); const old=bestByBoat.get(bn);
-        if (!old || scoreEntry(e)>scoreEntry(old)) bestByBoat.set(bn,e);
-      }
-      for (const id of group.map(r=>r.id)) await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id:id });
-      const rebuilt=[...bestByBoat.values()].map(({id,created_date,updated_date,created_by_id,...e})=>({ ...e, race_id:canonical.id }));
-      if (rebuilt.length) { await base44.asServiceRole.entities.RaceEntry.bulkCreate(rebuilt); childrenMoved += rebuilt.length; }
+    // 正規Raceはスコア上、6艇揃ったレコードが最優先になる。
+    // RaceEntryは正規側をそのまま保持し、重複Race側だけ削除する。再構築による検証エラーを避ける。
+    for (const id of dupIds) {
+      try { await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id:id }); } catch {}
     }
 
-    // 分析は stage + version ごとに最新1件へ正規化。
-    const groupAnalyses=analyses.filter(a=>allIds.has(a.race_id));
-    const bestAnalysis=new Map();
-    for (const a of groupAnalyses) {
-      const k=`${a.stage||''}_${a.analysis_version||''}`;
-      const old=bestAnalysis.get(k);
-      if (!old || String(a.captured_at||a.updated_date||'') > String(old.captured_at||old.updated_date||'')) bestAnalysis.set(k,a);
+    // 子データは消さず、重複Race IDから正規Race IDへ付け替える。
+    // 個別失敗があってもRace全体の正規化を止めない。
+    for (const a of analyses.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
+      try { await base44.asServiceRole.entities.UichiAnalysis.update(a.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
     }
-    for (const a of groupAnalyses) {
-      if (bestAnalysis.get(`${a.stage||''}_${a.analysis_version||''}`)?.id === a.id) {
-        await base44.asServiceRole.entities.UichiAnalysis.update(a.id,{ race_id:canonical.id }); childrenMoved++;
-      } else await base44.asServiceRole.entities.UichiAnalysis.delete(a.id);
+    for (const a of alerts.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
+      try { await base44.asServiceRole.entities.Alert.update(a.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
     }
-
-    // Alertは1レース1件。最終判定がある/更新が新しいものを優先。
-    const groupAlerts=alerts.filter(a=>allIds.has(a.race_id));
-    if (groupAlerts.length) {
-      groupAlerts.sort((a,b)=>((b.final_judgment&&b.final_judgment!=='PENDING')?100:0)-((a.final_judgment&&a.final_judgment!=='PENDING')?100:0) || String(b.updated_date||'').localeCompare(String(a.updated_date||'')));
-      await base44.asServiceRole.entities.Alert.update(groupAlerts[0].id,{ race_id:canonical.id }); childrenMoved++;
-      for (const a of groupAlerts.slice(1)) await base44.asServiceRole.entities.Alert.delete(a.id);
+    for (const o of odds.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
+      try { await base44.asServiceRole.entities.OddsSnapshot.update(o.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
+    }
+    for (const r of results.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
+      try { await base44.asServiceRole.entities.RaceResult.update(r.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
+    }
+    for (const l of learning.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
+      try { await base44.asServiceRole.entities.UichiLearningSample.update(l.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
     }
 
-    // 時系列データは消さず、正規Race IDへ移す。
-    for (const o of odds.filter(x=>allIds.has(x.race_id))) { if (o.race_id!==canonical.id) { await base44.asServiceRole.entities.OddsSnapshot.update(o.id,{race_id:canonical.id}); childrenMoved++; } }
-    for (const r of results.filter(x=>allIds.has(x.race_id))) { if (r.race_id!==canonical.id) { await base44.asServiceRole.entities.RaceResult.update(r.id,{race_id:canonical.id}); childrenMoved++; } }
-    for (const l of learning.filter(x=>allIds.has(x.race_id))) { if (l.race_id!==canonical.id) { await base44.asServiceRole.entities.UichiLearningSample.update(l.id,{race_id:canonical.id}); childrenMoved++; } }
-
-    for (const id of dupIds) { await base44.asServiceRole.entities.Race.delete(id); racesDeleted++; }
+    // 最後に重複Race本体を削除。子データ移動の一部が失敗しても、表示・収集判定を壊す重複Raceを優先して除去する。
+    for (const id of dupIds) {
+      try { await base44.asServiceRole.entities.Race.delete(id); racesDeleted++; } catch {}
+    }
   }
   return { duplicate_groups:dupGroups.length, races_deleted:racesDeleted, children_moved:childrenMoved };
 }
