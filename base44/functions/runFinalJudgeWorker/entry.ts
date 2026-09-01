@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { ANALYSIS_VERSION } from '../../shared/analysis.js';
 
 function jstDateStr() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -58,7 +59,7 @@ export default async function(req) {
           const withinSafetyWindow = Number.isFinite(deadlineMs) && nowMs >= deadlineMs - 5 * 60 * 1000;
           const prevFinal = latestFinalByRace[r.id];
           const alreadyDone = doneFinal.has(r.id)
-            && String(prevFinal?.analysis_version || '').startsWith('v10')
+            && String(prevFinal?.analysis_version || '') === ANALYSIS_VERSION
             && prevFinal?.exhibition_gate_status
             && prevFinal.exhibition_gate_status !== 'MISSING';
 
