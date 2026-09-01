@@ -270,7 +270,13 @@ export default async function(req) {
           };
 
           if (existingMap[r.id]) {
-            await base44.asServiceRole.entities.UichiAnalysis.update(existingMap[r.id].id, payload);
+            // 一度展示取得済みでfinal確定した分析を、後続の一時的MISSINGで劣化させない。
+            const keepConfirmedFinal = stage === "final"
+              && existingMap[r.id].exhibition_ready === true
+              && payload.exhibition_ready !== true;
+            if (!keepConfirmedFinal) {
+              await base44.asServiceRole.entities.UichiAnalysis.update(existingMap[r.id].id, payload);
+            }
           } else {
             // 並列ワーカー対策。同じrace_id/stage/versionのcreate競合を防ぐため直前に再確認。
             const dup = await base44.asServiceRole.entities.UichiAnalysis.filter({
@@ -279,7 +285,12 @@ export default async function(req) {
               analysis_version: ANALYSIS_VERSION,
             }, "-captured_at", 5).catch(() => []);
             if (dup.length > 0) {
-              await base44.asServiceRole.entities.UichiAnalysis.update(dup[0].id, payload);
+              const keepConfirmedFinal = stage === "final"
+                && dup[0].exhibition_ready === true
+                && payload.exhibition_ready !== true;
+              if (!keepConfirmedFinal) {
+                await base44.asServiceRole.entities.UichiAnalysis.update(dup[0].id, payload);
+              }
               existingMap[r.id] = dup[0];
             } else {
               const created = await base44.asServiceRole.entities.UichiAnalysis.create(payload);
