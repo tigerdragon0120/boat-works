@@ -28,6 +28,50 @@ async function mapBatches(items, batchSize, worker, delayMs = 180) {
   return out;
 }
 
+function preserveExhibitionFields(parsedEntries, previousEntries) {
+  const prevByBoat = new Map((previousEntries || []).map(e => [Number(e.boat_number), e]));
+  return (parsedEntries || []).map(e => {
+    const p:any = prevByBoat.get(Number(e.boat_number)) || {};
+    return {
+      ...e,
+      entry_course: p.entry_course ?? e.entry_course ?? null,
+      exhibition_time: p.exhibition_time ?? e.exhibition_time ?? null,
+      tilt: p.tilt ?? e.tilt ?? null,
+      exhibition_st: p.exhibition_st ?? e.exhibition_st ?? null,
+      exhibition_st_raw: p.exhibition_st_raw ?? e.exhibition_st_raw ?? null,
+      exhibition_rank: p.exhibition_rank ?? e.exhibition_rank ?? null,
+      is_scratched: p.is_scratched === true || e.is_scratched === true,
+    };
+  });
+}
+
+async function pruneDuplicateAnalyses(base44, raceDate) {
+  const rows = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(() => []);
+  const groups = new Map();
+  for (const a of rows) {
+    const key = `${a.race_id}_${a.stage || ''}_${a.analysis_version || 'legacy'}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+  let deleted = 0;
+  for (const group of groups.values()) {
+    if (group.length <= 1) continue;
+    group.sort((a,b) => {
+      // finalは展示取得済みを最優先。MISSINGの再計算で正式判定を上書きさせない。
+      if ((a.stage || '') === 'final') {
+        const ar = a.exhibition_ready === true ? 1 : 0;
+        const br = b.exhibition_ready === true ? 1 : 0;
+        if (ar !== br) return br - ar;
+      }
+      return String(b.captured_at || b.updated_date || '').localeCompare(String(a.captured_at || a.updated_date || ''));
+    });
+    for (const extra of group.slice(1)) {
+      try { await base44.asServiceRole.entities.UichiAnalysis.delete(extra.id); deleted++; } catch {}
+    }
+  }
+  return { rows: rows.length, deleted };
+}
+
 function completenessScore(r, entryCount, analysisCount, alertCount, oddsCount) {
   let s = (entryCount || 0) * 100 + (analysisCount || 0) * 30 + (alertCount || 0) * 20 + (oddsCount || 0) * 5;
   for (const k of ['entries_fetched_at','event_name','series_key','series_start_date','series_end_date','series_day','race_phase','deadline','beforeinfo_fetched_at']) {
