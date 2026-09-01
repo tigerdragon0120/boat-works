@@ -75,8 +75,23 @@ export default async function(req){
           const html=await rr.text(); const p=parseRacelist(html,Number(r.race_number),raceDate);
           if(!p.entries||p.entries.length<6) return;
           await base44.asServiceRole.entities.Race.update(r.id,{race_name:p.raceName,race_phase:p.racePhase||'OTHER',deadline:p.deadline||r.deadline,entries_fetched_at:now,last_updated:now});
+          const prevEntries=await base44.asServiceRole.entities.RaceEntry.filter({race_id:r.id},'boat_number',20).catch(()=>[]);
+          const prevByBoat=Object.fromEntries(prevEntries.map((e:any)=>[Number(e.boat_number),e]));
           await base44.asServiceRole.entities.RaceEntry.deleteMany({race_id:r.id});
-          await base44.asServiceRole.entities.RaceEntry.bulkCreate(p.entries.map((e:any)=>({...e,race_id:r.id,race_date:raceDate,venue_code:jcd,race_number:r.race_number})));
+          await base44.asServiceRole.entities.RaceEntry.bulkCreate(p.entries.map((e:any)=>{
+            const prev:any=prevByBoat[Number(e.boat_number)]||{};
+            return {
+              ...e,
+              entry_course:prev.entry_course??e.entry_course??null,
+              exhibition_time:prev.exhibition_time??e.exhibition_time??null,
+              exhibition_rank:prev.exhibition_rank??e.exhibition_rank??null,
+              exhibition_st:prev.exhibition_st??e.exhibition_st??null,
+              exhibition_st_raw:prev.exhibition_st_raw??e.exhibition_st_raw??null,
+              tilt:prev.tilt??e.tilt??null,
+              is_scratched:prev.is_scratched===true||e.is_scratched===true,
+              race_id:r.id,race_date:raceDate,venue_code:jcd,race_number:r.race_number,
+            };
+          }));
           entryRaceCount++;
         }catch{}
       }));
