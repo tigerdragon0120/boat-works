@@ -254,7 +254,7 @@ export default async function(req) {
     }
     let analysisDuplicateRepair:any = null;
     try {
-      analysisDuplicateRepair = await pruneDuplicateAnalyses(base44, raceDate);
+      analysisDuplicateRepair = await normalizeLogicalChildren(base44, raceDate);
     } catch (e) {
       analysisDuplicateRepair = { status:'error', message:e?.message || String(e) };
       errors.push({ phase:'analysis_duplicate_prune', message:e?.message || '重複分析整理失敗' });
