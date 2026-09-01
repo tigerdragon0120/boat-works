@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValu
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v10";
+export const ANALYSIS_VERSION = "v11";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -749,6 +749,19 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     oddsValues = [];
   }
 
+  // v11: BUYはEVだけで昇格させない。まずレース構造を足切りし、最後にEVを見る。
+  // 9/1実績では、高EVでも出現率・1号艇信頼・条件一致が弱いBUYが外れていたため、
+  // 本線ういちは「加重確率22%以上・1号艇信頼75以上・条件一致70%以上・展示PASS・EV115%以上」を必須化する。
+  // 閾値未満でも従来EV条件を満たすものはWATCHへ落として検証対象として残す。
+  const weightedProbabilityForJudge = recommendedRate * (0.55 + (trust?.score || 0) / 400 + recommendedStructure / 500 + (uichiDirection.confidence || 0) / 1000);
+  const strictMainBuyGate = recommendedPattern !== "MAIN" || (
+    weightedProbabilityForJudge >= 0.22 &&
+    (trust?.score || 0) >= 75 &&
+    (trust?.condition_match?.score || 0) >= 70 &&
+    exhibitionGate.status === "PASS" &&
+    ev != null && ev >= 115
+  );
+
   let judgment = "PENDING";
   if (stage === "pre") judgment = "PENDING";
   else if (hasScratch) judgment = "SKIP";
@@ -760,6 +773,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     judgment = judgeWithSample(ev, similarCount, settings);
     // 注意域はBUYまで上げずWATCH止まり。PASSだけがBUY可能。
     if (exhibitionGate.status === "CAUTION" && judgment === "BUY") judgment = "WATCH";
+    // v11: MAINのBUYだけ厳格ゲートを追加。裏ういちは検証母数が別なのでv10条件を維持する。
+    if (judgment === "BUY" && !strictMainBuyGate) judgment = "WATCH";
   }
   else judgment = "SKIP";
 
@@ -788,7 +803,7 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   }
 
   // ランキングは推奨側の出現率・構造・方向信頼度で並べる。
-  const weightedProbability = recommendedRate * (0.55 + (trust?.score || 0) / 400 + recommendedStructure / 500 + (uichiDirection.confidence || 0) / 1000);
+  const weightedProbability = weightedProbabilityForJudge;
 
   return {
     race_id: race.id, stage,
