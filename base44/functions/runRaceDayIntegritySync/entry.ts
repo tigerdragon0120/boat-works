@@ -28,6 +28,105 @@ async function mapBatches(items, batchSize, worker, delayMs = 180) {
   return out;
 }
 
+function completenessScore(r, entryCount, analysisCount, alertCount, oddsCount) {
+  let s = (entryCount || 0) * 100 + (analysisCount || 0) * 30 + (alertCount || 0) * 20 + (oddsCount || 0) * 5;
+  for (const k of ['entries_fetched_at','event_name','series_key','series_start_date','series_end_date','series_day','race_phase','deadline','beforeinfo_fetched_at']) {
+    if (r?.[k] != null) s += 3;
+  }
+  if (r?.exhibition_ready === true) s += 20;
+  if (r?.status === 'finished') s += 10;
+  return s;
+}
+
+async function normalizeDuplicateRaces(base44, raceDate) {
+  const races = await base44.asServiceRole.entities.Race.filter({ race_date: raceDate, data_source: 'official' }, '-updated_date', 500).catch(() => []);
+  const groups = new Map();
+  for (const r of races) {
+    const key = `${String(r.venue_code).padStart(2,'0')}_${Number(r.race_number)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  const dupGroups = [...groups.values()].filter(g => g.length > 1);
+  if (!dupGroups.length) return { duplicate_groups:0, races_deleted:0, children_moved:0 };
+
+  const [entries, analyses, alerts, odds, results, learning] = await Promise.all([
+    base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, 'boat_number', 5000).catch(()=>[]),
+    base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(()=>[]),
+    base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
+    base44.asServiceRole.entities.OddsSnapshot.filter({ race_date: raceDate }, '-captured_at', 5000).catch(()=>[]),
+    base44.asServiceRole.entities.RaceResult.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
+    base44.asServiceRole.entities.UichiLearningSample.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
+  ]);
+  const countBy = (rows) => {
+    const m = new Map();
+    for (const x of rows) m.set(x.race_id, (m.get(x.race_id)||0)+1);
+    return m;
+  };
+  const ec=countBy(entries), ac=countBy(analyses), alc=countBy(alerts), oc=countBy(odds);
+  let racesDeleted=0, childrenMoved=0;
+
+  for (const group of dupGroups) {
+    const sorted=[...group].sort((a,b)=>
+      completenessScore(b,ec.get(b.id),ac.get(b.id),alc.get(b.id),oc.get(b.id)) - completenessScore(a,ec.get(a.id),ac.get(a.id),alc.get(a.id),oc.get(a.id))
+    );
+    const canonical=sorted[0];
+    const dupIds=sorted.slice(1).map(r=>r.id);
+    const allIds=new Set(group.map(r=>r.id));
+
+    // Race本体は、各重複レコードの非null値を正規Raceへ補完する。
+    const merged:any = {};
+    const mergeFields=['race_name','grade','event_name','series_key','series_start_date','series_end_date','series_total_days','series_day','is_final_day','race_phase','deadline','time_slot','weather','wind_dir','wind_speed','wave_height','air_temperature','water_temperature','beforeinfo_fetched_at','exhibition_ready','scratched_boats','status','result_trifecta','is_uichi','payout_trifecta','last_updated','entries_fetched_at','odds_fetched_at'];
+    for (const f of mergeFields) {
+      for (const r of sorted) { if (r?.[f] != null) { merged[f]=r[f]; break; } }
+    }
+    if (Object.keys(merged).length) await base44.asServiceRole.entities.Race.update(canonical.id, merged);
+
+    // RaceEntryは艇番ごとに最も情報量の多い1件だけ残す。
+    const groupEntries=entries.filter(e=>allIds.has(e.race_id));
+    if (groupEntries.length) {
+      const bestByBoat=new Map();
+      const scoreEntry=(e)=>['registration_number','racer_name','grade_class','motor_number','motor_2rate','national_win_rate','local_win_rate','exhibition_time','exhibition_st','entry_course'].reduce((n,k)=>n+(e?.[k]!=null?1:0),0);
+      for (const e of groupEntries) {
+        const bn=Number(e.boat_number); const old=bestByBoat.get(bn);
+        if (!old || scoreEntry(e)>scoreEntry(old)) bestByBoat.set(bn,e);
+      }
+      for (const id of group.map(r=>r.id)) await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id:id });
+      const rebuilt=[...bestByBoat.values()].map(({id,created_date,updated_date,created_by_id,...e})=>({ ...e, race_id:canonical.id }));
+      if (rebuilt.length) { await base44.asServiceRole.entities.RaceEntry.bulkCreate(rebuilt); childrenMoved += rebuilt.length; }
+    }
+
+    // 分析は stage + version ごとに最新1件へ正規化。
+    const groupAnalyses=analyses.filter(a=>allIds.has(a.race_id));
+    const bestAnalysis=new Map();
+    for (const a of groupAnalyses) {
+      const k=`${a.stage||''}_${a.analysis_version||''}`;
+      const old=bestAnalysis.get(k);
+      if (!old || String(a.captured_at||a.updated_date||'') > String(old.captured_at||old.updated_date||'')) bestAnalysis.set(k,a);
+    }
+    for (const a of groupAnalyses) {
+      if (bestAnalysis.get(`${a.stage||''}_${a.analysis_version||''}`)?.id === a.id) {
+        await base44.asServiceRole.entities.UichiAnalysis.update(a.id,{ race_id:canonical.id }); childrenMoved++;
+      } else await base44.asServiceRole.entities.UichiAnalysis.delete(a.id);
+    }
+
+    // Alertは1レース1件。最終判定がある/更新が新しいものを優先。
+    const groupAlerts=alerts.filter(a=>allIds.has(a.race_id));
+    if (groupAlerts.length) {
+      groupAlerts.sort((a,b)=>((b.final_judgment&&b.final_judgment!=='PENDING')?100:0)-((a.final_judgment&&a.final_judgment!=='PENDING')?100:0) || String(b.updated_date||'').localeCompare(String(a.updated_date||'')));
+      await base44.asServiceRole.entities.Alert.update(groupAlerts[0].id,{ race_id:canonical.id }); childrenMoved++;
+      for (const a of groupAlerts.slice(1)) await base44.asServiceRole.entities.Alert.delete(a.id);
+    }
+
+    // 時系列データは消さず、正規Race IDへ移す。
+    for (const o of odds.filter(x=>allIds.has(x.race_id))) { if (o.race_id!==canonical.id) { await base44.asServiceRole.entities.OddsSnapshot.update(o.id,{race_id:canonical.id}); childrenMoved++; } }
+    for (const r of results.filter(x=>allIds.has(x.race_id))) { if (r.race_id!==canonical.id) { await base44.asServiceRole.entities.RaceResult.update(r.id,{race_id:canonical.id}); childrenMoved++; } }
+    for (const l of learning.filter(x=>allIds.has(x.race_id))) { if (l.race_id!==canonical.id) { await base44.asServiceRole.entities.UichiLearningSample.update(l.id,{race_id:canonical.id}); childrenMoved++; } }
+
+    for (const id of dupIds) { await base44.asServiceRole.entities.Race.delete(id); racesDeleted++; }
+  }
+  return { duplicate_groups:dupGroups.length, races_deleted:racesDeleted, children_moved:childrenMoved };
+}
+
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
