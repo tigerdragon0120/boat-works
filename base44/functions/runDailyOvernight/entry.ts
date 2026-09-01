@@ -202,7 +202,12 @@ export default async function(req) {
         if (raceMap[s.race_number]) {
           r = await base44.asServiceRole.entities.Race.update(raceMap[s.race_number].id, raceData);
         } else {
-          r = await base44.asServiceRole.entities.Race.create(raceData);
+          // 並行ワーカー対策：create直前に同一日・同一場・同一Rを再確認
+          const dup = await base44.asServiceRole.entities.Race.filter({
+            race_date: raceDate, venue_code: jcd, race_number: Number(s.race_number), data_source: "official"
+          }, "-updated_date", 5).catch(() => []);
+          if (dup.length > 0) r = await base44.asServiceRole.entities.Race.update(dup[0].id, raceData);
+          else r = await base44.asServiceRole.entities.Race.create(raceData);
         }
         savedRaces[s.race_number] = r;
         raceList.push({ jcd, race_number: s.race_number, race_id: r.id });
