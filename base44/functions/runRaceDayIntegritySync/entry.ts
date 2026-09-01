@@ -182,6 +182,13 @@ export default async function(req) {
       duplicateRepair = { status:'error', message:e?.message || String(e) };
       errors.push({ phase:'duplicate_normalize', message:e?.message || '重複Race正規化失敗' });
     }
+    let analysisDuplicateRepair:any = null;
+    try {
+      analysisDuplicateRepair = await pruneDuplicateAnalyses(base44, raceDate);
+    } catch (e) {
+      analysisDuplicateRepair = { status:'error', message:e?.message || String(e) };
+      errors.push({ phase:'analysis_duplicate_prune', message:e?.message || '重複分析整理失敗' });
+    }
 
     // 0) DB上ですでに判明している「締切90分以内の未取得レース」を最初に救済する。
     // 24場スキャンを待っている間に締切を迎える事故を防ぐため、最短経路で先にracelistを取得する。
@@ -517,6 +524,7 @@ export default async function(req) {
       expected_races: expectedRaceCount,
       db_races: dbRaces.length,
       duplicate_repair: duplicateRepair,
+      analysis_duplicate_repair: analysisDuplicateRepair,
       urgent_missing_before_scan: urgentMissing.length,
       urgent_repaired_before_scan: urgentRepairedIds.length,
       race_created: raceCreated,
