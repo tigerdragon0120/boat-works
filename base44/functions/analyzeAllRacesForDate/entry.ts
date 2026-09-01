@@ -272,7 +272,19 @@ export default async function(req) {
           if (existingMap[r.id]) {
             await base44.asServiceRole.entities.UichiAnalysis.update(existingMap[r.id].id, payload);
           } else {
-            await base44.asServiceRole.entities.UichiAnalysis.create(payload);
+            // 並列ワーカー対策。同じrace_id/stage/versionのcreate競合を防ぐため直前に再確認。
+            const dup = await base44.asServiceRole.entities.UichiAnalysis.filter({
+              race_id: r.id,
+              stage,
+              analysis_version: ANALYSIS_VERSION,
+            }, "-captured_at", 5).catch(() => []);
+            if (dup.length > 0) {
+              await base44.asServiceRole.entities.UichiAnalysis.update(dup[0].id, payload);
+              existingMap[r.id] = dup[0];
+            } else {
+              const created = await base44.asServiceRole.entities.UichiAnalysis.create(payload);
+              existingMap[r.id] = created;
+            }
           }
 
           // 学習用スナップショットはpreで元データまで固定。finalではEV/判定だけ追記する。
