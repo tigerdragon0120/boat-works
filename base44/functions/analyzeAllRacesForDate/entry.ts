@@ -202,6 +202,14 @@ export default async function(req) {
           }
           const a = computeRaceAnalysis(r, entries, odds, stats, settings, stage);
 
+          // 一度展示取得済みの正式finalがある場合、後続の一時的な展示MISSING再計算は
+          // UichiAnalysisだけでなくAlert/学習データも含めて一切反映しない。
+          // これにより正式判定がSKIP(MISSING)へ逆戻りする事故を防ぐ。
+          if (stage === "final" && existingMap[r.id]?.exhibition_ready === true && a.exhibition_ready !== true) {
+            skipped++;
+            return;
+          }
+
           const payload = {
             race_id: r.id, race_date: r.race_date, venue_code: r.venue_code, venue_name: r.venue_name,
             race_number: r.race_number, stage,
