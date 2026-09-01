@@ -31,7 +31,7 @@ export default function DataCollection(){
       } else {
         const [rd,rr,aa,sp]=await Promise.all([
           base44.entities.VenueDayReadiness.filter({race_date:date},"first_deadline",100).catch(()=>[]),
-          base44.entities.Race.filter({race_date:date,data_source:"official"},"deadline",300).catch(()=>[]),
+          base44.entities.Race.filter({race_date:date,data_source:"official"},"deadline",500).catch(()=>[]),
           base44.entities.UichiAnalysis.filter({race_date:date,stage:"pre"},"race_number",500).catch(()=>[]),
           base44.entities.SeriesRacerPoint.filter({as_of_date:{"$lt":date}},"-as_of_date",1000).catch(()=>[]),
         ]);
