@@ -70,8 +70,8 @@ export default async function(req) {
       judgment = "PENDING";
     }
 
-    // 分析結果保存
-    const analysis = await base44.asServiceRole.entities.UichiAnalysis.create({
+    // 分析結果保存。同一race_id/stageは必ず1件だけ。再計算はcreateではなくupdate。
+    const payload = {
       race_id,
       race_date: race.race_date,
       venue_code: race.venue_code,
@@ -88,7 +88,11 @@ export default async function(req) {
       boat1_score: boat1 ? boat1.national_win_rate || 0 : 0,
       min_similar_ok: minOk,
       captured_at: new Date().toISOString(),
-    });
+    };
+    const existing = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_id, stage }, "-captured_at", 5).catch(() => []);
+    const analysis = existing.length > 0
+      ? await base44.asServiceRole.entities.UichiAnalysis.update(existing[0].id, payload)
+      : await base44.asServiceRole.entities.UichiAnalysis.create(payload);
 
     return Response.json({
       status: "ok",
