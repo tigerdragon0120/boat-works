@@ -144,6 +144,15 @@ export default async function(req) {
     const t0 = Date.now();
     const errors:any[] = [];
 
+    // 0) まず既存の重複Raceを正規化する。子データを正規Raceへ寄せてから重複本体を削除。
+    let duplicateRepair:any = null;
+    try {
+      duplicateRepair = await normalizeDuplicateRaces(base44, raceDate);
+    } catch (e) {
+      duplicateRepair = { status:'error', message:e?.message || String(e) };
+      errors.push({ phase:'duplicate_normalize', message:e?.message || '重複Race正規化失敗' });
+    }
+
     // 0) DB上ですでに判明している「締切90分以内の未取得レース」を最初に救済する。
     // 24場スキャンを待っている間に締切を迎える事故を防ぐため、最短経路で先にracelistを取得する。
     const knownRaces = await base44.asServiceRole.entities.Race.filter(
