@@ -231,11 +231,24 @@ export default async function(req) {
               race_name: parsed.raceName, race_phase: parsed.racePhase || "OTHER",
               deadline: parsed.deadline, entries_fetched_at: new Date().toISOString(),
             });
-            // RaceEntry再保存
+            // RaceEntry再保存。既存の展示情報は出走表再取得で消さない。
+            const prevEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: s.race_id }, "boat_number", 20).catch(() => []);
+            const prevByBoat = Object.fromEntries(prevEntries.map(e => [Number(e.boat_number), e]));
             await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: s.race_id });
-            const records = parsed.entries.map(e => ({
-              ...e, race_id: s.race_id, race_date: raceDate, venue_code: jcd, race_number: s.race_number,
-            }));
+            const records = parsed.entries.map(e => {
+              const prev = prevByBoat[Number(e.boat_number)] || {};
+              return {
+                ...e,
+                entry_course: prev.entry_course ?? e.entry_course ?? null,
+                exhibition_time: prev.exhibition_time ?? e.exhibition_time ?? null,
+                exhibition_rank: prev.exhibition_rank ?? e.exhibition_rank ?? null,
+                exhibition_st: prev.exhibition_st ?? e.exhibition_st ?? null,
+                exhibition_st_raw: prev.exhibition_st_raw ?? e.exhibition_st_raw ?? null,
+                tilt: prev.tilt ?? e.tilt ?? null,
+                is_scratched: prev.is_scratched === true || e.is_scratched === true,
+                race_id: s.race_id, race_date: raceDate, venue_code: jcd, race_number: s.race_number,
+              };
+            });
             await base44.asServiceRole.entities.RaceEntry.bulkCreate(records);
             totalEntries += records.length;
           } catch { fetchErrors++; }
@@ -267,10 +280,23 @@ export default async function(req) {
             deadline: parsed.deadline,
             entries_fetched_at: new Date().toISOString(),
           });
+          const prevEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: r.race_id }, "boat_number", 20).catch(() => []);
+          const prevByBoat = Object.fromEntries(prevEntries.map(e => [Number(e.boat_number), e]));
           await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.race_id });
-          const records = parsed.entries.map(e => ({
-            ...e, race_id: r.race_id, race_date: raceDate, venue_code: r.jcd, race_number: r.race_number,
-          }));
+          const records = parsed.entries.map(e => {
+            const prev = prevByBoat[Number(e.boat_number)] || {};
+            return {
+              ...e,
+              entry_course: prev.entry_course ?? e.entry_course ?? null,
+              exhibition_time: prev.exhibition_time ?? e.exhibition_time ?? null,
+              exhibition_rank: prev.exhibition_rank ?? e.exhibition_rank ?? null,
+              exhibition_st: prev.exhibition_st ?? e.exhibition_st ?? null,
+              exhibition_st_raw: prev.exhibition_st_raw ?? e.exhibition_st_raw ?? null,
+              tilt: prev.tilt ?? e.tilt ?? null,
+              is_scratched: prev.is_scratched === true || e.is_scratched === true,
+              race_id: r.race_id, race_date: raceDate, venue_code: r.jcd, race_number: r.race_number,
+            };
+          });
           await base44.asServiceRole.entities.RaceEntry.bulkCreate(records);
           repairedEntries += records.length;
         } catch { fetchErrors++; }
