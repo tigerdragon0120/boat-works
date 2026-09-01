@@ -63,8 +63,19 @@ export default async function(req) {
         await base44.asServiceRole.entities.Race.update(existingMap[s.race_number].id, raceData);
         updated++;
       } else {
-        await base44.asServiceRole.entities.Race.create(raceData);
-        created++;
+        // 並行ワーカー対策：create直前に同一日・同一場・同一Rを再確認
+        const dup = await base44.asServiceRole.entities.Race.filter({
+          race_date: raceDate, venue_code: jcd, race_number: Number(s.race_number), data_source: "official"
+        }, "-updated_date", 5).catch(() => []);
+        if (dup.length > 0) {
+          await base44.asServiceRole.entities.Race.update(dup[0].id, raceData);
+          existingMap[s.race_number] = dup[0];
+          updated++;
+        } else {
+          const createdRace = await base44.asServiceRole.entities.Race.create(raceData);
+          existingMap[s.race_number] = createdRace;
+          created++;
+        }
       }
     }
 
