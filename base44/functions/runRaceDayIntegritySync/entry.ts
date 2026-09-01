@@ -486,6 +486,7 @@ export default async function(req) {
       venue_codes: activeVenues.map(v => v.jcd),
       expected_races: expectedRaceCount,
       db_races: dbRaces.length,
+      duplicate_repair: duplicateRepair,
       urgent_missing_before_scan: urgentMissing.length,
       urgent_repaired_before_scan: urgentRepairedIds.length,
       race_created: raceCreated,
