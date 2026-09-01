@@ -45,19 +45,32 @@ function preserveExhibitionFields(parsedEntries, previousEntries) {
   });
 }
 
-async function pruneDuplicateAnalyses(base44, raceDate) {
-  const rows = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(() => []);
-  const groups = new Map();
-  for (const a of rows) {
-    const key = `${a.race_id}_${a.stage || ''}_${a.analysis_version || 'legacy'}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(a);
+async function normalizeLogicalChildren(base44, raceDate) {
+  // race_idが古くても、日付+場+Rを同一レースとして正規Raceへ寄せる。
+  const races = await base44.asServiceRole.entities.Race.filter({ race_date: raceDate, data_source: 'official' }, 'race_number', 500).catch(() => []);
+  const canonicalByLogical = new Map();
+  for (const r of races) {
+    canonicalByLogical.set(`${String(r.venue_code).padStart(2,'0')}_${Number(r.race_number)}`, r);
   }
-  let deleted = 0;
-  for (const group of groups.values()) {
-    if (group.length <= 1) continue;
+
+  const [analyses, alerts, learning] = await Promise.all([
+    base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(() => []),
+    base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, '-updated_date', 5000).catch(() => []),
+    base44.asServiceRole.entities.UichiLearningSample.filter({ race_date: raceDate }, '-updated_at', 5000).catch(() => []),
+  ]);
+
+  let analysesDeleted=0, analysesRelinked=0, alertsDeleted=0, alertsRelinked=0, learningDeleted=0, learningRelinked=0;
+
+  // UichiAnalysis: 日付+場+R+stage+versionで必ず1件。
+  const analysisGroups = new Map();
+  for (const a of analyses) {
+    const logical = `${String(a.venue_code).padStart(2,'0')}_${Number(a.race_number)}`;
+    const key = `${logical}_${a.stage || ''}_${a.analysis_version || 'legacy'}`;
+    if (!analysisGroups.has(key)) analysisGroups.set(key, []);
+    analysisGroups.get(key).push(a);
+  }
+  for (const group of analysisGroups.values()) {
     group.sort((a,b) => {
-      // finalは展示取得済みを最優先。MISSINGの再計算で正式判定を上書きさせない。
       if ((a.stage || '') === 'final') {
         const ar = a.exhibition_ready === true ? 1 : 0;
         const br = b.exhibition_ready === true ? 1 : 0;
@@ -65,11 +78,68 @@ async function pruneDuplicateAnalyses(base44, raceDate) {
       }
       return String(b.captured_at || b.updated_date || '').localeCompare(String(a.captured_at || a.updated_date || ''));
     });
+    const keep = group[0];
+    const canonical = canonicalByLogical.get(`${String(keep.venue_code).padStart(2,'0')}_${Number(keep.race_number)}`);
+    if (canonical && keep.race_id !== canonical.id) {
+      try { await base44.asServiceRole.entities.UichiAnalysis.update(keep.id,{ race_id:canonical.id }); analysesRelinked++; } catch {}
+    }
     for (const extra of group.slice(1)) {
-      try { await base44.asServiceRole.entities.UichiAnalysis.delete(extra.id); deleted++; } catch {}
+      try { await base44.asServiceRole.entities.UichiAnalysis.delete(extra.id); analysesDeleted++; } catch {}
     }
   }
-  return { rows: rows.length, deleted };
+
+  // Alert: 1レース1件。正式finalがあるものを最優先、その次に更新が新しいもの。
+  const alertGroups = new Map();
+  for (const a of alerts) {
+    const key = `${String(a.venue_code).padStart(2,'0')}_${Number(a.race_number)}`;
+    if (!alertGroups.has(key)) alertGroups.set(key, []);
+    alertGroups.get(key).push(a);
+  }
+  for (const [key, group] of alertGroups.entries()) {
+    group.sort((a,b) => {
+      const af = a.final_judgment && a.final_judgment !== 'PENDING' ? 1 : 0;
+      const bf = b.final_judgment && b.final_judgment !== 'PENDING' ? 1 : 0;
+      if (af !== bf) return bf-af;
+      return String(b.updated_date || '').localeCompare(String(a.updated_date || ''));
+    });
+    const keep=group[0], canonical=canonicalByLogical.get(key);
+    if (canonical && keep.race_id !== canonical.id) {
+      try { await base44.asServiceRole.entities.Alert.update(keep.id,{ race_id:canonical.id }); alertsRelinked++; } catch {}
+    }
+    for (const extra of group.slice(1)) {
+      try { await base44.asServiceRole.entities.Alert.delete(extra.id); alertsDeleted++; } catch {}
+    }
+  }
+
+  // 学習原本: 1レース+versionにつき1件。結果添付済みを優先。
+  const learningGroups = new Map();
+  for (const l of learning) {
+    const logical = `${String(l.venue_code).padStart(2,'0')}_${Number(l.race_number)}`;
+    const key = `${logical}_${l.analysis_version || 'legacy'}`;
+    if (!learningGroups.has(key)) learningGroups.set(key, []);
+    learningGroups.get(key).push(l);
+  }
+  for (const group of learningGroups.values()) {
+    group.sort((a,b) => {
+      const ar=a.result_attached_at?1:0, br=b.result_attached_at?1:0;
+      if (ar!==br) return br-ar;
+      return String(b.updated_at || b.updated_date || '').localeCompare(String(a.updated_at || a.updated_date || ''));
+    });
+    const keep=group[0];
+    const canonical=canonicalByLogical.get(`${String(keep.venue_code).padStart(2,'0')}_${Number(keep.race_number)}`);
+    if (canonical && keep.race_id !== canonical.id) {
+      try { await base44.asServiceRole.entities.UichiLearningSample.update(keep.id,{ race_id:canonical.id }); learningRelinked++; } catch {}
+    }
+    for (const extra of group.slice(1)) {
+      try { await base44.asServiceRole.entities.UichiLearningSample.delete(extra.id); learningDeleted++; } catch {}
+    }
+  }
+
+  return {
+    analyses:{ rows:analyses.length, deleted:analysesDeleted, relinked:analysesRelinked },
+    alerts:{ rows:alerts.length, deleted:alertsDeleted, relinked:alertsRelinked },
+    learning:{ rows:learning.length, deleted:learningDeleted, relinked:learningRelinked },
+  };
 }
 
 function completenessScore(r, entryCount, analysisCount, alertCount, oddsCount) {
