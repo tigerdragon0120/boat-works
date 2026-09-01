@@ -228,8 +228,10 @@ export default async function(req) {
           entries_fetched_at: new Date().toISOString(),
           last_updated: new Date().toISOString(),
         });
+        const prevEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: r.id }, 'boat_number', 20).catch(() => []);
+        const mergedEntries = preserveExhibitionFields(parsed.entries, prevEntries);
         await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.id });
-        await base44.asServiceRole.entities.RaceEntry.bulkCreate(parsed.entries.map(e => ({
+        await base44.asServiceRole.entities.RaceEntry.bulkCreate(mergedEntries.map(e => ({
           ...e, race_id: r.id, race_date: raceDate, venue_code: jcd, race_number: r.race_number,
         })));
         urgentRepairedIds.push(r.id);
@@ -410,8 +412,10 @@ export default async function(req) {
           entries_fetched_at: new Date().toISOString(),
           last_updated: new Date().toISOString(),
         });
+        const prevEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: r.id }, 'boat_number', 20).catch(() => []);
+        const mergedEntries = preserveExhibitionFields(parsed.entries, prevEntries);
         await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.id });
-        await base44.asServiceRole.entities.RaceEntry.bulkCreate(parsed.entries.map(e => ({
+        await base44.asServiceRole.entities.RaceEntry.bulkCreate(mergedEntries.map(e => ({
           ...e,
           race_id: r.id,
           race_date: raceDate,
