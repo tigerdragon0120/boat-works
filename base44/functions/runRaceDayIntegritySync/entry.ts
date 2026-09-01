@@ -126,25 +126,22 @@ export default async function(req) {
     const expectedRaceCount = activeVenues.reduce((n, v) => n + v.schedule.length, 0);
 
     // 2) 既存Raceを日付で一括取得しupsert用Map化。
-    const existingRaces = await base44.asServiceRole.entities.Race.filter(
-      { race_date: raceDate, data_source: 'official' }, 'race_number', 500
-    ).catch(() => []);
-    // 同一日・同一場・同一Rが重複していても、最新の1件だけを正規Raceとして扱う。
-    const raceMap = new Map();
-    for (const r of existingRaces) {
-      const key = `${String(r.venue_code).padStart(2, '0')}_${Number(r.race_number)}`;
-      const cur = raceMap.get(key);
-      if (!cur || new Date(r.updated_date || r.created_date || 0).getTime() > new Date(cur.updated_date || cur.created_date || 0).getTime()) raceMap.set(key, r);
-    }
-
     let raceCreated = 0, raceUpdated = 0;
     const allRaceRows:any[] = [];
 
-    // 場単位で完全分離。1場のDBエラーでも他場を継続。
+    // 場単位で完全分離。全日500件上限の影響を受けないよう、既存Raceも必ず場ごとに取得する。
     for (const venue of activeVenues) {
       const jcd = venue.jcd;
       const venueName = VENUE_NAMES[jcd] || jcd;
       const seriesCtx = venue.seriesCtx || {};
+      const venueExisting = await base44.asServiceRole.entities.Race.filter(
+        { race_date: raceDate, venue_code: jcd, data_source: 'official' }, '-updated_date', 100
+      ).catch(() => []);
+      const raceMap = new Map();
+      for (const r of venueExisting) {
+        const key = `${jcd}_${Number(r.race_number)}`;
+        if (!raceMap.has(key)) raceMap.set(key, r); // updated_date降順なので先頭を正規Raceにする
+      }
       for (const s of venue.schedule) {
         const key = `${jcd}_${Number(s.race_number)}`;
         const old = raceMap.get(key);
