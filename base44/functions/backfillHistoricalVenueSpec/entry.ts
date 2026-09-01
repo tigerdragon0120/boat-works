@@ -55,7 +55,15 @@ export default async function(req){
         status:'finished',data_source:'official',last_updated:now,
       };
       const old=raceMap.get(Number(s.race_number));
-      try{ const r=old?await base44.asServiceRole.entities.Race.update(old.id,payload):await base44.asServiceRole.entities.Race.create(payload); saved.push(r); raceMap.set(Number(s.race_number),r); }catch{}
+      try{
+        let r;
+        if(old) r=await base44.asServiceRole.entities.Race.update(old.id,payload);
+        else {
+          const dup=await base44.asServiceRole.entities.Race.filter({race_date:raceDate,venue_code:jcd,race_number:Number(s.race_number),data_source:'official'},'-updated_date',5).catch(()=>[]);
+          r=dup.length?await base44.asServiceRole.entities.Race.update(dup[0].id,payload):await base44.asServiceRole.entities.Race.create(payload);
+        }
+        saved.push(r); raceMap.set(Number(s.race_number),r);
+      }catch{}
     }
 
     let entryRaceCount=0;
