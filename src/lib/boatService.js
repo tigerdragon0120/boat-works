@@ -84,7 +84,7 @@ export function getRacesByDate(dateStr) {
   return cached(`races_${dateStr}`, 30000, async () => {
     const [allRaces, analyses] = await Promise.all([
       base44.entities.Race.filter({ race_date: dateStr, data_source: "official" }, "race_number", 300),
-      base44.entities.UichiAnalysis.filter({ race_date: dateStr, analysis_version: "v10" }, "-captured_at", 500).catch(() => []),
+      base44.entities.UichiAnalysis.filter({ race_date: dateStr, analysis_version: "v11" }, "-captured_at", 500).catch(() => []),
     ]);
 
     // 同一日・同一場・同一Rの重複Raceを1件に正規化する。
