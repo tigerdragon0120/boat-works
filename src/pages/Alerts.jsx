@@ -37,13 +37,33 @@ export default function Alerts() {
     (async () => {
       setLoading(true);
       try {
-        const [todayR, tomorrowR, tomA, cachedAn] = await Promise.all([
-          getRacesByDate(dateStr(0)), getRacesByDate(dateStr(1)), getAlerts(dateStr(1)), getCachedAnalysesByDate(dateStr(0)),
+        const [todayR, tomorrowR, cachedAn, cachedTomorrowAn] = await Promise.all([
+          getRacesByDate(dateStr(0)), getRacesByDate(dateStr(1)), getCachedAnalysesByDate(dateStr(0)), getCachedAnalysesByDate(dateStr(1)),
         ]);
         if (!m) return;
         setTodayRaces(todayR);
         setTomorrowRaces(tomorrowR);
-        setTomorrowAlerts(tomA);
+        // 明日の候補はAlert Entity(S/Aのみ)ではなく保存済みpre分析から作る。
+        // これにより評価Bもアラート画面で確認できる。
+        const tomorrowCandidates = tomorrowR
+          .map((r) => {
+            const a = cachedTomorrowAn[r.id];
+            if (!a || !["S", "A", "B"].includes(a.pre_grade)) return null;
+            return {
+              id: `pre-${r.id}`,
+              race_id: r.id,
+              race_date: r.race_date,
+              venue_code: r.venue_code,
+              venue_name: r.venue_name,
+              race_number: r.race_number,
+              deadline: r.deadline,
+              pre_grade: a.pre_grade,
+              pre_appearance_rate: a.recommended_rate ?? a.appearance_rate,
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+        setTomorrowAlerts(tomorrowCandidates);
         setAnalyses(cachedAn);
         setLoading(false);
 
@@ -57,13 +77,13 @@ export default function Alerts() {
         for (const e of tomEnts) (tomByRace[e.race_id] = tomByRace[e.race_id] || []).push(e);
         if (m) setTomorrowEntries(tomByRace);
 
-        // today alerts: 5分前は事前評価S/A候補、5分以降はfinal BUY/WATCH
+        // today alerts: 最終判定前は事前評価S/A/B候補、最終判定後はfinal BUY/WATCH
         const ta = todayR.filter((r) => {
           const a = cachedAn[r.id];
           if (canFinalJudge(r.deadline)) {
             return a?.judgment === "BUY" || a?.judgment === "WATCH";
           }
-          return a?.pre_grade === "S" || a?.pre_grade === "A";
+          return a?.pre_grade === "S" || a?.pre_grade === "A" || a?.pre_grade === "B";
         });
         if (m) setTodayAlerts(ta);
       } catch {
