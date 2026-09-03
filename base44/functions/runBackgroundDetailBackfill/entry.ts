@@ -27,7 +27,7 @@ export default async function(req) {
       // 専用Workflowが何らかの理由で発火しなくても、この毎時Workerから過去へ進める。
       let historical = null;
       try {
-        const h = await base44.asServiceRole.functions.invoke('runHistoricalFullSpecBackfill', { limit: 2 });
+        const h = await base44.asServiceRole.functions.invoke('runHistoricalFrontierBackfill', { limit: 2 });
         historical = h?.data || h;
       } catch (e:any) {
         historical = { status: 'error', message: e?.message || String(e) };
@@ -67,7 +67,7 @@ export default async function(req) {
     // 毎時の既存Workerが動くたび、同じ「前線の日付」を最大2開催場だけ進める。
     let historical = null;
     try {
-      const h = await base44.asServiceRole.functions.invoke('runHistoricalFullSpecBackfill', { limit: 2 });
+      const h = await base44.asServiceRole.functions.invoke('runHistoricalFrontierBackfill', { limit: 2 });
       historical = h?.data || h;
     } catch (e:any) {
       historical = { status: 'error', message: e?.message || String(e) };
