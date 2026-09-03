@@ -274,28 +274,61 @@ export default async function(req) {
         }
       }
     }
-    // (series_key, registration_number) -> snapshots (snapshot_at desc)
-    const seriesGroup = {};
-    for (const s of seriesAll) {
-      const key = `${s.series_key}|${s.registration_number}`;
-      (seriesGroup[key] = seriesGroup[key] || []).push(s);
+    // series_key不一致や旧データのseries_key欠損にも耐えるため、開催場×登録番号でも最新スナップショットを補完取得する。
+    // これにより「元DBには節間成績があるのにexportが0件」の取りこぼしを防ぐ。
+    const venueCodesForSeries = [...new Set(validRaces.map(r => String(r.venue_code || '').padStart(2, '0')).filter(Boolean))];
+    for (const vc of venueCodesForSeries) {
+      let sSkip = 0;
+      while (true) {
+        const batch = await sr.SeriesRacerPoint.filter(
+          { venue_code: vc, as_of_date: { $lte: date } }, '-snapshot_at', 500, sSkip
+        ).catch(() => []);
+        if (!batch || batch.length === 0) break;
+        seriesAll = seriesAll.concat(batch);
+        if (batch.length < 500) break;
+        sSkip += 500;
+        if (sSkip > 3000) break;
+      }
     }
-    for (const k of Object.keys(seriesGroup)) {
-      seriesGroup[k].sort((a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0));
+
+    // 重複除去
+    const uniqSeries = new Map();
+    for (const s of seriesAll) uniqSeries.set(s.id || `${s.series_key}|${s.registration_number}|${s.snapshot_at}`, s);
+    seriesAll = [...uniqSeries.values()];
+
+    // (series_key, registration_number) と (venue_code, registration_number) の両方で索引
+    const seriesGroup = {};
+    const venueRegGroup = {};
+    for (const s of seriesAll) {
+      const reg = String(s.registration_number || '');
+      if (!reg) continue;
+      if (s.series_key) {
+        const key = `${s.series_key}|${reg}`;
+        (seriesGroup[key] = seriesGroup[key] || []).push(s);
+      }
+      const vkey = `${String(s.venue_code || '').padStart(2, '0')}|${reg}`;
+      (venueRegGroup[vkey] = venueRegGroup[vkey] || []).push(s);
+    }
+    for (const group of [seriesGroup, venueRegGroup]) {
+      for (const k of Object.keys(group)) {
+        group[k].sort((a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0));
+      }
     }
 
     const seriesOut = [];
     for (const r of validRaces) {
-      if (!r.series_key) continue;
       const raceKey = raceMap[r.id].race_key;
       const deadlineMs = r.deadline ? new Date(r.deadline).getTime() : Date.now();
       const raceEntries = entriesByKey[raceKey] || [];
       for (const e of raceEntries) {
-        if (!e.registration_number) continue;
-        const snaps = seriesGroup[`${r.series_key}|${e.registration_number}`];
-        if (!snaps || snaps.length === 0) continue;
+        const reg = String(e.registration_number || '');
+        if (!reg) continue;
+        const exact = r.series_key ? (seriesGroup[`${r.series_key}|${reg}`] || []) : [];
+        const fallback = venueRegGroup[`${String(r.venue_code || '').padStart(2, '0')}|${reg}`] || [];
+        const candidates = exact.length ? exact : fallback;
+        if (!candidates.length) continue;
         // レース日時より後に作られたスナップショットは未来データとして除外
-        const latest = snaps.find(s => {
+        const latest = candidates.find(s => {
           const t = s.snapshot_at ? new Date(s.snapshot_at).getTime() : 0;
           return t <= deadlineMs;
         });
