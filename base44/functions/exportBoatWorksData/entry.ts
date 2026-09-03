@@ -222,7 +222,7 @@ export default async function(req) {
     }
 
     // === OddsSnapshot ===
-    const allOdds = await fetchAllByDate(sr, "OddsSnapshot", date, "captured_at");
+    const allOdds = await fetchAllByDate(sr, "OddsSnapshot", date, "captured_at", venueCode ? { venue_code: venueCode } : {});
     const oddsOut = [];
     for (const o of allOdds) {
       if (!validRaceIds.has(o.race_id)) continue;
