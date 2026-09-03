@@ -327,7 +327,7 @@ export default async function(req) {
     // 専用Workflow + 毎時Worker + 夜間Workerの3経路にして、過去Race生成が止まりにくい構成にする。
     let historicalFullSpec = null;
     try {
-      const h = await base44.asServiceRole.functions.invoke("runHistoricalFullSpecBackfill", { limit: 4 });
+      const h = await base44.asServiceRole.functions.invoke("runHistoricalFrontierBackfill", { limit: 4 });
       historicalFullSpec = h?.data || h;
     } catch (e) {
       historicalFullSpec = { status: "error", message: e?.message || String(e) };
