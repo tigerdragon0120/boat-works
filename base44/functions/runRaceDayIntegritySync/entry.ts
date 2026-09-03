@@ -165,7 +165,7 @@ export default async function(req) {
     // 0) まず既存の重複Raceを正規化する。子データを正規Raceへ寄せてから重複本体を削除。
     let duplicateRepair:any = null;
     try {
-      duplicateRepair = await normalizeDuplicateRaces(base44, raceDate);
+      duplicateRepair = await normalizeRaceDuplicatesForDate(base44, raceDate);
     } catch (e) {
       duplicateRepair = { status:'error', message:e?.message || String(e) };
       errors.push({ phase:'duplicate_normalize', message:e?.message || '重複Race正規化失敗' });
@@ -502,6 +502,14 @@ export default async function(req) {
       { race_date: raceDate, data_source: 'official' }, 'race_number', 500
     ).catch(() => []);
 
+    // VenueDayReadinessをDBの実データから再計算
+    let readinessRecalc:any = null;
+    try {
+      readinessRecalc = await recalcAllVenuesForDate(base44, raceDate);
+    } catch (e) {
+      readinessRecalc = { status: 'error', message: e?.message || String(e) };
+    }
+
     return Response.json({
       status: incompleteRows.length === 0 ? 'success' : 'partial',
       race_date: raceDate,
@@ -523,6 +531,7 @@ export default async function(req) {
       already_complete_before_repair: alreadyCompleteIds.length,
       newly_complete_after_repair: newlyCompleteIds.length,
       complete_races: completeIds.length,
+      readiness_recalc: readinessRecalc,
       incomplete_races: incompleteRows.map(r => ({ venue_code: r.venue_code, venue_name: r.venue_name, race_number: r.race_number })),
       collect_only: collectOnly,
       analysis,
