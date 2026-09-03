@@ -323,6 +323,16 @@ export default async function(req) {
       analysisResult = { status: "error", message: e.message };
     }
 
+    // 夜間処理の最後にも過去フルスペック補完を1回進める。
+    // 専用Workflow + 毎時Worker + 夜間Workerの3経路にして、過去Race生成が止まりにくい構成にする。
+    let historicalFullSpec = null;
+    try {
+      const h = await base44.asServiceRole.functions.invoke("runHistoricalFullSpecBackfill", { limit: 4 });
+      historicalFullSpec = h?.data || h;
+    } catch (e) {
+      historicalFullSpec = { status: "error", message: e?.message || String(e) };
+    }
+
     return Response.json({
       status: "success",
       race_date: raceDate,
@@ -335,6 +345,7 @@ export default async function(req) {
       learning_metrics_update: learningMetricsUpdate,
       collection_gate: collectionGate,
       analysis: analysisResult,
+      historical_full_spec: historicalFullSpec,
       elapsed_ms: Date.now() - t0,
     });
   } catch (error) {
