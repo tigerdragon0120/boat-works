@@ -18,6 +18,9 @@ export default async function(req) {
 
     const nowMs = Date.now();
     const raceDate = jstDateStr();
+    const body = await req.json().catch(() => ({}));
+    const mode = body.mode || 'normal';
+    const scratchOnly = mode === 'scratch_only';
     const races = await base44.asServiceRole.entities.Race.filter(
       { race_date: raceDate, data_source: 'official' }, 'deadline', 300
     );
@@ -39,7 +42,13 @@ export default async function(req) {
       const deadlineMs = new Date(r.deadline).getTime();
       if (!Number.isFinite(deadlineMs)) return false;
       const finalAt = deadlineMs - 13 * 60 * 1000;
-      return nowMs >= finalAt && nowMs < deadlineMs;
+      if (!(nowMs >= finalAt && nowMs < deadlineMs)) return false;
+      // scratch_only mode: 既存の展示取得済みfinalがあるRaceだけを対象
+      if (scratchOnly) {
+        const prevFinal = latestFinalByRace[r.id];
+        return prevFinal?.exhibition_ready === true;
+      }
+      return true;
     });
 
     if (targets.length === 0) {
@@ -86,10 +95,23 @@ export default async function(req) {
           if (data?.status !== 'success') return null;
           const hasScratch = data?.has_scratch === true || (Array.isArray(data?.scratched_boats) && data.scratched_boats.length > 0);
 
-          // 展示情報が実際に取得されたか確認。
-          // fetchRaceDataが成功しても展示情報が未公開の場合はfinalを作成せず次回巡回を待つ。
-          const exhibitionObtained = data?.exhibition_ready === true
-            || (Array.isArray(data?.entries) && data.entries.some((e:any) => e.exhibition_time != null || e.exhibition_st != null));
+          // 展示情報が実際に取得されたかDBから再確認。
+          // fetchRaceDataのResponseに依存せず、保存後のDB実値を正として判定する。
+          const dbRace = await base44.asServiceRole.entities.Race.get(r.id).catch(() => null);
+          const dbEntries = await base44.asServiceRole.entities.RaceEntry.filter({race_id: r.id}, 'boat_number', 20).catch(() => []);
+
+          const boatsByNumber = new Map();
+          for (const e of dbEntries) {
+            const bn = Number(e.boat_number);
+            if (bn >= 1 && bn <= 6) boatsByNumber.set(bn, e);
+          }
+          const allBoatsPresent = [1,2,3,4,5,6].every(bn => boatsByNumber.has(bn));
+          const allHaveExhibition = allBoatsPresent && [1,2,3,4,5,6].every(bn => {
+            const e = boatsByNumber.get(bn);
+            return e?.entry_course != null && e?.exhibition_time != null && e?.exhibition_st != null;
+          });
+
+          const exhibitionObtained = dbRace?.exhibition_ready === true || allHaveExhibition;
 
           // すでに確定済みfinalがある場合は欠場確認のため再分析を許可。
           // 未確定の場合は展示情報取得済みの時だけfinal生成へ進む。
@@ -104,7 +126,15 @@ export default async function(req) {
       }));
       for (const item of result) {
         if (!item) { fetchErrors++; continue; }
-        // 展示情報未取得の未確定レースはfinalを作成せず次回巡回を待つ。
+        // scratch_only mode: 既存finalがあるRaceだけ、欠場時のみSKIPへ更新。新規finalは作らない。
+        if (scratchOnly) {
+          if (!item.alreadyDone) continue;
+          if (!item.hasScratch) continue;
+          oddsReadyIds.push(item.id);
+          scratchDetectedIds.push(item.id);
+          continue;
+        }
+        // 通常mode: 展示情報未取得の未確定レースはfinalを作成せず次回巡回を待つ。
         if (item.exhibitionMissing && !item.alreadyDone) continue;
         // 未判定レースは通常finalへ。確定済みは欠場時だけ再分析して強制SKIPへ更新する。
         if (!item.alreadyDone || item.hasScratch) oddsReadyIds.push(item.id);

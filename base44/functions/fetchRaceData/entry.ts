@@ -138,6 +138,8 @@ export default async function(req) {
             captured_at: cached.captured_at,
             scratched_boats: cachedScratched,
             has_scratch: cachedScratched.length > 0 || cached.has_scratch === true,
+            exhibition_ready: currentRace?.exhibition_ready === true,
+            beforeinfo_fetched_at: currentRace?.beforeinfo_fetched_at ?? null,
             cached: true,
           });
         }
@@ -234,9 +236,12 @@ export default async function(req) {
     };
     await base44.asServiceRole.entities.OddsSnapshot.create(oddsRecord);
 
+    // 保存後のRaceをDBから再取得して展示情報状態を正確に返す。
+    const savedRace = await base44.asServiceRole.entities.Race.get(race.id).catch(() => race);
+
     return Response.json({
       status: "success",
-      race,
+      race: savedRace,
       entries: entryRecords.length,
       odds_count: oddsCount,
       uichi: {
@@ -253,6 +258,8 @@ export default async function(req) {
       retry_count: Math.max(rlFetched.attempt || 0, odFetched.attempt || 0),
       scratched_boats: scratchedBoats,
       has_scratch: scratchedBoats.length > 0,
+      exhibition_ready: savedRace?.exhibition_ready === true,
+      beforeinfo_fetched_at: savedRace?.beforeinfo_fetched_at ?? null,
     });
   } catch (error) {
     return Response.json({ status: "error", message: error.message }, { status: 500 });
