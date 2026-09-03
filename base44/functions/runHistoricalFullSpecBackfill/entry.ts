@@ -24,8 +24,19 @@ export default async function(req){
       if(done.has(k)||processing.has(k)||unique.has(k))continue;
       unique.set(k,p);
     }
-    // 最近のデータから先に現在仕様へ揃え、分析に効く期間を早く厚くする。
-    const candidates=[...unique.values()].sort((a:any,b:any)=>String(b.race_date).localeCompare(String(a.race_date))).slice(0,limit);
+    // Raceの現在の最古日を「前線」として、その日を完了させてから1日ずつ過去へ進む。
+    // 旧実装は常に最新日優先だったため、PARTIAL/PROCESSINGが残ると8月末付近を回り続け、
+    // 2月まで存在するFetchProgress/RaceResultに到達しにくかった。
+    const oldestRace=(await base44.asServiceRole.entities.Race.filter(
+      {data_source:'official',race_date:{$gte:from,$lte:to}},'race_date',1
+    ).catch(()=>[]))[0];
+    const frontier=oldestRace?.race_date||to;
+    const eligible=[...unique.values()].filter((p:any)=>String(p.race_date)<=String(frontier));
+    const dates=[...new Set(eligible.map((p:any)=>String(p.race_date)))].sort((a:any,b:any)=>String(b).localeCompare(String(a)));
+    const targetDate=dates.includes(String(frontier))?String(frontier):(dates.find((d:any)=>String(d)<String(frontier))||null);
+    const candidates=targetDate
+      ? eligible.filter((p:any)=>String(p.race_date)===targetDate).sort((a:any,b:any)=>String(a.venue_code).localeCompare(String(b.venue_code))).slice(0,limit)
+      : [];
     let complete=0,partial=0,errors=0;const details:any[]=[];
     for(const p of candidates){
       try{
@@ -36,6 +47,6 @@ export default async function(req){
       }catch(e:any){errors++;details.push({race_date:p.race_date,venue_code:p.venue_code,status:'error',message:e?.message||String(e)});}
     }
     const remaining=Math.max(0,unique.size-candidates.length);
-    return Response.json({status:'success',range:{from,to},processed:candidates.length,complete,partial,errors,remaining_estimate:remaining,details});
+    return Response.json({status:'success',range:{from,to},frontier_date:frontier,target_date:targetDate,processed:candidates.length,complete,partial,errors,remaining_estimate:remaining,details});
   }catch(error:any){return Response.json({status:'error',message:error?.message||String(error)},{status:500});}
 }
