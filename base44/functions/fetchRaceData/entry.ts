@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { UICHI_COMBOS, syntheticOdds } from "../../shared/uichi.js";
 import { VENUE_NAMES, toNum, toFloat, parseRacelist } from "../../shared/scraper.js";
+import { upsertRace } from "../../shared/raceUpsert.js";
 
 // BOAT WORKS 公式サイト実データ取得関数
 // BOAT RACE公式サイト(boatrace.jp)から出走表・3連単オッズを取得しDBへ保存する。
@@ -174,9 +175,7 @@ export default async function(req) {
     const now = new Date().toISOString();
     const venueName = VENUE_NAMES[jcd] || jcd;
 
-    // Race upsert
-    const existing = existingRace;
-    let race;
+    // Race upsert（共通モジュールで重複作成を防止）
     const raceData = {
       race_date: raceDate,
       venue_code: jcd,
@@ -190,16 +189,7 @@ export default async function(req) {
       entries_fetched_at: now,
       odds_fetched_at: now,
     };
-    if (existing.length > 0) {
-      race = await base44.asServiceRole.entities.Race.update(existing[0].id, raceData);
-    } else {
-      // 並行ワーカー対策：create直前に同一Raceを再確認
-      const dup = await base44.asServiceRole.entities.Race.filter({
-        race_date: raceDate, venue_code: jcd, race_number: raceNumber, data_source: "official"
-      }, "-updated_date", 5).catch(() => []);
-      if (dup.length > 0) race = await base44.asServiceRole.entities.Race.update(dup[0].id, raceData);
-      else race = await base44.asServiceRole.entities.Race.create(raceData);
-    }
+    const race = await upsertRace(base44, raceData);
 
     // RaceEntry 再保存。
     // 直前情報Workerが先に保存した展示タイム/ST/進入/欠場を、オッズ取得で消さない。

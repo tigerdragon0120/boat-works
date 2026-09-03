@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
+import { normalizeRaceDuplicatesForDate } from '../../shared/raceUpsert.js';
 
 function jstDateStr(offset=0) {
   const d=new Date(Date.now()+9*60*60*1000);
@@ -59,6 +60,10 @@ export default async function(req) {
       race_date:raceDate, stage:'pre', collect_only:true,
     }).catch(e=>({data:{status:'error',message:e?.message||String(e)}}));
     const syncData=sync?.data||sync;
+
+    // VenueDayReadiness集計前に重複Raceを正規化（同時実行の残りを掃除）
+    let dedupResult=null;
+    try { dedupResult = await normalizeRaceDuplicatesForDate(base44, raceDate); } catch {}
 
     const [races,entries,preAnalyses,initialSeriesPoints,readinessRows]=await Promise.all([
       base44.asServiceRole.entities.Race.filter({race_date:raceDate,data_source:'official'},'deadline',500).catch(()=>[]),

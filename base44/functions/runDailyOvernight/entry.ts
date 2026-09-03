@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { VENUE_NAMES, parseDailyVenueList, parseDaySchedule, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from "../../shared/scraper.js";
+import { upsertRace } from "../../shared/raceUpsert.js";
+import { acquireVenueLock, heartbeatVenueLock, releaseVenueLock } from "../../shared/venueLock.js";
 
 // BOAT WORKS 日次夜間一括処理（ワークフロー用・サービスロール実行）
 // 1. 翌日の開催場一覧取得
@@ -177,12 +179,12 @@ export default async function(req) {
       const venueName = VENUE_NAMES[jcd] || jcd;
       const now = new Date().toISOString();
 
-      // 既存Race取得（upsert）
-      const existingRaces = await base44.asServiceRole.entities.Race.filter({ race_date: raceDate, venue_code: jcd, data_source: "official" });
-      const raceMap = {};
-      for (const r of existingRaces) raceMap[r.race_number] = r;
+      // ベニューロック取得（同一场の同時処理を防止）
+      const lock = await acquireVenueLock(base44, raceDate, jcd, "runDailyOvernight");
+      if (!lock.acquired) { fetchErrors++; continue; }
 
-      // Race保存
+      try {
+      // Race保存（共通upsertで重複作成を防止）
       const savedRaces = {};
       for (const s of schedule) {
         const raceData = {
@@ -198,17 +200,7 @@ export default async function(req) {
           is_final_day: seriesCtx?.is_final_day === true,
           status: "scheduled", data_source: "official", last_updated: now,
         };
-        let r;
-        if (raceMap[s.race_number]) {
-          r = await base44.asServiceRole.entities.Race.update(raceMap[s.race_number].id, raceData);
-        } else {
-          // 並行ワーカー対策：create直前に同一日・同一場・同一Rを再確認
-          const dup = await base44.asServiceRole.entities.Race.filter({
-            race_date: raceDate, venue_code: jcd, race_number: Number(s.race_number), data_source: "official"
-          }, "-updated_date", 5).catch(() => []);
-          if (dup.length > 0) r = await base44.asServiceRole.entities.Race.update(dup[0].id, raceData);
-          else r = await base44.asServiceRole.entities.Race.create(raceData);
-        }
+        const r = await upsertRace(base44, raceData);
         savedRaces[s.race_number] = r;
         raceList.push({ jcd, race_number: s.race_number, race_id: r.id });
         totalRaces++;
@@ -254,6 +246,9 @@ export default async function(req) {
           } catch { fetchErrors++; }
         }));
         await sleep(400);
+      }
+      } finally {
+        await releaseVenueLock(base44, lock.lockId, "done");
       }
     }
 

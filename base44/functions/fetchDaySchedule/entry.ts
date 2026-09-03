@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { VENUE_NAMES, parseDaySchedule, sleep } from "../../shared/scraper.js";
+import { upsertRace } from "../../shared/raceUpsert.js";
 
 // BOAT WORKS 1日分の開催スケジュール取得（汎用）
 // 公式サイトの raceindex ページから指定日・指定場の全レース番号と締切時刻を取得し、
@@ -40,13 +41,6 @@ export default async function(req) {
     const venueName = VENUE_NAMES[jcd] || jcd;
     const now = new Date().toISOString();
 
-    // 既存のofficial Raceを取得（upsert用）
-    const existing = await base44.asServiceRole.entities.Race.filter({
-      race_date: raceDate, venue_code: jcd, data_source: "official"
-    });
-    const existingMap = {};
-    for (const r of existing) existingMap[r.race_number] = r;
-
     let created = 0, updated = 0;
     for (const s of schedule) {
       const raceData = {
@@ -59,24 +53,12 @@ export default async function(req) {
         data_source: "official",
         last_updated: now,
       };
-      if (existingMap[s.race_number]) {
-        await base44.asServiceRole.entities.Race.update(existingMap[s.race_number].id, raceData);
-        updated++;
-      } else {
-        // 並行ワーカー対策：create直前に同一日・同一場・同一Rを再確認
-        const dup = await base44.asServiceRole.entities.Race.filter({
-          race_date: raceDate, venue_code: jcd, race_number: Number(s.race_number), data_source: "official"
-        }, "-updated_date", 5).catch(() => []);
-        if (dup.length > 0) {
-          await base44.asServiceRole.entities.Race.update(dup[0].id, raceData);
-          existingMap[s.race_number] = dup[0];
-          updated++;
-        } else {
-          const createdRace = await base44.asServiceRole.entities.Race.create(raceData);
-          existingMap[s.race_number] = createdRace;
-          created++;
-        }
-      }
+      // 共通upsert: 既存更新 or 新規作成 + post-create重複正規化
+      const before = await base44.asServiceRole.entities.Race.filter({
+        race_date: raceDate, venue_code: jcd, race_number: Number(s.race_number), data_source: "official"
+      }, "-updated_date", 5).catch(() => []);
+      await upsertRace(base44, raceData);
+      if (before.length > 0) updated++; else created++;
     }
 
     await sleep(400);

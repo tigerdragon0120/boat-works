@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { VENUE_NAMES, parseDaySchedule, parseRacelist, parseSeriesContext, parseBeforeInfo, fetchWithRetry, sleep } from '../../shared/scraper.js';
+import { upsertRace } from '../../shared/raceUpsert.js';
+import { acquireVenueLock, heartbeatVenueLock, releaseVenueLock } from '../../shared/venueLock.js';
 
 const BASE='https://www.boatrace.jp/owpc/pc/race';
 
@@ -25,6 +27,14 @@ export default async function(req){
     };
     await setProgress({overall_status:'PROCESSING',last_checked_at:now,error_msg:null});
 
+    // ベニューロック取得（当日ライブ収集との競合を防止）
+    const lock=await acquireVenueLock(base44,raceDate,jcd,'backfillHistoricalVenueSpec');
+    if(!lock.acquired){
+      await setProgress({overall_status:'PARTIAL',last_checked_at:new Date().toISOString(),error_msg:`locked by ${lock.lockedBy}`});
+      return Response.json({status:'skipped',race_date:raceDate,venue_code:jcd,message:`locked by ${lock.lockedBy}`});
+    }
+
+    try {
     // 1) 既存の結果一覧を、現在仕様の詳細結果へ格上げする。
     const basicResults=await base44.asServiceRole.entities.RaceResult.filter({race_date:raceDate,venue_code:jcd,data_source:'official'},'race_number',50).catch(()=>[]);
     let detailResult:any={status:'skipped'};
@@ -43,7 +53,7 @@ export default async function(req){
     }catch(e:any){indexError=e?.message||String(e);}
 
     const oldRaces=await base44.asServiceRole.entities.Race.filter({race_date:raceDate,venue_code:jcd,data_source:'official'},'race_number',50).catch(()=>[]);
-    const raceMap=new Map(oldRaces.map((r:any)=>[Number(r.race_number),r]));
+    const existingNumbers=new Set(oldRaces.map((r:any)=>Number(r.race_number)));
     const saved:any[]=[];
     const seriesKey=`${jcd}_${ctx?.series_start_date||raceDate}`;
     for(const s of schedule){
@@ -54,15 +64,9 @@ export default async function(req){
         series_total_days:ctx?.series_total_days||1,series_day:ctx?.series_day||1,is_final_day:ctx?.is_final_day===true,
         status:'finished',data_source:'official',last_updated:now,
       };
-      const old=raceMap.get(Number(s.race_number));
       try{
-        let r;
-        if(old) r=await base44.asServiceRole.entities.Race.update(old.id,payload);
-        else {
-          const dup=await base44.asServiceRole.entities.Race.filter({race_date:raceDate,venue_code:jcd,race_number:Number(s.race_number),data_source:'official'},'-updated_date',5).catch(()=>[]);
-          r=dup.length?await base44.asServiceRole.entities.Race.update(dup[0].id,payload):await base44.asServiceRole.entities.Race.create(payload);
-        }
-        saved.push(r); raceMap.set(Number(s.race_number),r);
+        const r=await upsertRace(base44,payload);
+        saved.push(r);
       }catch{}
     }
 
@@ -157,5 +161,8 @@ export default async function(req){
     };
     await setProgress(payload);
     return Response.json({status:recoverableComplete?'complete':'partial',race_date:raceDate,venue_code:jcd,venue_name:venueName,...payload,detail_result:detailResult});
+    } finally {
+      await releaseVenueLock(base44, lock.lockId, 'done');
+    }
   }catch(error:any){ return Response.json({status:'error',message:error?.message||String(error)},{status:500}); }
 }

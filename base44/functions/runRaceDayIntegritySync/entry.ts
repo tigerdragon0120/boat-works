@@ -1,5 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { ALL_VENUE_JCDS, VENUE_NAMES, parseDaySchedule, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from '../../shared/scraper.js';
+import { upsertRace, normalizeRaceDuplicatesForVenue } from '../../shared/raceUpsert.js';
+import { acquireVenueLock, heartbeatVenueLock, releaseVenueLock } from '../../shared/venueLock.js';
 
 // BOAT WORKS 当日/翌日の自己修復同期
 // - トップページの開催場一覧だけを信用せず、24場の raceindex を直接確認
@@ -351,61 +353,53 @@ export default async function(req) {
       const jcd = venue.jcd;
       const venueName = VENUE_NAMES[jcd] || jcd;
       const seriesCtx = venue.seriesCtx || {};
-      const venueExisting = await base44.asServiceRole.entities.Race.filter(
-        { race_date: raceDate, venue_code: jcd, data_source: 'official' }, '-updated_date', 100
-      ).catch(() => []);
-      const raceMap = new Map();
-      for (const r of venueExisting) {
-        const key = `${jcd}_${Number(r.race_number)}`;
-        if (!raceMap.has(key)) raceMap.set(key, r); // updated_date降順なので先頭を正規Raceにする
+
+      // ベニューロック取得（同一场の同時Race作成を防止）
+      const lock = await acquireVenueLock(base44, raceDate, jcd, 'runRaceDayIntegritySync');
+      if (!lock.acquired) {
+        errors.push({ phase: 'venue_lock', jcd, message: `locked by ${lock.lockedBy}` });
+        continue;
       }
-      for (const s of venue.schedule) {
-        const key = `${jcd}_${Number(s.race_number)}`;
-        const old = raceMap.get(key);
-        const data = {
-          race_date: raceDate,
-          venue_code: jcd,
-          venue_name: venueName,
-          race_number: s.race_number,
-          deadline: s.deadline || old?.deadline || null,
-          event_name: seriesCtx.event_name || old?.event_name || null,
-          grade: seriesCtx.grade || old?.grade || 'GENERAL',
-          series_key: `${jcd}_${seriesCtx.series_start_date || old?.series_start_date || raceDate}`,
-          series_start_date: seriesCtx.series_start_date || old?.series_start_date || raceDate,
-          series_end_date: seriesCtx.series_end_date || old?.series_end_date || raceDate,
-          series_total_days: seriesCtx.series_total_days || old?.series_total_days || 1,
-          series_day: seriesCtx.series_day || old?.series_day || 1,
-          is_final_day: seriesCtx.is_final_day === true,
-          status: 'scheduled',
-          data_source: 'official',
-          last_updated: new Date().toISOString(),
-        };
-        try {
-          let saved;
-          if (old) {
-            saved = await base44.asServiceRole.entities.Race.update(old.id, data);
-            raceUpdated++;
-          } else {
-            // 並行ワーカーが同時に同じRaceを作るケースを防ぐため、create直前に再確認する。
-            const dup = await base44.asServiceRole.entities.Race.filter({
-              race_date: raceDate,
-              venue_code: jcd,
-              race_number: Number(s.race_number),
-              data_source: 'official',
-            }, '-updated_date', 5).catch(() => []);
-            if (dup.length > 0) {
-              saved = await base44.asServiceRole.entities.Race.update(dup[0].id, data);
-              raceUpdated++;
-            } else {
-              saved = await base44.asServiceRole.entities.Race.create(data);
-              raceCreated++;
-            }
+
+      try {
+        // 重複Raceを場単位で事前正規化（前回の同時実行の残りを掃除）
+        await normalizeRaceDuplicatesForVenue(base44, raceDate, jcd);
+
+        const venueExisting = await base44.asServiceRole.entities.Race.filter(
+          { race_date: raceDate, venue_code: jcd, data_source: 'official' }, '-updated_date', 100
+        ).catch(() => []);
+        const existingNumbers = new Set(venueExisting.map(r => Number(r.race_number)));
+
+        for (const s of venue.schedule) {
+          const data = {
+            race_date: raceDate,
+            venue_code: jcd,
+            venue_name: venueName,
+            race_number: s.race_number,
+            deadline: s.deadline || null,
+            event_name: seriesCtx.event_name || null,
+            grade: seriesCtx.grade || 'GENERAL',
+            series_key: `${jcd}_${seriesCtx.series_start_date || raceDate}`,
+            series_start_date: seriesCtx.series_start_date || raceDate,
+            series_end_date: seriesCtx.series_end_date || raceDate,
+            series_total_days: seriesCtx.series_total_days || 1,
+            series_day: seriesCtx.series_day || 1,
+            is_final_day: seriesCtx.is_final_day === true,
+            status: 'scheduled',
+            data_source: 'official',
+            last_updated: new Date().toISOString(),
+          };
+          try {
+            const saved = await upsertRace(base44, data);
+            if (existingNumbers.has(Number(s.race_number))) raceUpdated++;
+            else raceCreated++;
+            allRaceRows.push(saved);
+          } catch (e) {
+            errors.push({ phase: 'race_upsert', jcd, race_number: s.race_number, message: e?.message || '保存失敗' });
           }
-          raceMap.set(key, saved);
-          allRaceRows.push(saved);
-        } catch (e) {
-          errors.push({ phase: 'race_upsert', jcd, race_number: s.race_number, message: e?.message || '保存失敗' });
         }
+      } finally {
+        await releaseVenueLock(base44, lock.lockId, 'done');
       }
     }
 
