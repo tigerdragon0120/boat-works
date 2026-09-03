@@ -166,17 +166,19 @@ export default async function(req) {
 
     // === RaceEntry（日付単位一括取得） ===
     const allEntries = await fetchAllByDate(sr, "RaceEntry", date, "boat_number");
-    const entriesByRace = {};
+    const entriesByKey = {};
     for (const e of allEntries) {
       if (!validRaceIds.has(e.race_id)) continue;
-      (entriesByRace[e.race_id] = entriesByRace[e.race_id] || []).push(e);
+      const raceKey = raceMap[e.race_id]?.race_key;
+      if (!raceKey) continue;
+      (entriesByKey[raceKey] = entriesByKey[raceKey] || []).push(e);
     }
 
-    // entry 整合性チェック + 出力構築
+    // entry 整合性チェック + 出力構築。duplicate Raceに分散した艇もrace_key単位で統合する。
     const entriesOut = [];
     for (const r of validRaces) {
       const raceKey = raceMap[r.id].race_key;
-      const raceEntries = entriesByRace[r.id] || [];
+      const raceEntries = entriesByKey[raceKey] || [];
       const seenBoats = new Set();
       const filtered = [];
       for (const e of raceEntries) {
@@ -218,25 +220,28 @@ export default async function(req) {
 
     // === UichiAnalysis（補助特徴量のみ・判定は含めない） ===
     const allAnalyses = await fetchAllByDate(sr, "UichiAnalysis", date, "-captured_at");
-    const analysisByRace = {};
+    const analysisByKey = {};
     for (const a of allAnalyses) {
       if (!validRaceIds.has(a.race_id)) continue;
-      const cur = analysisByRace[a.race_id];
+      const raceKey = raceMap[a.race_id]?.race_key;
+      if (!raceKey) continue;
+      const cur = analysisByKey[raceKey];
       const pri = STAGE_PRIORITY[a.stage] || 0;
       if (!cur) {
-        analysisByRace[a.race_id] = a;
+        analysisByKey[raceKey] = a;
       } else if (pri > (STAGE_PRIORITY[cur.stage] || 0)) {
-        analysisByRace[a.race_id] = a;
+        analysisByKey[raceKey] = a;
       } else if (pri === (STAGE_PRIORITY[cur.stage] || 0) &&
                  new Date(a.captured_at || 0) > new Date(cur.captured_at || 0)) {
-        analysisByRace[a.race_id] = a;
+        analysisByKey[raceKey] = a;
       }
     }
     const uichiOut = [];
     for (const r of validRaces) {
-      const a = analysisByRace[r.id];
+      const raceKey = raceMap[r.id].race_key;
+      const a = analysisByKey[raceKey];
       if (!a) continue;
-      uichiOut.push({ race_key: raceMap[r.id].race_key, ...pick(a, UICHI_FIELDS) });
+      uichiOut.push({ race_key: raceKey, ...pick(a, UICHI_FIELDS) });
     }
 
     // === SeriesRacerPoint（未来データ除外：snapshot_at <= race deadline の最新） ===
@@ -273,7 +278,7 @@ export default async function(req) {
       if (!r.series_key) continue;
       const raceKey = raceMap[r.id].race_key;
       const deadlineMs = r.deadline ? new Date(r.deadline).getTime() : Date.now();
-      const raceEntries = entriesByRace[r.id] || [];
+      const raceEntries = entriesByKey[raceKey] || [];
       for (const e of raceEntries) {
         if (!e.registration_number) continue;
         const snaps = seriesGroup[`${r.series_key}|${e.registration_number}`];
