@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { computeRaceAnalysis, shouldGenerateAlert, ANALYSIS_VERSION } from "../../shared/analysis.js";
+import { upsertUichiAnalysis } from "../../shared/analysisUpsert.js";
 
 // BOAT WORKS 翌日全場一括事前分析（集計Entityベース・v3）
 // RaceResult全件を読まず、RacerStats/RacerVenueStats/VenueRaceStats等から分析。
@@ -210,6 +211,19 @@ export default async function(req) {
             return;
           }
 
+          // 締切前に展示情報が未公開の場合、MISSINGのfinalを新規作成しない。
+          // 展示情報未公開：待機・再試行。次回巡回で展示が揃ったらfinalを作成する。
+          // MISSINGを確定保存してよいのは、締切後も公式情報が確認できなかった場合だけ。
+          if (stage === "final" && a.exhibition_gate_status === "MISSING" && !existingMap[r.id]) {
+            const deadlineMs = r.deadline ? new Date(r.deadline).getTime() : NaN;
+            const beforeDeadline = Number.isFinite(deadlineMs) && Date.now() < deadlineMs;
+            if (beforeDeadline) {
+              skipped++;
+              errorDetails.push({ race_id: r.id, venue_code: r.venue_code, race_number: r.race_number, phase: "exhibition_wait", message: "締切前・展示未公開のためfinal作成を待機" });
+              return;
+            }
+          }
+
           const payload = {
             race_id: r.id, race_date: r.race_date, venue_code: r.venue_code, venue_name: r.venue_name,
             race_number: r.race_number, stage,
@@ -277,34 +291,10 @@ export default async function(req) {
             total_pool: a.total_pool, valid_pool: a.valid_pool,
           };
 
-          if (existingMap[r.id]) {
-            // 一度展示取得済みでfinal確定した分析を、後続の一時的MISSINGで劣化させない。
-            const keepConfirmedFinal = stage === "final"
-              && existingMap[r.id].exhibition_ready === true
-              && payload.exhibition_ready !== true;
-            if (!keepConfirmedFinal) {
-              await base44.asServiceRole.entities.UichiAnalysis.update(existingMap[r.id].id, payload);
-            }
-          } else {
-            // 並列ワーカー対策。同じrace_id/stage/versionのcreate競合を防ぐため直前に再確認。
-            const dup = await base44.asServiceRole.entities.UichiAnalysis.filter({
-              race_id: r.id,
-              stage,
-              analysis_version: ANALYSIS_VERSION,
-            }, "-captured_at", 5).catch(() => []);
-            if (dup.length > 0) {
-              const keepConfirmedFinal = stage === "final"
-                && dup[0].exhibition_ready === true
-                && payload.exhibition_ready !== true;
-              if (!keepConfirmedFinal) {
-                await base44.asServiceRole.entities.UichiAnalysis.update(dup[0].id, payload);
-              }
-              existingMap[r.id] = dup[0];
-            } else {
-              const created = await base44.asServiceRole.entities.UichiAnalysis.create(payload);
-              existingMap[r.id] = created;
-            }
-          }
+          // 共通安全upsert経由で保存。
+          // 展示取得済みfinalの降格防止、post-create重複整理、保護フィールドのnull上書き防止を一元管理。
+          const saved = await upsertUichiAnalysis(base44, payload);
+          existingMap[r.id] = saved;
 
           // 学習用スナップショットはpreで元データまで固定。finalではEV/判定だけ追記する。
           const currentLearning = learningByRace[r.id];

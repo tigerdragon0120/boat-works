@@ -85,13 +85,27 @@ export default async function(req) {
           const data = res?.data || res;
           if (data?.status !== 'success') return null;
           const hasScratch = data?.has_scratch === true || (Array.isArray(data?.scratched_boats) && data.scratched_boats.length > 0);
-          return { id: r.id, hasScratch, alreadyDone, skippedSafety: false };
+
+          // 展示情報が実際に取得されたか確認。
+          // fetchRaceDataが成功しても展示情報が未公開の場合はfinalを作成せず次回巡回を待つ。
+          const exhibitionObtained = data?.exhibition_ready === true
+            || (Array.isArray(data?.entries) && data.entries.some((e:any) => e.exhibition_time != null || e.exhibition_st != null));
+
+          // すでに確定済みfinalがある場合は欠場確認のため再分析を許可。
+          // 未確定の場合は展示情報取得済みの時だけfinal生成へ進む。
+          if (!alreadyDone && !exhibitionObtained) {
+            return { id: r.id, hasScratch, alreadyDone, skippedSafety: false, exhibitionMissing: true };
+          }
+
+          return { id: r.id, hasScratch, alreadyDone, skippedSafety: false, exhibitionMissing: false };
         } catch {
           return null;
         }
       }));
       for (const item of result) {
         if (!item) { fetchErrors++; continue; }
+        // 展示情報未取得の未確定レースはfinalを作成せず次回巡回を待つ。
+        if (item.exhibitionMissing && !item.alreadyDone) continue;
         // 未判定レースは通常finalへ。確定済みは欠場時だけ再分析して強制SKIPへ更新する。
         if (!item.alreadyDone || item.hasScratch) oddsReadyIds.push(item.id);
         if (item.hasScratch) scratchDetectedIds.push(item.id);
