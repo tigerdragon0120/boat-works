@@ -23,7 +23,16 @@ export default async function(req) {
       .slice(0, limit);
 
     if (candidates.length === 0) {
-      return Response.json({ status: 'success', processed: 0, enriched: 0, errors: 0, message: '補完対象なし' });
+      // 旧1号艇詳細の補完対象が無い時も、過去フルスペックDBを止めない。
+      // 専用Workflowが何らかの理由で発火しなくても、この毎時Workerから過去へ進める。
+      let historical = null;
+      try {
+        const h = await base44.asServiceRole.functions.invoke('runHistoricalFullSpecBackfill', { limit: 2 });
+        historical = h?.data || h;
+      } catch (e:any) {
+        historical = { status: 'error', message: e?.message || String(e) };
+      }
+      return Response.json({ status: 'success', processed: 0, enriched: 0, errors: 0, message: '補完対象なし', historical_full_spec: historical });
     }
 
     let processed = 0, enriched = 0, errors = 0;
@@ -54,7 +63,17 @@ export default async function(req) {
       }
     }
 
-    return Response.json({ status: 'success', processed, enriched, errors, details });
+    // 専用Historical Full Spec Backfill Workflowだけに依存しない冗長経路。
+    // 毎時の既存Workerが動くたび、同じ「前線の日付」を最大2開催場だけ進める。
+    let historical = null;
+    try {
+      const h = await base44.asServiceRole.functions.invoke('runHistoricalFullSpecBackfill', { limit: 2 });
+      historical = h?.data || h;
+    } catch (e:any) {
+      historical = { status: 'error', message: e?.message || String(e) };
+    }
+
+    return Response.json({ status: 'success', processed, enriched, errors, details, historical_full_spec: historical });
   } catch (error:any) {
     return Response.json({ status: 'error', message: error.message }, { status: 500 });
   }
