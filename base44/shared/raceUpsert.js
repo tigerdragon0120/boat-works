@@ -1,12 +1,26 @@
-// BOAT WORKS Race一意性保証モジュール
+// BOAT WORKS Race一意性保証モジュール（安全版）
 // race_date + venue_code + race_number を論理一意キーとし、
 // すべてのRace作成をこのモジュール経由で安全に行う。
 //
 // Base44にはDBレベルのUNIQUE制約や原子upsertがないため、
 // 「find → update or create → post-create dedup」パターンで競合を吸収する。
-// 2ワーカーが同時にcreateしても、post-create再確認で必ず1件に正規化される。
+//
+// 【安全原則】
+// 1. RaceEntryは重複Race側を削除せず、正規Raceへ移行（艇番1-6で最も完全な1件を統合）
+// 2. 正規Raceは完成度スコアで選定（entries > analysis > alert > odds > メタデータ）
+// 3. 子データ移行に1件でも失敗があれば、重複Raceを削除しない
+// 4. exhibition_ready, beforeinfo_fetched_at, 展示情報, 結果情報をnullで上書きしない
+// 5. 削除後は正規RaceをDBから再取得して返す
 
 import { VENUE_NAMES } from './scraper.js';
+
+// Race更新時に上書き禁止のフィールド（既存値がnullでない場合）
+const PROTECTED_RACE_FIELDS = new Set([
+  'exhibition_ready', 'beforeinfo_fetched_at',
+  'weather', 'wind_dir', 'wind_speed', 'wave_height', 'air_temperature', 'water_temperature',
+  'result_trifecta', 'is_uichi', 'payout_trifecta', 'scratched_boats',
+  'entries_fetched_at', 'odds_fetched_at'
+]);
 
 const RACE_MERGE_FIELDS = [
   'race_name', 'grade', 'event_name', 'series_key', 'series_start_date',
@@ -17,8 +31,20 @@ const RACE_MERGE_FIELDS = [
   'is_uichi', 'payout_trifecta', 'last_updated', 'entries_fetched_at', 'odds_fetched_at'
 ];
 
+// RaceEntryの完全度比較用フィールド
+const ENTRY_COMPARE_FIELDS = [
+  'registration_number', 'racer_name', 'grade_class', 'branch', 'age', 'weight',
+  'national_win_rate', 'national_2rate', 'national_3rate',
+  'local_win_rate', 'local_2rate', 'local_3rate',
+  'c1_win_rate', 'c1_2rate', 'c1_3rate',
+  'avg_st', 'f_count', 'l_count',
+  'motor_number', 'motor_2rate', 'motor_3rate',
+  'boat_number_id', 'boat_2rate', 'boat_3rate',
+  'season_record', 'entry_course', 'exhibition_time', 'tilt',
+  'exhibition_st', 'exhibition_st_raw', 'exhibition_rank', 'is_scratched'
+];
+
 // Race完全度スコア（正規Race選定用）
-// RaceEntry揃い > 展示済み > 結果あり > メタデータ充実
 export function raceCompletenessScore(r, entryCount, analysisCount, alertCount, oddsCount) {
   let s = 0;
   s += (entryCount || 0) * 100;
@@ -33,77 +59,51 @@ export function raceCompletenessScore(r, entryCount, analysisCount, alertCount, 
   return s;
 }
 
-// 論理一意キーで既存Raceを検索
+function entryCompletenessScore(entry) {
+  let s = 0;
+  for (const f of ENTRY_COMPARE_FIELDS) {
+    if (entry?.[f] != null) s++;
+  }
+  return s;
+}
+
+// 論理一意キーで既存Raceを検索（sampleデータを除外、null/未設定のdata_sourceも含む）
 async function findRacesByLogicalKey(base44, raceDate, venueCode, raceNumber) {
   const jcd = String(venueCode).padStart(2, '0');
   return await base44.asServiceRole.entities.Race.filter({
     race_date: raceDate,
     venue_code: jcd,
     race_number: Number(raceNumber),
-    data_source: 'official'
+    data_source: { $ne: 'sample' }
   }, '-updated_date', 10).catch(() => []);
 }
 
-// 重複Raceの子データを正規Raceへ移行
-async function moveChildrenToCanonical(base44, canonicalId, dupIds, raceDate) {
-  if (!dupIds.length) return 0;
-  let moved = 0;
-
-  // RaceEntry: 正規側を保持、重複側は削除（再構築しない）
-  for (const id of dupIds) {
-    await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: id }).catch(() => {});
+// 安全な更新フィールド構築：nullで上書きしない、保護フィールドを尊重
+function filterSafeUpdateFields(existing, newData) {
+  const safe = {};
+  for (const [k, v] of Object.entries(newData || {})) {
+    if (v == null) continue;
+    if (PROTECTED_RACE_FIELDS.has(k) && existing?.[k] != null) continue;
+    if (k === 'status' && existing?.[k] === 'finished' && v !== 'finished') continue;
+    safe[k] = v;
   }
-
-  // その他の子データはrace_idを付け替え
-  for (const id of dupIds) {
-    const analyses = await base44.asServiceRole.entities.UichiAnalysis.filter({ race_id: id }, null, 100).catch(() => []);
-    for (const a of analyses) {
-      await base44.asServiceRole.entities.UichiAnalysis.update(a.id, { race_id: canonicalId }).catch(() => {});
-      moved++;
-    }
-    const alerts = await base44.asServiceRole.entities.Alert.filter({ race_id: id }, null, 10).catch(() => []);
-    for (const a of alerts) {
-      await base44.asServiceRole.entities.Alert.update(a.id, { race_id: canonicalId }).catch(() => {});
-      moved++;
-    }
-    const odds = await base44.asServiceRole.entities.OddsSnapshot.filter({ race_id: id }, null, 50).catch(() => []);
-    for (const o of odds) {
-      await base44.asServiceRole.entities.OddsSnapshot.update(o.id, { race_id: canonicalId }).catch(() => {});
-      moved++;
-    }
-    const results = await base44.asServiceRole.entities.RaceResult.filter({ race_id: id }, null, 10).catch(() => []);
-    for (const r of results) {
-      await base44.asServiceRole.entities.RaceResult.update(r.id, { race_id: canonicalId }).catch(() => {});
-      moved++;
-    }
-    const learning = await base44.asServiceRole.entities.UichiLearningSample.filter({ race_id: id }, null, 100).catch(() => []);
-    for (const l of learning) {
-      await base44.asServiceRole.entities.UichiLearningSample.update(l.id, { race_id: canonicalId }).catch(() => {});
-      moved++;
-    }
-  }
-
-  return moved;
+  return safe;
 }
 
 // 重複Raceの非null項目を正規Raceへマージ
 async function mergeRaceFields(base44, canonical, duplicates, newData) {
   const merged = {};
-  // newDataの非null項目を最優先
   for (const [k, v] of Object.entries(newData || {})) {
     if (v != null) merged[k] = v;
   }
-  // canonicalの既存項目を保持
   for (const k of RACE_MERGE_FIELDS) {
     if (merged[k] == null && canonical?.[k] != null) merged[k] = canonical[k];
   }
-  // 重複Raceから欠損項目を補完
   for (const r of duplicates) {
     for (const k of RACE_MERGE_FIELDS) {
       if (merged[k] == null && r?.[k] != null) merged[k] = r[k];
     }
   }
-  // 差分がある項目だけupdate
   const updateFields = {};
   for (const [k, v] of Object.entries(merged)) {
     if (canonical?.[k] !== v) updateFields[k] = v;
@@ -113,12 +113,94 @@ async function mergeRaceFields(base44, canonical, duplicates, newData) {
   }
 }
 
-// 重複グループを正規化：正規Race選定→子データ移行→重複削除
-async function deduplicateRaceGroup(base44, group, raceDate) {
-  if (group.length <= 1) return { deleted: 0, moved: 0 };
+// RaceEntryを正規Raceへ移行：艇番1-6ごとに最も完全な1件を選択し非null項目を統合
+async function migrateEntriesToCanonical(base44, canonicalId, dupIds, raceDate, jcd, raceNumber) {
+  const allIds = [canonicalId, ...dupIds];
+  const allEntries = [];
+  for (const id of allIds) {
+    const ents = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: id }, 'boat_number', 20).catch(() => []);
+    allEntries.push(...ents);
+  }
 
-  // 子データ数を取得してスコア計算
-  const canonicalId = group[0].id;
+  // 艇番ごとにグループ化
+  const byBoat = new Map();
+  for (const e of allEntries) {
+    const bn = Number(e.boat_number);
+    if (!bn || bn < 1 || bn > 6) continue;
+    if (!byBoat.has(bn)) byBoat.set(bn, []);
+    byBoat.get(bn).push(e);
+  }
+
+  // 各艇番について最も完全なエントリをベースに非null項目を統合
+  const mergedEntries = [];
+  for (let bn = 1; bn <= 6; bn++) {
+    const candidates = byBoat.get(bn) || [];
+    if (candidates.length === 0) continue;
+
+    candidates.sort((a, b) => entryCompletenessScore(b) - entryCompletenessScore(a));
+    const base = { ...candidates[0] };
+    delete base.id;
+    delete base.created_date;
+    delete base.updated_date;
+    delete base.created_by_id;
+
+    for (const c of candidates.slice(1)) {
+      for (const [k, v] of Object.entries(c)) {
+        if (['id', 'created_date', 'updated_date', 'created_by_id', 'race_id', 'race_date', 'venue_code', 'race_number'].includes(k)) continue;
+        if (base[k] == null && v != null) base[k] = v;
+      }
+    }
+
+    base.race_id = canonicalId;
+    base.race_date = raceDate;
+    base.venue_code = jcd;
+    base.race_number = raceNumber;
+    mergedEntries.push(base);
+  }
+
+  // 全Race IDのエントリを削除してから正規Raceへ再作成
+  for (const id of allIds) {
+    await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: id }).catch(() => {});
+  }
+  if (mergedEntries.length > 0) {
+    await base44.asServiceRole.entities.RaceEntry.bulkCreate(mergedEntries);
+  }
+
+  // 正規Raceに1-6号艇が各1件揃ったか再取得して確認
+  const verify = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: canonicalId }, 'boat_number', 20).catch(() => []);
+  const boatSet = new Set(verify.map(e => Number(e.boat_number)));
+  const complete = [1, 2, 3, 4, 5, 6].every(bn => boatSet.has(bn));
+
+  return { saved: mergedEntries.length, verified: verify.length, complete };
+}
+
+// その他の子データを正規Raceへ移行（race_id付け替え）
+async function migrateOtherChildren(base44, canonicalId, dupIds) {
+  let moved = 0, failed = 0;
+  const entityNames = ['UichiAnalysis', 'Alert', 'OddsSnapshot', 'RaceResult', 'UichiLearningSample'];
+
+  for (const entityName of entityNames) {
+    for (const id of dupIds) {
+      const children = await base44.asServiceRole.entities[entityName].filter({ race_id: id }, null, 100).catch(() => []);
+      for (const child of children) {
+        try {
+          await base44.asServiceRole.entities[entityName].update(child.id, { race_id: canonicalId });
+          moved++;
+        } catch {
+          failed++;
+        }
+      }
+    }
+  }
+
+  return { moved, failed };
+}
+
+// 重複グループを正規化：正規Race選定→子データ移行→移行成功確認→重複削除
+// 移行失敗が1件でもあれば重複Raceを削除しない
+async function deduplicateRaceGroup(base44, group, raceDate) {
+  if (group.length <= 1) return { deleted: 0, moved: 0, failed: 0, entry_complete: true };
+
   const allIds = group.map(r => r.id);
   const [entries, analyses, alerts, odds] = await Promise.all([
     base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, 'boat_number', 5000).catch(() => []),
@@ -126,6 +208,7 @@ async function deduplicateRaceGroup(base44, group, raceDate) {
     base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, '-updated_date', 5000).catch(() => []),
     base44.asServiceRole.entities.OddsSnapshot.filter({ race_date: raceDate }, '-captured_at', 5000).catch(() => []),
   ]);
+
   const entryCount = new Map();
   for (const e of entries) entryCount.set(e.race_id, (entryCount.get(e.race_id) || 0) + 1);
   const analysisCount = new Map();
@@ -135,6 +218,7 @@ async function deduplicateRaceGroup(base44, group, raceDate) {
   const oddsCount = new Map();
   for (const o of odds) oddsCount.set(o.race_id, (oddsCount.get(o.race_id) || 0) + 1);
 
+  // 完成度スコアで正規Raceを選定
   const sorted = [...group].sort((a, b) =>
     raceCompletenessScore(b, entryCount.get(b.id), analysisCount.get(b.id), alertCount.get(b.id), oddsCount.get(b.id)) -
     raceCompletenessScore(a, entryCount.get(a.id), analysisCount.get(a.id), alertCount.get(a.id), oddsCount.get(a.id))
@@ -143,21 +227,35 @@ async function deduplicateRaceGroup(base44, group, raceDate) {
   const dups = sorted.slice(1);
   const dupIds = dups.map(r => r.id);
 
+  // Race本体の非null項目を正規Raceへ補完
   await mergeRaceFields(base44, canonical, dups, {});
-  const moved = await moveChildrenToCanonical(base44, canonical.id, dupIds, raceDate);
 
+  // RaceEntryを正規Raceへ移行
+  const jcd = String(canonical.venue_code).padStart(2, '0');
+  const entryResult = await migrateEntriesToCanonical(base44, canonical.id, dupIds, raceDate, jcd, Number(canonical.race_number));
+
+  // その他の子データを移行
+  const childResult = await migrateOtherChildren(base44, canonical.id, dupIds);
+  let moved = childResult.moved;
+  let failed = childResult.failed;
+
+  // 移行失敗が0件かつエントリ完全の場合のみ重複Raceを削除
   let deleted = 0;
-  for (const d of dups) {
-    await base44.asServiceRole.entities.Race.delete(d.id).catch(() => {});
-    deleted++;
+  if (failed === 0 && entryResult.complete) {
+    for (const d of dups) {
+      try {
+        await base44.asServiceRole.entities.Race.delete(d.id);
+        deleted++;
+      } catch {
+        failed++;
+      }
+    }
   }
 
-  return { deleted, moved };
+  return { deleted, moved, failed, entry_complete: entryResult.complete, entry_saved: entryResult.saved };
 }
 
 // === メインAPI: 安全なRace upsert ===
-// すべてのRace作成箇所から呼ばれる共通関数。
-// 既存Raceがあれば更新、なければ作成、作成後に重複があれば即座に正規化。
 export async function upsertRace(base44, raceData) {
   const raceDate = raceData.race_date;
   const jcd = String(raceData.venue_code).padStart(2, '0');
@@ -167,20 +265,28 @@ export async function upsertRace(base44, raceData) {
   let existing = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
 
   if (existing.length >= 1) {
-    const canonical = existing[0];
-    const updated = await base44.asServiceRole.entities.Race.update(canonical.id, raceData);
-
-    // 既存の重複があれば即座に正規化
-    if (existing.length > 1) {
-      const dups = existing.slice(1);
-      const dupIds = dups.map(r => r.id);
-      await mergeRaceFields(base44, canonical, dups, raceData);
-      await moveChildrenToCanonical(base44, canonical.id, dupIds, raceDate);
-      for (const d of dups) {
-        await base44.asServiceRole.entities.Race.delete(d.id).catch(() => {});
+    // 完成度スコアで正規Raceを選定（updated_date順ではない）
+    if (existing.length === 1) {
+      const canonical = existing[0];
+      const safeData = filterSafeUpdateFields(canonical, raceData);
+      if (Object.keys(safeData).length > 0) {
+        await base44.asServiceRole.entities.Race.update(canonical.id, safeData);
       }
+      // DBから再取得して返す
+      return await base44.asServiceRole.entities.Race.get(canonical.id);
     }
-    return updated;
+
+    // 複数既存 → 正規化してから正規Raceを返す
+    await deduplicateRaceGroup(base44, existing, raceDate);
+    const refetched = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+    if (refetched.length > 0) {
+      const canonical = refetched[0];
+      const safeData = filterSafeUpdateFields(canonical, raceData);
+      if (Object.keys(safeData).length > 0) {
+        await base44.asServiceRole.entities.Race.update(canonical.id, safeData);
+      }
+      return await base44.asServiceRole.entities.Race.get(canonical.id);
+    }
   }
 
   // 2. 新規作成
@@ -194,23 +300,18 @@ export async function upsertRace(base44, raceData) {
   }
 
   // 4. 競合発生 → 正規化
-  const result = await deduplicateRaceGroup(base44, postCheck, raceDate);
-  const canonical = postCheck.find(r => r.id !== created.id) ? postCheck.sort((a, b) => raceCompletenessScore(b) - raceCompletenessScore(a))[0] : created;
+  await deduplicateRaceGroup(base44, postCheck, raceDate);
 
-  // 自分が作成したRaceが正規でなければ、正規Raceを返す
-  if (canonical.id !== created.id) {
-    // 作成したRaceが削除された場合、正規RaceにnewDataを反映済み
-    return canonical;
-  }
-  return created;
+  // 5. 正規RaceをDBから再取得して返す
+  const finalCheck = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+  return finalCheck[0] || created;
 }
 
 // === 場単位の重複Race正規化 ===
-// 収集処理完了後や重複整理後に呼び出し、実データから正規化する。
 export async function normalizeRaceDuplicatesForVenue(base44, raceDate, venueCode) {
   const jcd = String(venueCode).padStart(2, '0');
   const races = await base44.asServiceRole.entities.Race.filter({
-    race_date: raceDate, venue_code: jcd, data_source: 'official'
+    race_date: raceDate, venue_code: jcd, data_source: { $ne: 'sample' }
   }, '-updated_date', 100).catch(() => []);
 
   const groups = new Map();
@@ -220,22 +321,23 @@ export async function normalizeRaceDuplicatesForVenue(base44, raceDate, venueCod
     groups.get(key).push(r);
   }
 
-  let totalDeleted = 0, totalMoved = 0, dupGroups = 0;
+  let totalDeleted = 0, totalMoved = 0, totalFailed = 0, dupGroups = 0;
   for (const group of groups.values()) {
     if (group.length <= 1) continue;
     dupGroups++;
     const result = await deduplicateRaceGroup(base44, group, raceDate);
     totalDeleted += result.deleted;
     totalMoved += result.moved;
+    totalFailed += result.failed;
   }
 
-  return { duplicate_groups: dupGroups, races_deleted: totalDeleted, children_moved: totalMoved };
+  return { duplicate_groups: dupGroups, races_deleted: totalDeleted, children_moved: totalMoved, children_failed: totalFailed };
 }
 
 // === 日付全体の重複Race正規化 ===
 export async function normalizeRaceDuplicatesForDate(base44, raceDate) {
   const races = await base44.asServiceRole.entities.Race.filter({
-    race_date: raceDate, data_source: 'official'
+    race_date: raceDate, data_source: { $ne: 'sample' }
   }, '-updated_date', 500).catch(() => []);
 
   const groups = new Map();
@@ -245,14 +347,15 @@ export async function normalizeRaceDuplicatesForDate(base44, raceDate) {
     groups.get(key).push(r);
   }
 
-  let totalDeleted = 0, totalMoved = 0, dupGroups = 0;
+  let totalDeleted = 0, totalMoved = 0, totalFailed = 0, dupGroups = 0;
   for (const group of groups.values()) {
     if (group.length <= 1) continue;
     dupGroups++;
     const result = await deduplicateRaceGroup(base44, group, raceDate);
     totalDeleted += result.deleted;
     totalMoved += result.moved;
+    totalFailed += result.failed;
   }
 
-  return { duplicate_groups: dupGroups, races_deleted: totalDeleted, children_moved: totalMoved };
+  return { duplicate_groups: dupGroups, races_deleted: totalDeleted, children_moved: totalMoved, children_failed: totalFailed };
 }

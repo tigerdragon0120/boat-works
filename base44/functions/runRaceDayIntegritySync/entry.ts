@@ -1,7 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { ALL_VENUE_JCDS, VENUE_NAMES, parseDaySchedule, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from '../../shared/scraper.js';
-import { upsertRace, normalizeRaceDuplicatesForVenue } from '../../shared/raceUpsert.js';
+import { upsertRace, normalizeRaceDuplicatesForVenue, normalizeRaceDuplicatesForDate } from '../../shared/raceUpsert.js';
 import { acquireVenueLock, heartbeatVenueLock, releaseVenueLock } from '../../shared/venueLock.js';
+import { recalcAllVenuesForDate } from '../../shared/venueReadiness.js';
 
 // BOAT WORKS 当日/翌日の自己修復同期
 // - トップページの開催場一覧だけを信用せず、24場の raceindex を直接確認
@@ -142,91 +143,6 @@ async function normalizeLogicalChildren(base44, raceDate) {
     alerts:{ rows:alerts.length, deleted:alertsDeleted, relinked:alertsRelinked },
     learning:{ rows:learning.length, deleted:learningDeleted, relinked:learningRelinked },
   };
-}
-
-function completenessScore(r, entryCount, analysisCount, alertCount, oddsCount) {
-  let s = (entryCount || 0) * 100 + (analysisCount || 0) * 30 + (alertCount || 0) * 20 + (oddsCount || 0) * 5;
-  for (const k of ['entries_fetched_at','event_name','series_key','series_start_date','series_end_date','series_day','race_phase','deadline','beforeinfo_fetched_at']) {
-    if (r?.[k] != null) s += 3;
-  }
-  if (r?.exhibition_ready === true) s += 20;
-  if (r?.status === 'finished') s += 10;
-  return s;
-}
-
-async function normalizeDuplicateRaces(base44, raceDate) {
-  const races = await base44.asServiceRole.entities.Race.filter({ race_date: raceDate, data_source: 'official' }, '-updated_date', 500).catch(() => []);
-  const groups = new Map();
-  for (const r of races) {
-    const key = `${String(r.venue_code).padStart(2,'0')}_${Number(r.race_number)}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  }
-  const dupGroups = [...groups.values()].filter(g => g.length > 1);
-  if (!dupGroups.length) return { duplicate_groups:0, races_deleted:0, children_moved:0 };
-
-  const [entries, analyses, alerts, odds, results, learning] = await Promise.all([
-    base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, 'boat_number', 5000).catch(()=>[]),
-    base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(()=>[]),
-    base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
-    base44.asServiceRole.entities.OddsSnapshot.filter({ race_date: raceDate }, '-captured_at', 5000).catch(()=>[]),
-    base44.asServiceRole.entities.RaceResult.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
-    base44.asServiceRole.entities.UichiLearningSample.filter({ race_date: raceDate }, '-updated_date', 5000).catch(()=>[]),
-  ]);
-  const countBy = (rows) => {
-    const m = new Map();
-    for (const x of rows) m.set(x.race_id, (m.get(x.race_id)||0)+1);
-    return m;
-  };
-  const ec=countBy(entries), ac=countBy(analyses), alc=countBy(alerts), oc=countBy(odds);
-  let racesDeleted=0, childrenMoved=0;
-
-  for (const group of dupGroups) {
-    const sorted=[...group].sort((a,b)=>
-      completenessScore(b,ec.get(b.id),ac.get(b.id),alc.get(b.id),oc.get(b.id)) - completenessScore(a,ec.get(a.id),ac.get(a.id),alc.get(a.id),oc.get(a.id))
-    );
-    const canonical=sorted[0];
-    const dupIds=sorted.slice(1).map(r=>r.id);
-    const allIds=new Set(group.map(r=>r.id));
-
-    // Race本体は、各重複レコードの非null値を正規Raceへ補完する。
-    const merged:any = {};
-    const mergeFields=['race_name','grade','event_name','series_key','series_start_date','series_end_date','series_total_days','series_day','is_final_day','race_phase','deadline','time_slot','weather','wind_dir','wind_speed','wave_height','air_temperature','water_temperature','beforeinfo_fetched_at','exhibition_ready','scratched_boats','status','result_trifecta','is_uichi','payout_trifecta','last_updated','entries_fetched_at','odds_fetched_at'];
-    for (const f of mergeFields) {
-      for (const r of sorted) { if (r?.[f] != null) { merged[f]=r[f]; break; } }
-    }
-    if (Object.keys(merged).length) await base44.asServiceRole.entities.Race.update(canonical.id, merged);
-
-    // 正規Raceはスコア上、6艇揃ったレコードが最優先になる。
-    // RaceEntryは正規側をそのまま保持し、重複Race側だけ削除する。再構築による検証エラーを避ける。
-    for (const id of dupIds) {
-      try { await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id:id }); } catch {}
-    }
-
-    // 子データは消さず、重複Race IDから正規Race IDへ付け替える。
-    // 個別失敗があってもRace全体の正規化を止めない。
-    for (const a of analyses.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
-      try { await base44.asServiceRole.entities.UichiAnalysis.update(a.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
-    }
-    for (const a of alerts.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
-      try { await base44.asServiceRole.entities.Alert.update(a.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
-    }
-    for (const o of odds.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
-      try { await base44.asServiceRole.entities.OddsSnapshot.update(o.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
-    }
-    for (const r of results.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
-      try { await base44.asServiceRole.entities.RaceResult.update(r.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
-    }
-    for (const l of learning.filter(x=>allIds.has(x.race_id) && x.race_id!==canonical.id)) {
-      try { await base44.asServiceRole.entities.UichiLearningSample.update(l.id,{ race_id:canonical.id }); childrenMoved++; } catch {}
-    }
-
-    // 最後に重複Race本体を削除。子データ移動の一部が失敗しても、表示・収集判定を壊す重複Raceを優先して除去する。
-    for (const id of dupIds) {
-      try { await base44.asServiceRole.entities.Race.delete(id); racesDeleted++; } catch {}
-    }
-  }
-  return { duplicate_groups:dupGroups.length, races_deleted:racesDeleted, children_moved:childrenMoved };
 }
 
 export default async function(req) {
