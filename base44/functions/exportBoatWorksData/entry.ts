@@ -117,13 +117,14 @@ export default async function(req) {
     const races = await fetchAllByDate(sr, "Race", date, "race_number");
     const officialRaces = races.filter(r => r.data_source === "official");
 
-    // race_key 生成 + 整合性チェック
-    const raceMap = {};       // race_id -> { race, race_key }
+    // race_key 生成 + 整合性チェック。
+    // DB側に同一日・同一場・同一Rの重複が残っていても、exportでは1レースに正規化する。
+    // ただし子データが古い重複Race ID側に紐づいている可能性があるため、全duplicate IDを同じrace_keyへマップする。
+    const raceMap = {};       // race_id -> { race: canonicalRace, race_key }
     const validRaceIds = new Set();
-    const seenRaceKeys = new Set();
+    const logicalGroups = new Map();
     for (const r of officialRaces) {
       const raceKey = raceKeyOf(r);
-      // venue_code / venue_name 整合性（公式コード前提）
       const vc = String(r.venue_code);
       const expectedName = VENUE_NAMES[vc] || VENUE_NAMES[vc.padStart(2, "0")];
       if (!expectedName || expectedName !== r.venue_name) {
@@ -133,18 +134,35 @@ export default async function(req) {
         });
         continue;
       }
-      if (seenRaceKeys.has(raceKey)) {
-        errors.push({ race_id: r.id, race_key: raceKey, type: "duplicate_race_key", message: "race_key already exists" });
-        continue;
-      }
-      seenRaceKeys.add(raceKey);
       if (r.race_number < 1 || r.race_number > 12) {
         warnings.push({ race_key: raceKey, type: "race_number_out_of_range", message: `race_number=${r.race_number}` });
       }
-      raceMap[r.id] = { race: r, race_key: raceKey };
-      validRaceIds.add(r.id);
+      if (!logicalGroups.has(raceKey)) logicalGroups.set(raceKey, []);
+      logicalGroups.get(raceKey).push(r);
     }
-    const validRaces = Object.values(raceMap).map(x => x.race);
+
+    const validRaces = [];
+    for (const [raceKey, group] of logicalGroups.entries()) {
+      // 情報量が多いRaceを正規行として出力。並びが同点なら更新日時が新しい方。
+      const richness = (r) => [
+        "race_name","grade","event_name","series_key","series_start_date","series_end_date","series_day",
+        "race_phase","deadline","beforeinfo_fetched_at","entries_fetched_at","odds_fetched_at",
+      ].reduce((n, k) => n + (r?.[k] != null ? 1 : 0), 0) + (r?.exhibition_ready === true ? 3 : 0);
+      const sorted = [...group].sort((a, b) => {
+        const d = richness(b) - richness(a);
+        if (d) return d;
+        return String(b.updated_date || b.last_updated || "").localeCompare(String(a.updated_date || a.last_updated || ""));
+      });
+      const canonical = sorted[0];
+      validRaces.push(canonical);
+      for (const r of group) {
+        raceMap[r.id] = { race: canonical, race_key: raceKey };
+        validRaceIds.add(r.id);
+      }
+      if (group.length > 1) {
+        warnings.push({ race_key: raceKey, type: "duplicate_race_key_normalized", message: `${group.length}件を1レースとして出力` });
+      }
+    }
 
     // === RaceEntry（日付単位一括取得） ===
     const allEntries = await fetchAllByDate(sr, "RaceEntry", date, "boat_number");
