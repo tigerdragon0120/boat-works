@@ -69,12 +69,12 @@ function raceKeyOf(r) {
 }
 
 // 日付単位でまとめて取得（ページネーション付き・N+1回避）
-async function fetchAllByDate(sr, entityName, date, sort) {
+async function fetchAllByDate(sr, entityName, date, sort, extraQuery = {}) {
   let all = [];
   let skip = 0;
   const pageSize = 500;
   while (true) {
-    const batch = await sr[entityName].filter({ race_date: date }, sort, pageSize, skip).catch(() => []);
+    const batch = await sr[entityName].filter({ race_date: date, ...extraQuery }, sort, pageSize, skip).catch(() => []);
     if (!batch || batch.length === 0) break;
     all = all.concat(batch);
     if (batch.length < pageSize) break;
@@ -112,9 +112,20 @@ export default async function(req) {
     const sr = base44.asServiceRole.entities;
     const warnings = [];
     const errors = [];
+    const venueCodeParam = url.searchParams.get("venue_code");
+    const venueCode = venueCodeParam ? String(venueCodeParam).padStart(2, "0") : null;
+    const manifestOnly = url.searchParams.get("manifest") === "1";
+
+    // 軽量manifest: 開催場一覧だけ返す。BOAT WORKS 2が場単位で分割同期するために使用。
+    if (manifestOnly) {
+      const manifestRaces = await fetchAllByDate(sr, "Race", date, "race_number");
+      const official = manifestRaces.filter(r => r.data_source === "official");
+      const venue_codes = [...new Set(official.map(r => String(r.venue_code).padStart(2, "0")))].sort();
+      return Response.json({ status: "success", date, generated_at: new Date().toISOString(), venue_codes, race_count: official.length });
+    }
 
     // === Races (official only) ===
-    const races = await fetchAllByDate(sr, "Race", date, "race_number");
+    const races = await fetchAllByDate(sr, "Race", date, "race_number", venueCode ? { venue_code: venueCode } : {});
     const officialRaces = races.filter(r => r.data_source === "official");
 
     // race_key 生成 + 整合性チェック。
@@ -165,7 +176,7 @@ export default async function(req) {
     }
 
     // === RaceEntry（日付単位一括取得） ===
-    const allEntries = await fetchAllByDate(sr, "RaceEntry", date, "boat_number");
+    const allEntries = await fetchAllByDate(sr, "RaceEntry", date, "boat_number", venueCode ? { venue_code: venueCode } : {});
     const entriesByKey = {};
     for (const e of allEntries) {
       if (!validRaceIds.has(e.race_id)) continue;
@@ -202,7 +213,7 @@ export default async function(req) {
     }
 
     // === RaceResult（結果確定済みのみ） ===
-    const allResults = await fetchAllByDate(sr, "RaceResult", date, "race_number");
+    const allResults = await fetchAllByDate(sr, "RaceResult", date, "race_number", venueCode ? { venue_code: venueCode } : {});
     const resultsOut = [];
     for (const r of allResults) {
       if (!validRaceIds.has(r.race_id)) continue;
@@ -219,7 +230,7 @@ export default async function(req) {
     }
 
     // === UichiAnalysis（補助特徴量のみ・判定は含めない） ===
-    const allAnalyses = await fetchAllByDate(sr, "UichiAnalysis", date, "-captured_at");
+    const allAnalyses = await fetchAllByDate(sr, "UichiAnalysis", date, "-captured_at", venueCode ? { venue_code: venueCode } : {});
     const analysisByKey = {};
     for (const a of allAnalyses) {
       if (!validRaceIds.has(a.race_id)) continue;
