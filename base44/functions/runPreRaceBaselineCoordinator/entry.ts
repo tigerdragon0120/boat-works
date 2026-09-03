@@ -149,13 +149,27 @@ export default async function(req) {
       let collectionCompletedAt=existing?.collection_completed_at || null;
       const notes=[];
 
+      // readinessの時刻保存に失敗していても、展示情報を一切含まないpre分析が12R分すでに存在するなら
+      // それ自体を正式な「展示前基準点」として復元する。後から展示が始まっただけでLATE_BASELINEに落とさない。
+      const venuePreRows=preAnalyses.filter(a=>String(a.venue_code).padStart(2,'0')===jcd && a.stage==='pre');
+      const cleanPreByRace=new Map();
+      for (const a of venuePreRows) {
+        const isCleanPre=a.exhibition_ready!==true && a.exhibition_time==null && a.exhibition_st==null;
+        if (isCleanPre && a.race_id && !cleanPreByRace.has(a.race_id)) cleanPreByRace.set(a.race_id,a);
+      }
+      const completeCleanBaseline=venueRaces.length===expected && venueRaces.every(r=>cleanPreByRace.has(r.id));
+      if (!baselineCapturedAt && completeCleanBaseline) {
+        const times=venueRaces.map(r=>cleanPreByRace.get(r.id)?.captured_at || cleanPreByRace.get(r.id)?.analyzed_at).filter(Boolean).sort();
+        baselineCapturedAt=times[times.length-1] || new Date().toISOString();
+      }
+
       if (collectionComplete && !collectionCompletedAt) collectionCompletedAt=new Date().toISOString();
       if (!collectionComplete) status='WAITING';
-      else if (!baselineCapturedAt && exhibitionAlreadyStarted) {
+      else if (baselineCapturedAt) status='BASELINE_CAPTURED';
+      else if (exhibitionAlreadyStarted) {
         status='LATE_BASELINE';
         notes.push('展示情報が入る前の完全基準点を作れなかったため、この場は前日アラート対象外');
-      } else if (baselineCapturedAt) status='BASELINE_CAPTURED';
-      else status='COMPLETE';
+      } else status='COMPLETE';
 
       // 全12RのRaceに場区分を付与。モーニング/通常/ナイターを後続処理でも利用する。
       for (const r of venueRaces) {
