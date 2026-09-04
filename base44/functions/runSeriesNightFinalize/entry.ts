@@ -89,8 +89,23 @@ export default async function(req) {
         const scheduled = await base44.asServiceRole.entities.Race.filter({ race_date:raceDate, venue_code:row.jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
         const cancelledCount = scheduled.filter(x=>x.status==='cancelled').length;
         const expected=Math.max(0,scheduled.length-cancelledCount);
-        const r=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:raceDate,jcd:row.jcd});
-        const result=r?.data||r;
+
+        // まず現状のRaceResult保存件数を確認する。
+        // 既に結果が十分保存されているなら、fetchHistoricalResultsを再実行しない。
+        // （再実行してそれが今度はタイムアウトすると、既に成功しているFetchProgressの
+        //   'done'状態を'error'で不必要に上書きしてしまうため）
+        const existingDetailRows = await base44.asServiceRole.entities.RaceResult.filter({ race_date:raceDate, venue_code:row.jcd, data_source:'official' }, 'race_number', 50).catch(()=>[]);
+        const resultsAlreadySaved = expected > 0 && existingDetailRows.length >= expected;
+
+        let result = row.result;
+        if (!resultsAlreadySaved) {
+          const r=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:raceDate,jcd:row.jcd});
+          result=r?.data||r;
+        }
+
+        // detail（1レースずつの詳細取得）は、結果保存の有無にかかわらず不足分だけ再試行する。
+        // enrichRaceResultDetails自体が内部で失敗レースを1回再試行するようになったため、
+        // ここでは force:true で未取得分のみを対象にする。
         const d=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:raceDate,jcd:row.jcd,force:true});
         const detail=d?.data||d;
         let beforeinfoRestored=0, beforeinfoErrors=0;
@@ -131,6 +146,31 @@ export default async function(req) {
       await sleep(200);
     }
 
+    // === 仕上げ: 結果は保存済みなのにRace.statusがfinishedになっていないレースを自動修復 ===
+    // enrichRaceResultDetailsが最終的にも失敗し続けた場合の保険。
+    // 3連単・払戻金が確定しているのに表示上「開催予定」のまま残るのを防ぐ。
+    let staleFixed = 0;
+    try {
+      const allResultsToday = await base44.asServiceRole.entities.RaceResult.filter({ race_date:raceDate, data_source:'official' }, 'race_number', 3000).catch(()=>[]);
+      for (const rr of allResultsToday) {
+        if (!rr.trifecta || !rr.payout_trifecta) continue;
+        const jcd = String(rr.venue_code).padStart(2,'0');
+        const races = await base44.asServiceRole.entities.Race.filter({
+          race_date: raceDate, venue_code: jcd, race_number: Number(rr.race_number), data_source: 'official',
+        }, '-created_date', 5).catch(()=>[]);
+        const race = races[0];
+        if (race && race.status !== 'finished') {
+          await base44.asServiceRole.entities.Race.update(race.id, {
+            status: 'finished',
+            result_trifecta: rr.trifecta,
+            payout_trifecta: rr.payout_trifecta,
+            last_updated: new Date().toISOString(),
+          });
+          staleFixed++;
+        }
+      }
+    } catch {}
+
     for (const r of outputs) {
       if (r.status==='complete') complete++;
       else if (r.status==='partial') partial++;
@@ -139,6 +179,7 @@ export default async function(req) {
     return Response.json({
       status:error===0&&partial===0?'complete':'partial',
       race_date:raceDate, venues:venues.length, complete, partial, errors:error,
+      stale_race_status_fixed: staleFixed,
       venues_detail:outputs,
       elapsed_ms:Date.now()-t0,
     });
