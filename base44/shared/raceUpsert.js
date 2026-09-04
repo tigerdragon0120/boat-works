@@ -295,19 +295,22 @@ export async function upsertRace(base44, raceData) {
   // 2. 新規作成
   const created = await base44.asServiceRole.entities.Race.create(raceData);
 
-  // 3. post-create再確認（TOCTOU競合検出）
-  const postCheck = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
-
-  if (postCheck.length <= 1) {
-    return created;
+  // 3. post-create再確認（TOCTOU競合 + eventual consistency対策）
+  // 同時ワーカーが数十〜数百ms差でcreateした場合、直後の1回検索では相手側が見えないことがある。
+  // 少し待って複数回確認し、見えた重複はその場で必ず正規化する。
+  let finalRows = [created];
+  for (const waitMs of [0, 180, 420, 900]) {
+    if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+    const rows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+    if (rows.length > 1) {
+      await deduplicateRaceGroup(base44, rows, raceDate);
+    }
+    finalRows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+    if (finalRows.length === 1 && waitMs >= 420) break;
   }
 
-  // 4. 競合発生 → 正規化
-  await deduplicateRaceGroup(base44, postCheck, raceDate);
-
-  // 5. 正規RaceをDBから再取得して返す
-  const finalCheck = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
-  return finalCheck[0] || created;
+  // 4. 正規RaceをDBから再取得して返す
+  return finalRows[0] || created;
 }
 
 // === 場単位の重複Race正規化 ===
