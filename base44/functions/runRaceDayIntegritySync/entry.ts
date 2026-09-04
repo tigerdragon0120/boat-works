@@ -56,13 +56,46 @@ async function normalizeLogicalChildren(base44, raceDate) {
     canonicalByLogical.set(`${String(r.venue_code).padStart(2,'0')}_${Number(r.race_number)}`, r);
   }
 
-  const [analyses, alerts, learning] = await Promise.all([
+  const [analyses, alerts, learning, raceEntries] = await Promise.all([
     base44.asServiceRole.entities.UichiAnalysis.filter({ race_date: raceDate }, '-captured_at', 5000).catch(() => []),
     base44.asServiceRole.entities.Alert.filter({ race_date: raceDate }, '-updated_date', 5000).catch(() => []),
     base44.asServiceRole.entities.UichiLearningSample.filter({ race_date: raceDate }, '-updated_at', 5000).catch(() => []),
+    base44.asServiceRole.entities.RaceEntry.filter({ race_date: raceDate }, 'boat_number', 5000).catch(() => []),
   ]);
 
   let analysesDeleted=0, analysesRelinked=0, alertsDeleted=0, alertsRelinked=0, learningDeleted=0, learningRelinked=0;
+  let entriesDeleted=0, entriesRelinked=0;
+
+  // RaceEntry: 日付+場+R+艇番で1件に統一し、削除済みRaceを指す孤立Entryを正規Raceへ寄せる。
+  // 展示情報を持つ行を優先して残し、同点なら情報量が多い方を残す。
+  const entryScore = (e:any) => {
+    let s = 0;
+    for (const k of ['registration_number','racer_name','grade_class','avg_st','motor_number','motor_2rate','boat_number_id','boat_2rate','entry_course','exhibition_time','exhibition_st','exhibition_rank','tilt']) {
+      if (e?.[k] != null) s++;
+    }
+    if (e?.exhibition_time != null || e?.exhibition_st != null || e?.entry_course != null) s += 20;
+    return s;
+  };
+  const entryGroups = new Map();
+  for (const e of raceEntries) {
+    const logical = `${String(e.venue_code).padStart(2,'0')}_${Number(e.race_number)}`;
+    const key = `${logical}_${Number(e.boat_number)}`;
+    if (!entryGroups.has(key)) entryGroups.set(key, []);
+    entryGroups.get(key).push(e);
+  }
+  for (const [key, group] of entryGroups.entries()) {
+    const logical = key.split('_').slice(0,2).join('_');
+    const canonical = canonicalByLogical.get(logical);
+    if (!canonical) continue;
+    group.sort((a,b) => entryScore(b) - entryScore(a));
+    const keep = group[0];
+    if (keep.race_id !== canonical.id) {
+      try { await base44.asServiceRole.entities.RaceEntry.update(keep.id,{ race_id:canonical.id }); entriesRelinked++; } catch {}
+    }
+    for (const extra of group.slice(1)) {
+      try { await base44.asServiceRole.entities.RaceEntry.delete(extra.id); entriesDeleted++; } catch {}
+    }
+  }
 
   // UichiAnalysis: 日付+場+R+stage+versionで必ず1件。
   const analysisGroups = new Map();
@@ -142,6 +175,7 @@ async function normalizeLogicalChildren(base44, raceDate) {
     analyses:{ rows:analyses.length, deleted:analysesDeleted, relinked:analysesRelinked },
     alerts:{ rows:alerts.length, deleted:alertsDeleted, relinked:alertsRelinked },
     learning:{ rows:learning.length, deleted:learningDeleted, relinked:learningRelinked },
+    entries:{ rows:raceEntries.length, deleted:entriesDeleted, relinked:entriesRelinked },
   };
 }
 
