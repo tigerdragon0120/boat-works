@@ -51,6 +51,9 @@
     "error_msg": {
       "type": "string"
     },
+    "lock_owner": {
+      "type": "string"
+    },
     "processed_at": {
       "type": "string",
       "format": "date-time"
