@@ -239,9 +239,12 @@ async function deduplicateRaceGroup(base44, group, raceDate) {
   let moved = childResult.moved;
   let failed = childResult.failed;
 
-  // 移行失敗が0件かつエントリ完全の場合のみ重複Raceを削除
+  // 子データ移行に失敗がなければ重複Raceを削除する。
+  // 出走表取得前はRaceEntryが0件/未完成でも正常なため、entry_completeを削除条件にすると
+  // 同時実行で生まれた空Raceが残り続ける。利用可能なRaceEntryは上で正規Raceへ統合済みなので、
+  // 完全性は後続のintegrity workerで補修し、重複本体はここで確実に除去する。
   let deleted = 0;
-  if (failed === 0 && entryResult.complete) {
+  if (failed === 0) {
     for (const d of dups) {
       try {
         await base44.asServiceRole.entities.Race.delete(d.id);
