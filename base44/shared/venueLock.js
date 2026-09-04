@@ -3,11 +3,15 @@
 // FetchProgressエンティティをロックホルダーとして使用し、
 // last_heartbeatでTTL管理（5分）を行う。
 // 異常終了しても5分後に自動解放され、永久ロックにならない。
+//
+// ロック保持者は専用フィールド lock_owner に記録する（error_msgとは分離）。
+// 以前は error_msg に "lock:workerName" を書き込んで流用していたが、
+// これは fetchHistoricalResults などが書き込む本物のエラー内容（timeout等）を
+// 上書き・消去してしまい、障害調査を妨げていたため分離した。
 
 import { VENUE_NAMES } from './scraper.js';
 
 const LOCK_TTL_MS = 5 * 60 * 1000; // 5分
-const LOCK_PREFIX = 'lock:';
 
 // ベニューロックを取得
 // 戻り値: { acquired: boolean, lockId?: string, lockedBy?: string }
@@ -21,7 +25,7 @@ export async function acquireVenueLock(base44, raceDate, venueCode, workerName) 
 
   if (existing.length > 0) {
     const fp = existing[0];
-    const lockInfo = fp.error_msg?.startsWith(LOCK_PREFIX) ? fp.error_msg.slice(LOCK_PREFIX.length) : null;
+    const lockInfo = fp.lock_owner || null;
     const heartbeatAge = fp.last_heartbeat ? Date.now() - new Date(fp.last_heartbeat).getTime() : Infinity;
 
     // 別ワーカーが有効なロックを保持中 → 取得失敗
@@ -29,11 +33,11 @@ export async function acquireVenueLock(base44, raceDate, venueCode, workerName) 
       return { acquired: false, lockedBy: lockInfo, lockAgeMs: heartbeatAge };
     }
 
-    // ロック取得（新規 or 古いロックの引き継ぎ）
+    // ロック取得（新規 or 古いロックの引き継ぎ）。error_msgには触れない。
     await base44.asServiceRole.entities.FetchProgress.update(fp.id, {
       status: 'processing',
       last_heartbeat: now,
-      error_msg: `${LOCK_PREFIX}${workerName}`,
+      lock_owner: workerName,
     });
     return { acquired: true, lockId: fp.id };
   }
@@ -43,7 +47,7 @@ export async function acquireVenueLock(base44, raceDate, venueCode, workerName) 
     race_date: raceDate, venue_code: jcd, venue_name: VENUE_NAMES[jcd] || jcd,
     status: 'processing',
     processed_at: now, last_heartbeat: now,
-    error_msg: `${LOCK_PREFIX}${workerName}`,
+    lock_owner: workerName,
   });
   return { acquired: true, lockId: created.id };
 }
@@ -61,16 +65,12 @@ export async function heartbeatVenueLock(base44, lockId) {
 export async function releaseVenueLock(base44, lockId, finalStatus) {
   if (!lockId) return;
   const now = new Date().toISOString();
-  const fp = await base44.asServiceRole.entities.FetchProgress.get(lockId).catch(() => null);
   const updateData = {
     last_heartbeat: now,
+    lock_owner: null, // ロックマーカーのみクリア。error_msgは触らないので実エラーが残る。
   };
   if (finalStatus) {
     updateData.status = finalStatus;
-  }
-  // ロックマーカーのみクリア（実エラーは保持）
-  if (fp?.error_msg?.startsWith(LOCK_PREFIX)) {
-    updateData.error_msg = null;
   }
   await base44.asServiceRole.entities.FetchProgress.update(lockId, updateData).catch(() => {});
 }
