@@ -179,6 +179,33 @@ export default async function(req) {
     const totalRaces = toCreate.length + toUpdate.length;
     const uichiHits = raceResults.filter((r) => UICHI_COMBOS.includes(r.trifecta)).length;
 
+    // === 6.5. Race側のstatusをここで確定させる ===
+    // 3連単・払戻金がここで保存できた時点で、そのレースは実施済みが確定している。
+    // enrichRaceResultDetails（着順詳細の取得）が後で失敗・スキップしても、
+    // Raceが「scheduled」のまま取り残されないよう、判定材料が揃った直後に確定させる。
+    let raceStatusFixed = 0;
+    try {
+      const raceRows = await base44.asServiceRole.entities.Race.filter({
+        race_date: raceDate, venue_code: jcd, data_source: "official",
+      }, "race_number", 50).catch(() => []);
+      const raceByNumber = new Map(raceRows.map((rc) => [Number(rc.race_number), rc]));
+      const nowIso = new Date().toISOString();
+      for (const r of raceResults) {
+        if (!r.trifecta || !r.payout_trifecta) continue; // 未確定（中止等）は次回に判断を委ねる
+        const race = raceByNumber.get(Number(r.race_number));
+        if (!race || race.status === "finished") continue;
+        try {
+          await base44.asServiceRole.entities.Race.update(race.id, {
+            status: "finished",
+            result_trifecta: r.trifecta,
+            payout_trifecta: r.payout_trifecta,
+            last_updated: nowIso,
+          });
+          raceStatusFixed++;
+        } catch { /* 個別失敗はスキップし全体を止めない */ }
+      }
+    } catch { /* Race側の確定はベストエフォート。失敗しても結果保存自体は成功扱いのまま進める */ }
+
     // === 7. FetchProgress を done に更新 ===
     await base44.asServiceRole.entities.FetchProgress.update(progressId, {
       result_fetch_status: "done", status: "done",
@@ -199,6 +226,7 @@ export default async function(req) {
       created: toCreate.length,
       updated: toUpdate.length,
       duplicates_deleted: duplicateIdsToDelete.length,
+      race_status_fixed: raceStatusFixed,
     });
   } catch (error) {
     try {
