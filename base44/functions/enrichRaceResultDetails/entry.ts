@@ -3,6 +3,48 @@ import { parseRaceResultDetail, fetchWithRetry, sleep } from '../../shared/scrap
 
 const BASE = 'https://www.boatrace.jp/owpc/pc/race';
 
+// 1レース分の詳細取得＋保存処理を関数化（初回・再試行の両方から呼べるようにする）
+async function enrichOne(base44, r, raceDate, hd) {
+  const jcd = String(r.venue_code).padStart(2, '0');
+  const url = `${BASE}/raceresult?rno=${Number(r.race_number)}&jcd=${jcd}&hd=${hd}`;
+  // 夜間の混雑時間帯を想定し、タイムアウトを15秒・リトライ3回に緩和
+  const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 15000, 3);
+  const html = await res.text();
+  const detail = parseRaceResultDetail(html);
+  if (!detail || !detail.finishers || detail.finishers.length < 3) {
+    return { ok: false, skipped: true };
+  }
+
+  const now = new Date().toISOString();
+  await base44.asServiceRole.entities.RaceResult.update(r.id, {
+    ...detail,
+    detail_fetched_at: now,
+  });
+
+  // Race側にも「そのレースが実際に行われた自然条件」を確定値として残す。
+  const races = await base44.asServiceRole.entities.Race.filter({
+    race_date: raceDate,
+    venue_code: jcd,
+    race_number: Number(r.race_number),
+    data_source: 'official',
+  }, '-created_date', 5).catch(() => []);
+  if (races.length > 0) {
+    await base44.asServiceRole.entities.Race.update(races[0].id, {
+      status: 'finished',
+      result_trifecta: r.trifecta,
+      payout_trifecta: r.payout_trifecta,
+      weather: detail.weather ?? races[0].weather ?? null,
+      wind_dir: detail.wind_dir ?? races[0].wind_dir ?? null,
+      wind_speed: detail.wind_speed ?? races[0].wind_speed ?? null,
+      wave_height: detail.wave_height ?? races[0].wave_height ?? null,
+      air_temperature: detail.air_temperature ?? races[0].air_temperature ?? null,
+      water_temperature: detail.water_temperature ?? races[0].water_temperature ?? null,
+      last_updated: now,
+    });
+  }
+  return { ok: true };
+}
+
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
@@ -25,56 +67,52 @@ export default async function(req) {
 
     let enriched = 0, errors = 0, skipped = 0;
     const error_items:any[] = [];
-    const BATCH = 4;
+    const failedRows:any[] = [];
+    // 夜間の混雑時間帯に公式サイトへ負荷をかけすぎないよう、並列数を4→3に抑える
+    const BATCH = 3;
 
     for (let i = 0; i < targets.length; i += BATCH) {
       const batch = targets.slice(i, i + BATCH);
       await Promise.all(batch.map(async (r) => {
         try {
-          const jcd = String(r.venue_code).padStart(2, '0');
-          const url = `${BASE}/raceresult?rno=${Number(r.race_number)}&jcd=${jcd}&hd=${hd}`;
-          const res = await fetchWithRetry(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000, 2);
-          const html = await res.text();
-          const detail = parseRaceResultDetail(html);
-          if (!detail || !detail.finishers || detail.finishers.length < 3) {
+          const result = await enrichOne(base44, r, raceDate, hd);
+          if (result.ok) {
+            enriched++;
+          } else {
             skipped++;
-            return;
           }
-
-          const now = new Date().toISOString();
-          await base44.asServiceRole.entities.RaceResult.update(r.id, {
-            ...detail,
-            detail_fetched_at: now,
-          });
-
-          // Race側にも「そのレースが実際に行われた自然条件」を確定値として残す。
-          const races = await base44.asServiceRole.entities.Race.filter({
-            race_date: raceDate,
-            venue_code: jcd,
-            race_number: Number(r.race_number),
-            data_source: 'official',
-          }, '-created_date', 5).catch(() => []);
-          if (races.length > 0) {
-            await base44.asServiceRole.entities.Race.update(races[0].id, {
-              status: 'finished',
-              result_trifecta: r.trifecta,
-              payout_trifecta: r.payout_trifecta,
-              weather: detail.weather ?? races[0].weather ?? null,
-              wind_dir: detail.wind_dir ?? races[0].wind_dir ?? null,
-              wind_speed: detail.wind_speed ?? races[0].wind_speed ?? null,
-              wave_height: detail.wave_height ?? races[0].wave_height ?? null,
-              air_temperature: detail.air_temperature ?? races[0].air_temperature ?? null,
-              water_temperature: detail.water_temperature ?? races[0].water_temperature ?? null,
-              last_updated: now,
-            });
-          }
-          enriched++;
         } catch (e) {
           errors++;
-          error_items.push({ venue_code: r.venue_code, race_number: r.race_number, message: e?.message || String(e) });
+          failedRows.push(r);
+          error_items.push({ venue_code: r.venue_code, race_number: r.race_number, message: e?.message || String(e), stage: 'initial' });
         }
       }));
       if (i + BATCH < targets.length) await sleep(250);
+    }
+
+    // === 失敗レースだけを対象に、少し間隔を空けてもう1回だけ再試行する ===
+    // 1レースの一時的な失敗が、場全体の「未完了」判定に波及しないようにするための保険。
+    let retryRecovered = 0;
+    if (failedRows.length > 0) {
+      await sleep(1500);
+      for (const r of failedRows) {
+        try {
+          const result = await enrichOne(base44, r, raceDate, hd);
+          if (result.ok) {
+            enriched++;
+            errors = Math.max(0, errors - 1);
+            retryRecovered++;
+            // error_itemsからも該当分を除去（最初に見つかった1件のみ）
+            const idx = error_items.findIndex(it => it.venue_code === r.venue_code && it.race_number === r.race_number && it.stage === 'initial');
+            if (idx >= 0) error_items.splice(idx, 1);
+          } else {
+            skipped++;
+          }
+        } catch (e) {
+          error_items.push({ venue_code: r.venue_code, race_number: r.race_number, message: e?.message || String(e), stage: 'retry' });
+        }
+        await sleep(300);
+      }
     }
 
     return Response.json({
@@ -86,6 +124,7 @@ export default async function(req) {
       enriched,
       skipped,
       errors,
+      retry_recovered: retryRecovered,
       error_items: error_items.slice(0, 30),
     });
   } catch (error) {
