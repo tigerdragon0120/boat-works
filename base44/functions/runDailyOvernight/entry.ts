@@ -37,7 +37,12 @@ export default async function(req) {
 
     // 翌日アラートへ進む前に、今日の全開催場の詳細収集＋節間ポイント完成を必須条件にする。
     // 途中データのまま翌日予想を作らない。
+    // ただし、1〜2場だけが恒常的にtimeout/errorになるケースで全体を止め続けないよう、
+    // 「取り残された場の数」が閾値以下ならその場だけ除外して先へ進む。
+    // runSeriesNightFinalize自体が失敗した場合や、取り残しが閾値を超える場合（＝
+    // 公式サイト側の大規模障害等の可能性）は、従来通り安全側に倒して待機する。
     let collectionGate:any=null;
+    let stuckVenues:any[] = [];
     if (targetOffset === 1 && body.require_collection !== false) {
       const sourceDate = localDateStr(0);
       try {
@@ -47,14 +52,24 @@ export default async function(req) {
         collectionGate = { status:'error', message:e?.message || String(e) };
       }
       if (collectionGate?.status !== 'complete') {
-        return Response.json({
-          status:'waiting_today_collection',
-          source_date:sourceDate,
-          target_date:localDateStr(1),
-          collection:collectionGate,
-          message:'今日の全レース詳細・節間ポイントが未完了のため、翌日アラート分析は待機しています',
-          elapsed_ms:Date.now()-t0,
-        });
+        const notCompleteCount = (Number(collectionGate?.errors) || 0) + (Number(collectionGate?.partial) || 0);
+        const maxIncompleteVenues = Number(body.max_incomplete_venues ?? 2);
+        const canProceedPartially = Array.isArray(collectionGate?.venues_detail)
+          && notCompleteCount > 0 && notCompleteCount <= maxIncompleteVenues;
+
+        if (!canProceedPartially) {
+          return Response.json({
+            status:'waiting_today_collection',
+            source_date:sourceDate,
+            target_date:localDateStr(1),
+            collection:collectionGate,
+            message:'今日の全レース詳細・節間ポイントが未完了のため、翌日アラート分析は待機しています',
+            elapsed_ms:Date.now()-t0,
+          });
+        }
+
+        // 少数の場だけ取り残し → ブロックせず記録して先へ進む。
+        stuckVenues = collectionGate.venues_detail.filter((v:any) => v?.status !== 'complete');
       }
     }
 
@@ -339,6 +354,7 @@ export default async function(req) {
       aggregate_update: aggregateUpdate,
       learning_metrics_update: learningMetricsUpdate,
       collection_gate: collectionGate,
+      stuck_venues_skipped_gate: stuckVenues,
       analysis: analysisResult,
       historical_full_spec: historicalFullSpec,
       elapsed_ms: Date.now() - t0,
