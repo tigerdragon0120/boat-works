@@ -297,20 +297,32 @@ export async function upsertRace(base44, raceData) {
 
   // 3. post-create再確認（TOCTOU競合 + eventual consistency対策）
   // 同時ワーカーが数十〜数百ms差でcreateした場合、直後の1回検索では相手側が見えないことがある。
-  // 少し待って複数回確認し、見えた重複はその場で必ず正規化する。
-  let finalRows = [created];
-  for (const waitMs of [0, 180, 420, 900]) {
-    if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
-    const rows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
-    if (rows.length > 1) {
-      await deduplicateRaceGroup(base44, rows, raceDate);
-    }
+  // ただし通常時（重複が起きていない大多数のケース）にまで毎回0.6秒以上待たせると、
+  // 出走表を1レースずつ新規作成する朝の一括収集時間帯（0〜11時・締切間近ワーカー）で
+  // 大きな遅延を積み上げてしまう。
+  // そのため、まず短い1回の待機・確認だけを行い、重複が実際に見えた場合に限って
+  // さらに粘り強く待って正規化する（通常ケースは約200msで完了する）。
+  await new Promise(resolve => setTimeout(resolve, 200));
+  let rows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+  let finalRows = rows.length ? rows : [created];
+
+  if (rows.length > 1) {
+    await deduplicateRaceGroup(base44, rows, raceDate);
     finalRows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
-    if (finalRows.length === 1 && waitMs >= 420) break;
+    for (const waitMs of [420, 900]) {
+      if (finalRows.length === 1) break;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      rows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+      if (rows.length > 1) {
+        await deduplicateRaceGroup(base44, rows, raceDate);
+      }
+      finalRows = await findRacesByLogicalKey(base44, raceDate, jcd, raceNumber);
+    }
   }
 
   // 4. 正規RaceをDBから再取得して返す
   return finalRows[0] || created;
+
 }
 
 // === 場単位の重複Race正規化 ===
