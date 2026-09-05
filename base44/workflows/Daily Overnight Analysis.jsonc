@@ -1,13 +1,13 @@
 {
   "name": "Daily Overnight Analysis",
-  "description": "\u6bce\u65e518\u6642\u304b\u308923\u664230\u5206\u307e\u306730\u5206\u3054\u3068\u306b\u7fcc\u65e5\u306e\u516824\u5834\u3092\u78ba\u8a8d\u3057\u3001\u51fa\u8d70\u8868\u3060\u3051\u3092\u5148\u884c\u53ce\u96c6\u3059\u308b\u3002\u4eca\u65e5\u306e\u5168\u5834\u7d50\u679c\u30fb\u8a73\u7d30\u30fb\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u304c\u5b8c\u6210\u3059\u308b\u307e\u3067\u306f\u4e88\u60f3\u5206\u6790\u3084\u30a2\u30e9\u30fc\u30c8\u751f\u6210\u3092\u884c\u308f\u306a\u3044\u3002",
+  "description": "毎日18時から23時30分まで30分ごとに翌日の全24場を確認し、出走表だけを先行収集する。今日の全場結果・詳細・節間ポイントが完成するまでは予想分析やアラート生成を行わない。",
   "trigger": {
     "condition": null,
     "config": {
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "35 4 1 1 *",
+      "cron_expression": "*/30 18-23 * * *",
       "one_time_date": null,
       "timezone": "Asia/Tokyo",
       "interval_value": null,
@@ -39,8 +39,8 @@
           },
           "then": "end",
           "x-base44": {
-            "title": "\u7fcc\u65e5\u51fa\u8d70\u8868\u306e\u5148\u884c\u53ce\u96c6",
-            "description": "\u7fcc\u65e5\u51fa\u8d70\u8868\u3092\u4fdd\u5b58\u3059\u308b\u3060\u3051\u3002\u5206\u6790\u30fb\u30a2\u30e9\u30fc\u30c8\u306f\u4eca\u65e5\u306e\u5168\u30c7\u30fc\u30bf\u3068\u7bc0\u9593\u30dd\u30a4\u30f3\u30c8\u78ba\u5b9a\u5f8c\u307e\u3067\u5f85\u6a5f"
+            "title": "翌日出走表の先行収集",
+            "description": "翌日出走表を保存するだけ。分析・アラートは今日の全データと節間ポイント確定後まで待機"
           }
         }
       }
