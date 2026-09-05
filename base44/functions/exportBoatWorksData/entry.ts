@@ -208,7 +208,15 @@ export default async function(req) {
         warnings.push({ race_key: raceKey, type: "too_many_entries", message: `${filtered.length} entries (expected max 6)` });
       }
       for (const e of filtered) {
-        entriesOut.push({ race_key: raceKey, ...pick(e, ENTRY_FIELDS) });
+        // 親Raceを正として日付・場コード・R番号を必ず明示する。
+        // RaceEntry側に欠落/古い値があっても、BOAT WORKS 2へは論理Raceのキー情報を確実に渡す。
+        entriesOut.push({
+          ...pick(e, ENTRY_FIELDS),
+          race_key: raceKey,
+          race_date: r.race_date,
+          venue_code: String(r.venue_code).padStart(2, "0"),
+          race_number: Number(r.race_number),
+        });
       }
     }
 
