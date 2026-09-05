@@ -34,8 +34,9 @@ export default async function(req) {
     if (user && user.role !== 'admin') return Response.json({status:'error',message:'管理者権限が必要です'},{status:403});
 
     const body = await req.json().catch(() => ({}));
-    const raceDate = body.race_date;
-    const deleteUnresolved = body.delete_unresolved === true;
+    const urlParams = new URL(req.url).searchParams;
+    const raceDate = body.race_date || urlParams.get('race_date');
+    const deleteUnresolved = body.delete_unresolved === true || urlParams.get('delete_unresolved') === 'true';
     if (!raceDate) return Response.json({status:'error',message:'race_date required'},{status:400});
 
     const races = await base44.asServiceRole.entities.Race.filter({race_date:raceDate}, '-updated_date', 500).catch(()=>[]);
