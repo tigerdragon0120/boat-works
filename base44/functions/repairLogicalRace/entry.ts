@@ -4,6 +4,25 @@ import { parseRacelist, fetchWithRetry } from '../../shared/scraper.js';
 
 const BASE = 'https://boatrace.jp/owpc/pc/race';
 
+// 出走表の再取得で、既に取得済みの展示情報（展示タイム・ST・進入コース等）を
+// 消してしまわないよう引き継ぐ。runRaceDayIntegritySyncと同じロジック。
+function preserveExhibitionFields(parsedEntries, previousEntries) {
+  const prevByBoat = new Map((previousEntries || []).map(e => [Number(e.boat_number), e]));
+  return (parsedEntries || []).map(e => {
+    const p:any = prevByBoat.get(Number(e.boat_number)) || {};
+    return {
+      ...e,
+      entry_course: p.entry_course ?? e.entry_course ?? null,
+      exhibition_time: p.exhibition_time ?? e.exhibition_time ?? null,
+      tilt: p.tilt ?? e.tilt ?? null,
+      exhibition_st: p.exhibition_st ?? e.exhibition_st ?? null,
+      exhibition_st_raw: p.exhibition_st_raw ?? e.exhibition_st_raw ?? null,
+      exhibition_rank: p.exhibition_rank ?? e.exhibition_rank ?? null,
+      is_scratched: p.is_scratched === true || e.is_scratched === true,
+    };
+  });
+}
+
 export default async function(req) {
   try {
     const base44 = createClientFromRequest(req);
@@ -38,7 +57,8 @@ export default async function(req) {
           last_updated:new Date().toISOString(),
         });
         await base44.asServiceRole.entities.RaceEntry.deleteMany({race_id:race.id});
-        await base44.asServiceRole.entities.RaceEntry.bulkCreate(parsed.entries.map(e=>({
+        const mergedEntries = preserveExhibitionFields(parsed.entries, existingEntries);
+        await base44.asServiceRole.entities.RaceEntry.bulkCreate(mergedEntries.map(e=>({
           ...e,race_id:race.id,race_date:raceDate,venue_code:jcd,race_number:raceNumber,
         })));
       }
