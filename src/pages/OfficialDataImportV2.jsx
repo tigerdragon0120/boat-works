@@ -57,7 +57,8 @@ export default function OfficialDataImportV2() {
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [auditDate, setAuditDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bAuditDate, setBAuditDate] = useState(new Date().toISOString().slice(0, 10));
+  const [kAuditDate, setKAuditDate] = useState(new Date().toISOString().slice(0, 10));
   const [auditResult, setAuditResult] = useState(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [batches, setBatches] = useState([]);
@@ -74,6 +75,7 @@ export default function OfficialDataImportV2() {
     try {
       const result = await base44.entities.OfficialImportBatchV2.list("-created_date", 20);
       setBatches(result || []);
+      if (result?.[0]?.source_date) setBAuditDate(result[0].source_date);
     } catch {
       setBatches([]);
     } finally {
@@ -86,6 +88,7 @@ export default function OfficialDataImportV2() {
     try {
       const result = await base44.entities.OfficialResultImportBatchV2.list("-created_date", 20);
       setKBatches(result || []);
+      if (result?.[0]?.source_date) setKAuditDate(result[0].source_date);
     } catch {
       setKBatches([]);
     } finally {
@@ -96,7 +99,7 @@ export default function OfficialDataImportV2() {
   useEffect(() => { loadBatches(); loadKBatches(); }, [loadBatches, loadKBatches]);
 
   const runKAudit = async (date) => {
-    const targetDate = date || auditDate;
+    const targetDate = date || kAuditDate;
     if (!targetDate) return;
     setKAuditLoading(true);
     try {
@@ -112,7 +115,7 @@ export default function OfficialDataImportV2() {
 
   const handleKCommitDone = useCallback((sourceDate) => {
     if (sourceDate) {
-      setAuditDate(sourceDate);
+      setKAuditDate(sourceDate);
       runKAudit(sourceDate);
     }
     loadKBatches();
@@ -166,7 +169,7 @@ export default function OfficialDataImportV2() {
       });
       setCommitResult(res.data);
       if (res.data?.source_date) {
-        setAuditDate(res.data.source_date);
+        setBAuditDate(res.data.source_date);
         runAudit(res.data.source_date);
       }
       loadBatches();
@@ -179,7 +182,7 @@ export default function OfficialDataImportV2() {
   };
 
   const runAudit = async (date) => {
-    const targetDate = date || auditDate;
+    const targetDate = date || bAuditDate;
     if (!targetDate) return;
     setAuditLoading(true);
     try {
@@ -412,14 +415,14 @@ export default function OfficialDataImportV2() {
                 <Button
                   size="sm"
                   variant={auditMode === "B" ? "default" : "outline"}
-                  onClick={() => setAuditMode("B")}
+                  onClick={() => { setAuditMode("B"); setAuditResult(null); }}
                 >
                   <FileText className="w-3 h-3 mr-1" />B番組表
                 </Button>
                 <Button
                   size="sm"
                   variant={auditMode === "K" ? "default" : "outline"}
-                  onClick={() => setAuditMode("K")}
+                  onClick={() => { setAuditMode("K"); setKAuditResult(null); }}
                 >
                   <Trophy className="w-3 h-3 mr-1" />K競走成績
                 </Button>
@@ -430,8 +433,8 @@ export default function OfficialDataImportV2() {
                   <Input
                     id="audit-date"
                     type="date"
-                    value={auditDate}
-                    onChange={(e) => setAuditDate(e.target.value)}
+                    value={auditMode === "B" ? bAuditDate : kAuditDate}
+                    onChange={(e) => auditMode === "B" ? setBAuditDate(e.target.value) : setKAuditDate(e.target.value)}
                   />
                 </div>
                 <div className="flex items-end">
