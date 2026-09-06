@@ -19,6 +19,7 @@ const RESULT_COMPARE_FIELDS = [
 const ENTRY_RESULT_COMPARE_FIELDS = [
   'registration_number', 'racer_name', 'finish_order', 'finish_status',
   'start_course', 'start_timing', 'race_time',
+  'is_absent', 'is_disqualified', 'is_returned',
 ];
 const PAYOUT_COMPARE_FIELDS = ['payout_amount', 'popularity', 'is_refund'];
 
@@ -100,10 +101,21 @@ export default async function (req) {
       }, { status: 400 });
     }
 
+    const parsedEntryKeySet = new Set(parsed.entry_results.map((entry) => entry.entry_key));
+    const missingKEntries = bEntries.filter((entry) => !parsedEntryKeySet.has(entry.entry_key));
+    if (missingKEntries.length > 0) {
+      return Response.json({
+        status: 'error',
+        message: `K選手結果の欠落が${missingKEntries.length}件あります。取込を中止しました。`,
+        missing_entry_keys: missingKEntries.map((entry) => entry.entry_key).slice(0, 50),
+        checksum,
+      }, { status: 400 });
+    }
+
     const entryMismatches = [];
     for (const entry of parsed.entry_results) {
       const bEntry = bEntryMap[entry.entry_key];
-      if (bEntry && (bEntry.registration_number !== entry.registration_number || bEntry.boat_number !== entry.boat_number)) {
+      if (!bEntry || bEntry.registration_number !== entry.registration_number || bEntry.boat_number !== entry.boat_number) {
         entryMismatches.push(entry.entry_key);
       }
     }
@@ -132,7 +144,7 @@ export default async function (req) {
       { batch_key: batchKey }, '-completed_at', 5
     ).catch(() => []);
 
-    if (existingBatches.length > 0 && existingBatches[0].status === 'COMPLETED') {
+    if (existingBatches.length > 0 && existingBatches[0].status === 'COMPLETED' && existingBatches[0].parser_version === K_PARSER_VERSION) {
       return Response.json({
         status: 'already_imported',
         batch_key: batchKey,
