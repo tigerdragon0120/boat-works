@@ -111,9 +111,9 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
         const preview = res.data;
 
         if (preview.already_imported) {
-          updateFile(item.id, { status: "skipped", preview });
+          updateFile(item.id, { status: "skipped", preview, error: null });
         } else if (preview.is_importable) {
-          updateFile(item.id, { status: "previewed", preview });
+          updateFile(item.id, { status: "previewed", preview, error: null });
         } else {
           updateFile(item.id, { status: "error", preview, error: "検証エラーのため取込不可" });
         }
@@ -144,10 +144,10 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
       );
       const result = res.data;
       if (result.status === "success") {
-        updateFile(item.id, { status: "done", commit_result: result });
+        updateFile(item.id, { status: "done", commit_result: result, error: null });
         if (onCommitDone) onCommitDone(result.term_code);
       } else if (result.status === "already_imported") {
-        updateFile(item.id, { status: "skipped", commit_result: result });
+        updateFile(item.id, { status: "skipped", commit_result: result, error: null });
       } else {
         updateFile(item.id, { status: "error", commit_result: result, error: result.message || "取込に失敗しました" });
       }
