@@ -535,8 +535,8 @@ export default function OfficialDataImportV2() {
                   <div className="grid grid-cols-4 gap-2">
                     <StatBox label="会場数" value={kAuditResult.venue_count} />
                     <StatBox label="レース数" value={kAuditResult.race_count} color="bg-emerald-50 border-emerald-200" />
-                    <StatBox label="確定R数" value={kAuditResult.confirmed_race_count} color="bg-green-50 border-green-200" />
-                    <StatBox label="未確定R数" value={kAuditResult.pending_race_count} color="bg-amber-50 border-amber-200" />
+                    <StatBox label="選手結果" value={kAuditResult.entry_result_count} color="bg-cyan-50 border-cyan-200" />
+                    <StatBox label="欠場" value={kAuditResult.absent_entry_count || 0} color="bg-amber-50 border-amber-200" />
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                     <div className={`rounded p-2 ${kAuditResult.result_key_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
@@ -553,6 +553,12 @@ export default function OfficialDataImportV2() {
                     </div>
                     <div className={`rounded p-2 ${kAuditResult.entry_mismatches?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
                       選手照合不一致: {kAuditResult.entry_mismatches?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.b_entries_missing_in_k?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      K選手結果欠落: {kAuditResult.b_entries_missing_in_k?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.missing_winning_method?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      決まり手欠落: {kAuditResult.missing_winning_method?.length || 0}
                     </div>
                     <div className={`rounded p-2 ${kAuditResult.finish_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
                       着順重複: {kAuditResult.finish_duplicates?.length || 0}
