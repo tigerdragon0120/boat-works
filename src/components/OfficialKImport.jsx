@@ -181,6 +181,9 @@ export default function OfficialKImport({ onCommitDone }) {
               {preview.entry_mismatch_count > 0 && (
                 <div className="text-red-600">選手照合不一致: {preview.entry_mismatch_count}件</div>
               )}
+              {preview.b_missing_entry_count > 0 && (
+                <div className="text-red-600">K選手結果欠落: {preview.b_missing_entry_count}件</div>
+              )}
               {preview.unparsed_line_count > 0 && (
                 <div className="text-amber-600">未解析行: {preview.unparsed_line_count}件</div>
               )}
