@@ -121,6 +121,7 @@ async function _recalcWithData(base44, raceDate, jcd, venueRaces, venueEntries, 
   const oddsReadyRaces = venueOddsRaceIds.size;
   const fullComplete = preRaceReady &&
     exhibitionReadyRaces === expectedRaces &&
+    oddsReadyRaces === expectedRaces &&
     finalJudgmentRaces === expectedRaces && expectedRaces > 0;
 
   // collection_status決定

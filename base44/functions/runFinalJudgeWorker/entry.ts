@@ -86,7 +86,8 @@ export default async function(req) {
             });
           } catch {}
 
-          const res = await base44.asServiceRole.functions.invoke('fetchRaceData', {
+          // オッズ専用取得（Race/RaceEntryの再取得・再生成は行わない）
+          const res = await base44.asServiceRole.functions.invoke('fetchRaceOddsOnly', {
             race_date: raceDate,
             jcd: r.venue_code,
             race_number: r.race_number,

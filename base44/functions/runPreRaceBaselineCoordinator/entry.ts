@@ -57,7 +57,7 @@ export default async function(req) {
 
     // まず対象日のRace/出走表を徹底収集。ここでは分析を一切しない。
     const sync=await base44.asServiceRole.functions.invoke('runRaceDayIntegritySync',{
-      race_date:raceDate, stage:'pre', collect_only:true,
+      race_date:raceDate, stage:'pre', collect_only:true, mode:'pre_race_collection',
     }).catch(e=>({data:{status:'error',message:e?.message||String(e)}}));
     const syncData=sync?.data||sync;
 
