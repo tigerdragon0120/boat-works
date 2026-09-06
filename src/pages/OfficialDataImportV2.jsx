@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Upload, FileText, CheckCircle2, AlertTriangle, XCircle,
-  Loader2, Database, ShieldCheck, History, Search, Trophy,
+  Loader2, Database, ShieldCheck, History, Search, Trophy, Users,
 } from "lucide-react";
 import OfficialKImport from "@/components/OfficialKImport";
+import OfficialRacerTermImport from "@/components/OfficialRacerTermImport";
 
 const STATUS_COLORS = {
   COMPLETED: "bg-green-100 text-green-700 border-green-300",
@@ -67,6 +68,11 @@ export default function OfficialDataImportV2() {
   const [kBatchesLoading, setKBatchesLoading] = useState(false);
   const [auditMode, setAuditMode] = useState("B");
   const [kAuditResult, setKAuditResult] = useState(null);
+  const [termAuditDate, setTermAuditDate] = useState("");
+  const [termAuditResult, setTermAuditResult] = useState(null);
+  const [termAuditLoading, setTermAuditLoading] = useState(false);
+  const [termBatches, setTermBatches] = useState([]);
+  const [termBatchesLoading, setTermBatchesLoading] = useState(false);
   const [kAuditLoading, setKAuditLoading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -96,7 +102,19 @@ export default function OfficialDataImportV2() {
     }
   }, []);
 
-  useEffect(() => { loadBatches(); loadKBatches(); }, [loadBatches, loadKBatches]);
+  const loadTermBatches = useCallback(async () => {
+    setTermBatchesLoading(true);
+    try {
+      const result = await base44.entities.RacerTermImportBatchV2.list("-created_date", 20);
+      setTermBatches(result || []);
+    } catch {
+      setTermBatches([]);
+    } finally {
+      setTermBatchesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadBatches(); loadKBatches(); loadTermBatches(); }, [loadBatches, loadKBatches, loadTermBatches]);
 
   const runKAudit = async (date) => {
     const targetDate = date || kAuditDate;
@@ -209,12 +227,15 @@ export default function OfficialDataImportV2() {
       </div>
 
       <Tabs defaultValue="program-b">
-        <TabsList className="grid grid-cols-4 w-full">
+        <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="program-b" className="text-xs sm:text-sm">
             <FileText className="w-4 h-4 mr-1" />番組表B
           </TabsTrigger>
           <TabsTrigger value="program-k" className="text-xs sm:text-sm">
             <Trophy className="w-4 h-4 mr-1" />競走成績K
+          </TabsTrigger>
+          <TabsTrigger value="racer-term" className="text-xs sm:text-sm">
+            <Users className="w-4 h-4 mr-1" />選手期別
           </TabsTrigger>
           <TabsTrigger value="audit" className="text-xs sm:text-sm">
             <Search className="w-4 h-4 mr-1" />監査
@@ -400,6 +421,11 @@ export default function OfficialDataImportV2() {
         {/* ─── 競走成績Kファイル タブ ─── */}
         <TabsContent value="program-k" className="space-y-4 mt-4">
           <OfficialKImport onCommitDone={handleKCommitDone} />
+        </TabsContent>
+
+        {/* ─── 選手期別データ タブ ─── */}
+        <TabsContent value="racer-term" className="space-y-4 mt-4">
+          <OfficialRacerTermImport onCommitDone={handleTermCommitDone} />
         </TabsContent>
 
         {/* ─── 監査タブ ─── */}
