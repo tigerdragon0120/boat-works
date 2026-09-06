@@ -22,6 +22,7 @@ import Trends from '@/pages/Trends';
 import Verification from '@/pages/Verification';
 import SeriesPoints from '@/pages/SeriesPoints';
 import DataCollection from '@/pages/DataCollection';
+import OfficialDataImportV2 from '@/pages/OfficialDataImportV2';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
           <Route path="/verification" element={<Verification />} />
           <Route path="/series" element={<SeriesPoints />} />
           <Route path="/collection" element={<DataCollection />} />
+          <Route path="/import-v2" element={<OfficialDataImportV2 />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
