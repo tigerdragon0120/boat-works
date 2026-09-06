@@ -95,6 +95,74 @@ export default async function (req) {
       if (batch.length < batchSize) break;
     }
 
+    // RaceResult (V1) からも履歴データを補完取得
+    // OfficialRaceEntryResultV2にない選手（K未取込の会場・期間）をカバー
+    const threeYearsAgo = periods["3y"].start;
+    let v1Fetched = 0;
+    let v1LastDate = null;
+    const v1MaxFetch = 100000;
+    const v1BatchSize = 5000;
+
+    while (v1Fetched < v1MaxFetch) {
+      let v1Batch;
+      if (v1LastDate) {
+        v1Batch = await base44.asServiceRole.entities.RaceResult.filter(
+          { race_date: { $gte: threeYearsAgo }, created_date: { $lt: v1LastDate } }, '-created_date', v1BatchSize
+        ).catch(() => []);
+      } else {
+        v1Batch = await base44.asServiceRole.entities.RaceResult.filter(
+          { race_date: { $gte: threeYearsAgo } }, '-created_date', v1BatchSize
+        ).catch(() => []);
+      }
+      if (!v1Batch || v1Batch.length === 0) break;
+
+      for (const rr of v1Batch) {
+        if (!rr.finishers || !Array.isArray(rr.finishers) || rr.finishers.length === 0) continue;
+        const raceDate = rr.race_date;
+        if (!raceDate) continue;
+
+        // start_infoをboat_numberでマップ
+        const stMap = {};
+        if (rr.start_info && Array.isArray(rr.start_info)) {
+          for (const si of rr.start_info) {
+            if (si.boat_number != null) stMap[si.boat_number] = si.st_raw || String(si.st ?? '');
+          }
+        }
+
+        for (const f of rr.finishers) {
+          if (!f.registration_number) continue;
+          if (!racerMap.has(f.registration_number)) {
+            racerMap.set(f.registration_number, {
+              racer_name: f.racer_name || '',
+              entries_6m: [],
+              entries_1y: [],
+              entries_3y: [],
+            });
+          }
+          const racer = racerMap.get(f.registration_number);
+          if (f.racer_name && !racer.racer_name) racer.racer_name = f.racer_name;
+
+          const entry = {
+            registration_number: f.registration_number,
+            racer_name: f.racer_name || '',
+            race_key: `${raceDate}_${rr.venue_code}_${String(rr.race_number).padStart(2, '0')}`,
+            finish_order: f.finish || null,
+            start_course: f.boat_number || null, // V1では進入コースが不明なため艇番を代理使用
+            start_timing: stMap[f.boat_number] || null,
+            is_absent: false,
+          };
+
+          if (raceDate >= periods["6m"].start) racer.entries_6m.push(entry);
+          if (raceDate >= periods["1y"].start) racer.entries_1y.push(entry);
+          if (raceDate >= periods["3y"].start) racer.entries_3y.push(entry);
+        }
+      }
+
+      v1Fetched += v1Batch.length;
+      v1LastDate = v1Batch[v1Batch.length - 1].created_date;
+      if (v1Batch.length < v1BatchSize) break;
+    }
+
     if (racerMap.size === 0) {
       return Response.json({
         status: 'success',
@@ -188,6 +256,7 @@ export default async function (req) {
       reference_date: referenceDate.slice(0, 10),
       periods,
       total_fetched: totalFetched,
+      v1_fetched: v1Fetched,
       racer_count: computedCount,
       created_count: createdCount,
       updated_count: updatedCount,
