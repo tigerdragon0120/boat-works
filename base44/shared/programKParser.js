@@ -74,11 +74,10 @@ function parseFinishStatus(raceTimeRaw, startTimingRaw) {
 function parseRacerResultLine(line, lineNumber) {
   if (!line || line.length < 47) return null;
 
-  // 先頭が着順(2桁数字)でない場合は対象外
-  const first2 = line.substring(0, 2);
-  if (!/^\s*\d{1,2}/.test(first2)) return null;
+  // 着順・艇番・登録番号のパターンチェック (数字 or S0/S1/S2/F)
+  if (!/^\s*[\dSF]\d?\s+\d\s+\d{4}/.test(line.substring(0, 15))) return null;
 
-  const finish_order = parseIntOrNull(line.substring(2, 4));
+  const finishRaw = line.substring(2, 4).trim();
   const boat_number = parseIntOrNull(line.substring(6, 7));
   const registration_number = line.substring(8, 12).trim();
   const racer_name = line.substring(13, 21).trim().replace(/\s/g, '');
@@ -89,10 +88,16 @@ function parseRacerResultLine(line, lineNumber) {
   const start_timing = line.substring(43, 47).trim();
   const race_time = line.length >= 58 ? line.substring(52, 58).trim() : line.substring(47).trim();
 
-  if (finish_order == null || boat_number == null) return null;
+  if (boat_number == null) return null;
   if (!/^\d{4}$/.test(registration_number)) return null;
 
-  const finish_status = parseFinishStatus(race_time, start_timing);
+  // 着順解析: 数字の場合はそのまま、S/Fの場合は特殊ステータス
+  const finish_order = /^\d+$/.test(finishRaw) ? parseIntOrNull(finishRaw) : null;
+  let finish_status = parseFinishStatus(race_time, start_timing);
+  // S0/S1/S2 = スタート事故、F = フライング → いずれも失格
+  if (/^S\d$/.test(finishRaw) || /^F/.test(finishRaw)) {
+    finish_status = "DISQUALIFIED";
+  }
   const is_absent = finish_status === "ABSENT";
   const is_disqualified = finish_status === "DISQUALIFIED";
   const is_returned = finish_status === "RETURNED";

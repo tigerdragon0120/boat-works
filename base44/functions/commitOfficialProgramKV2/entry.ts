@@ -6,7 +6,7 @@ import {
   computeSHA256,
   K_PARSER_VERSION,
 } from '../../shared/programKParser.js';
-import { isSameRecord, bulkChunked } from '../../shared/importUtils.ts';
+import { isSameRecord, bulkChunked } from '../../shared/importUtils.js';
 
 // 公式競走成績Kファイル 確定取込
 // プレビューと同じファイルを再検証し、result_key/entry_result_key/payout_keyで冪等upsertする。
