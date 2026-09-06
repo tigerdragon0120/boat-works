@@ -176,6 +176,84 @@ export default async function (req) {
     const evaluations = [];
     let computedCount = 0;
 
+    // RacerTermStatV2フォールバック: 個別レース結果がない選手の基本評価を生成
+    // race_dateが指定された場合、その日の出走選手でracerMapにいない選手を補完
+    let fallbackCount = 0;
+    if (body.race_date) {
+      const raceEntries = await base44.asServiceRole.entities.RaceEntry.filter(
+        { race_date: body.race_date }, 'boat_number', 5000
+      ).catch(() => []);
+      const participantRegs = [...new Set(raceEntries.map(e => e.registration_number).filter(Boolean))];
+      const missingRegs = participantRegs.filter(rn => !racerMap.has(rn));
+
+      if (missingRegs.length > 0) {
+        // RacerTermStatV2から最新タームデータを取得
+        for (let i = 0; i < missingRegs.length; i += 200) {
+          const chunk = missingRegs.slice(i, i + 200);
+          const termStats = await base44.asServiceRole.entities.RacerTermStatV2.filter(
+            { registration_number: { $in: chunk } }, '-term_code', 1000
+          ).catch(() => []);
+
+          // 各選手の最新タームのみ保持
+          const latestByReg = new Map();
+          for (const ts of termStats) {
+            if (!ts.registration_number) continue;
+            if (!latestByReg.has(ts.registration_number) || ts.term_code > latestByReg.get(ts.registration_number).term_code) {
+              latestByReg.set(ts.registration_number, ts);
+            }
+          }
+
+          // フォールバック評価を生成
+          for (const [regNum, ts] of latestByReg) {
+            const winRate = ts.win_rate || 0;
+            const top2Rate = ts.top2_rate || ts.second_place_rate || 0;
+            const avgST = ts.average_start_timing;
+            const raceCount = ts.race_count || 0;
+            const fCount = ts.start_accident_count || 0;
+            const lCount = ts.late_count || 0;
+
+            // in_strength: 全体勝率から推定（1コース勝率の下限として使用）
+            let inStrength = 40 + winRate * 100 * 0.6;
+            if (avgST != null && avgST < 0.15) inStrength += 5;
+            else if (avgST != null && avgST < 0.20) inStrength += 2;
+            inStrength -= Math.min(10, fCount * 0.1 + lCount * 0.05);
+            inStrength = Math.max(0, Math.min(100, Math.round(inStrength)));
+
+            // mid_second: 2連対率から推定
+            let midSecond = 30 + top2Rate * 100 * 0.5;
+            midSecond = Math.max(0, Math.min(100, Math.round(midSecond)));
+
+            const racerName = (ts.racer_name || '').replace(/[\s　]+/g, ' ').trim();
+
+            evaluations.push({
+              registration_number: regNum,
+              racer_name: racerName,
+              in_strength_score: inStrength,
+              mid_second_score: midSecond,
+              mid_third_score: null,
+              outside_third_score: null,
+              outside_second_score: null,
+              player_types: [],
+              period_data: {
+                fallback: true,
+                term_code: ts.term_code,
+                term_label: ts.term_label,
+                win_rate: winRate,
+                top2_rate: top2Rate,
+                avg_st: avgST,
+                race_count: raceCount,
+              },
+              best_course: null,
+              evaluation_version: EVALUATION_VERSION,
+              computed_at: now,
+            });
+            fallbackCount++;
+          }
+        }
+      }
+    }
+
+    // 各選手のスコア計算
     for (const [regNum, racer] of racerMap) {
       const periodData = {};
       const periodScores = {};
@@ -257,7 +335,8 @@ export default async function (req) {
       periods,
       total_fetched: totalFetched,
       v1_fetched: v1Fetched,
-      racer_count: computedCount,
+      racer_count: computedCount + fallbackCount,
+      fallback_count: fallbackCount,
       created_count: createdCount,
       updated_count: updatedCount,
       evaluation_version: EVALUATION_VERSION,
