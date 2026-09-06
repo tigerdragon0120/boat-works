@@ -1,0 +1,98 @@
+{
+  "name": "OfficialImportBatchV2",
+  "type": "object",
+  "properties": {
+    "batch_key": {
+      "type": "string",
+      "description": "PROGRAM_B_YYYY-MM-DD_SHA256\u5148\u982d12\u6587\u5b57"
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_checksum_sha256": {
+      "type": "string"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "PROGRAM_B"
+      ]
+    },
+    "source_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "encoding": {
+      "type": "string"
+    },
+    "byte_size": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "UPLOADED",
+        "PREVIEWED",
+        "IMPORTING",
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "venue_count": {
+      "type": "number"
+    },
+    "race_count": {
+      "type": "number"
+    },
+    "entry_count": {
+      "type": "number"
+    },
+    "created_count": {
+      "type": "number"
+    },
+    "updated_count": {
+      "type": "number"
+    },
+    "unchanged_count": {
+      "type": "number"
+    },
+    "error_count": {
+      "type": "number"
+    },
+    "warning_count": {
+      "type": "number"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u30a8\u30e9\u30fc\u8a73\u7d30: {line, severity, message, raw}"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u8b66\u544a\u8a73\u7d30: {line, severity, message, raw}"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_publishable": {
+      "type": "boolean",
+      "description": "COMPLETED\u6642\u306e\u307ftrue"
+    },
+    "parser_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "batch_key"
+  ]
+}

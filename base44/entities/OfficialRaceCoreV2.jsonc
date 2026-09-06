@@ -1,0 +1,70 @@
+{
+  "name": "OfficialRaceCoreV2",
+  "type": "object",
+  "properties": {
+    "race_key": {
+      "type": "string",
+      "description": "YYYY-MM-DD_\u5834\u30b3\u30fc\u30c92\u6841_\u30ec\u30fc\u30b9\u756a\u53f72\u6841"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string",
+      "description": "\u516c\u5f0f\u5834\u30b3\u30fc\u30c92\u6841(01-24)"
+    },
+    "venue_name": {
+      "type": "string",
+      "description": "\u30de\u30b9\u30bf\u30fc\u5834\u540d"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "race_name": {
+      "type": "string"
+    },
+    "race_distance": {
+      "type": "number",
+      "description": "\u8ddd\u96e2(m)"
+    },
+    "deadline_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u96fb\u8a71\u6295\u7968\u7de0\u5207\u4e88\u5b9a\u6642\u523b(JST)"
+    },
+    "series_title": {
+      "type": "string"
+    },
+    "series_day_number": {
+      "type": "number",
+      "description": "\u30b7\u30ea\u30fc\u30ba\u4f55\u65e5\u76ee"
+    },
+    "source_batch_key": {
+      "type": "string"
+    },
+    "source_file_name": {
+      "type": "string"
+    },
+    "source_checksum": {
+      "type": "string"
+    },
+    "official_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "record_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    },
+    "parser_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "race_key"
+  ]
+}

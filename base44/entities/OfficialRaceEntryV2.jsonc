@@ -1,0 +1,112 @@
+{
+  "name": "OfficialRaceEntryV2",
+  "type": "object",
+  "properties": {
+    "entry_key": {
+      "type": "string",
+      "description": "race_key_\u8247\u756a"
+    },
+    "race_key": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "boat_number": {
+      "type": "number",
+      "description": "\u8247\u756a1-6"
+    },
+    "registration_number": {
+      "type": "string",
+      "description": "\u9078\u624b\u767b\u9332\u756a\u53f74\u6841(\u6587\u5b57\u5217)"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "age": {
+      "type": "number"
+    },
+    "branch": {
+      "type": "string",
+      "description": "\u652f\u90e8"
+    },
+    "weight": {
+      "type": "number",
+      "description": "\u4f53\u91cd(kg)"
+    },
+    "class": {
+      "type": "string",
+      "description": "\u7d1a\u5225 A1/A2/B1/B2"
+    },
+    "national_win_rate": {
+      "type": "number",
+      "description": "\u5168\u56fd\u52dd\u7387"
+    },
+    "national_top2_rate": {
+      "type": "number",
+      "description": "\u5168\u56fd2\u9023\u7387"
+    },
+    "local_win_rate": {
+      "type": "number",
+      "description": "\u5f53\u5730\u52dd\u7387"
+    },
+    "local_top2_rate": {
+      "type": "number",
+      "description": "\u5f53\u57302\u9023\u7387"
+    },
+    "motor_number": {
+      "type": "number",
+      "description": "\u30e2\u30fc\u30bf\u30fc\u756a\u53f7"
+    },
+    "motor_top2_rate": {
+      "type": "number",
+      "description": "\u30e2\u30fc\u30bf\u30fc2\u9023\u7387"
+    },
+    "boat_number_official": {
+      "type": "number",
+      "description": "\u30dc\u30fc\u30c8\u756a\u53f7(\u516c\u5f0f)"
+    },
+    "boat_top2_rate": {
+      "type": "number",
+      "description": "\u30dc\u30fc\u30c82\u9023\u7387"
+    },
+    "series_results_raw": {
+      "type": "string",
+      "description": "\u4eca\u7bc0\u6210\u7e3e(\u751f\u6587\u5b57\u5217)"
+    },
+    "early_race_number": {
+      "type": "number",
+      "description": "\u65e9\u898b\u756a\u53f7"
+    },
+    "source_batch_key": {
+      "type": "string"
+    },
+    "source_file_name": {
+      "type": "string"
+    },
+    "official_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "record_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    },
+    "parser_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "entry_key"
+  ]
+}
