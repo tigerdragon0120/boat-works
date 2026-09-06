@@ -105,7 +105,8 @@ export default function OfficialDataImportV2() {
       });
       setPreview(res.data);
     } catch (e) {
-      setPreviewError(e?.message || "プレビューに失敗しました");
+      const errMsg = e?.response?.data?.message || e?.message || "プレビューに失敗しました";
+      setPreviewError(errMsg);
     } finally {
       setPreviewLoading(false);
     }
@@ -129,7 +130,8 @@ export default function OfficialDataImportV2() {
       }
       loadBatches();
     } catch (e) {
-      setCommitResult({ status: "error", message: e?.message || "取込に失敗しました" });
+      const errData = e?.response?.data;
+      setCommitResult({ status: "error", message: errData?.message || e?.message || "取込に失敗しました", errors: errData?.errors || [] });
     } finally {
       setCommitLoading(false);
     }
@@ -143,7 +145,8 @@ export default function OfficialDataImportV2() {
       const res = await base44.functions.invoke("auditOfficialProgramDayV2", { race_date: targetDate });
       setAuditResult(res.data);
     } catch (e) {
-      setAuditResult({ status: "error", message: e?.message || "監査に失敗しました" });
+      const errMsg = e?.response?.data?.message || e?.message || "監査に失敗しました";
+      setAuditResult({ status: "error", message: errMsg });
     } finally {
       setAuditLoading(false);
     }
