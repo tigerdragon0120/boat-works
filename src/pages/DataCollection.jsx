@@ -84,9 +84,9 @@ export default function DataCollection(){
     }).sort((a,b)=>new Date(a.first_deadline)-new Date(b.first_deadline));
   },[rows,races,analyses,series]);
 
-  const done=venues.filter(v=>v.complete).length;
+  const preRaceReady=venues.filter(v=>v.pre_race_ready).length;
+  const fullComplete=venues.filter(v=>v.full_complete).length;
   const morning=venues.filter(v=>v.time_slot==="morning");
-  const beforeStartOk=venues.filter(v=>v.complete && new Date(v.baseline_captured_at||v.collection_completed_at||0)<new Date(v.first_deadline)).length;
   const historical=useMemo(()=>{
     const from=new Date(Date.now()+9*3600000); from.setUTCMonth(from.getUTCMonth()-6); const fromStr=from.toISOString().slice(0,10); const toStr=jstDate(-1);
     const fetchRows=histFetch.filter(x=>x.venue_code!=="00"&&x.race_date>=fromStr&&x.race_date<=toStr&&(x.result_fetch_status==="done"||x.status==="done"));
@@ -111,10 +111,10 @@ export default function DataCollection(){
     {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-600">{error}</div>}
     {tab==="history" ? <HistoricalPanel h={historical}/> : <>
     <div className="grid grid-cols-3 gap-2">
-      <Summary label="開催場" value={`${venues.length}場`}/><Summary label="全工程完了" value={`${done}/${venues.length}`} good={done===venues.length&&venues.length>0}/><Summary label="開始前完了" value={`${beforeStartOk}/${venues.length}`} good={beforeStartOk===venues.length&&venues.length>0}/>
+      <Summary label="開催場" value={`${venues.length}場`}/><Summary label="開始前完了" value={`${preRaceReady}/${venues.length}`} good={preRaceReady===venues.length&&venues.length>0}/><Summary label="全工程完了" value={`${fullComplete}/${venues.length}`} good={fullComplete===venues.length&&venues.length>0}/>
     </div>
 
-    {morning.length>0&&morning.some(v=>!v.complete)&&<div className="flex gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"><AlertTriangle className="w-5 h-5 shrink-0"/><div><b>モーニング場を最優先で収集中</b><div className="text-xs mt-0.5">{morning.filter(v=>!v.complete).map(v=>v.venue_name).join("・")} がまだ全工程完了していません。</div></div></div>}
+    {morning.length>0&&morning.some(v=>!v.pre_race_ready)&&<div className="flex gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800"><AlertTriangle className="w-5 h-5 shrink-0"/><div><b>モーニング場を最優先で収集中</b><div className="text-xs mt-0.5">{morning.filter(v=>!v.pre_race_ready).map(v=>v.venue_name).join("・")} がまだ開始前完了していません。</div></div></div>}
 
     <div className="space-y-3">
       {venues.map(v=><VenueCard key={v.venue_code} v={v}/>) }
@@ -125,13 +125,16 @@ export default function DataCollection(){
   </div>;
 }
 
-function VenueCard({v}){ const meta=slotMeta[v.time_slot]||slotMeta.day; const Icon=meta.Icon; return <div className={cn("rounded-2xl border bg-card p-4",v.complete?"border-emerald-300":"border-amber-200")}>
-  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.complete?"bg-emerald-50 text-emerald-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div>{v.event_name&&<div className="text-xs font-medium text-foreground/80 mt-1 leading-snug">{v.event_name}</div>}<div className={cn("text-xs font-bold mt-1",v.complete?"text-emerald-600":"text-amber-600")}>{v.complete?"✓ レース開始前データ準備完了":"収集中・未完了あり"}</div></div></div>
+function VenueCard({v}){ const meta=slotMeta[v.time_slot]||slotMeta.day; const Icon=meta.Icon; return <div className={cn("rounded-2xl border bg-card p-4",v.full_complete?"border-emerald-300":v.pre_race_ready?"border-blue-300":"border-amber-200")}>
+  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.full_complete?"bg-emerald-50 text-emerald-600":v.pre_race_ready?"bg-blue-50 text-blue-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div>{v.event_name&&<div className="text-xs font-medium text-foreground/80 mt-1 leading-snug">{v.event_name}</div>}<div className={cn("text-xs font-bold mt-1",v.full_complete?"text-emerald-600":v.pre_race_ready?"text-blue-600":"text-amber-600")}>{v.full_complete?"✓ 全工程完了":v.pre_race_ready?"✓ 開始前データ準備完了":"収集中・未完了あり"}</div></div></div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
     <Step label="翌日出走表" ok={v.racesComplete} sub={`${v.races.length}/12R`}/>
     <Step label="基本情報" ok={v.coreComplete===12} sub={`${v.coreComplete}/12R`}/>
     <Step label="前日結果・節間P" ok={v.seriesReady} sub={v.seriesReady?"完了":"未完了"}/>
-    <Step label="翌日アラート" ok={v.alertsComplete} sub={`${v.analysisCount}/12R`}/>
+    <Step label="選手評価" ok={v.racer_evaluations_ready} sub={`${v.racer_evaluations_count||0}/${v.racer_evaluations_total||0}`}/>
+    <Step label="ういち配置" ok={v.player_structures_ready} sub={`${v.player_structures_count||0}/12R`}/>
+    <Step label="裏ういち配置" ok={v.player_structures_ready} sub={`${v.player_structures_count||0}/12R`}/>
+    <Step label="翌日アラート" ok={v.pre_alerts_ready} sub={`${v.pre_alerts_count||0}/12R`}/>
   </div>
   {v.missing?.length>0&&<div className="mt-3 rounded-xl bg-rose-50/70 px-3 py-2 text-xs text-rose-700"><b>未取得：</b>{v.missing.join(" ／ ")}</div>}
   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground"><span>収集完了 {fmt(v.collection_completed_at)}</span><span>展示前基準点 {fmt(v.baseline_captured_at)}</span><span>最終確認 {fmt(v.last_checked_at)}</span></div>
