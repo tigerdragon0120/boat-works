@@ -37,6 +37,17 @@ export default async function (req) {
       return Response.json({ status: 'error', message: 'race_dateが必要です' }, { status: 400 });
     }
 
+    // recalc_onlyモード: V2→V1同期をスキップし、VenueDayReadiness再計算のみ実行
+    if (body.recalc_only === true) {
+      let readinessResult = null;
+      try {
+        readinessResult = await recalcAllVenuesForDate(base44, raceDate);
+      } catch (e) {
+        return Response.json({ status: 'error', message: e?.message || String(e) }, { status: 500 });
+      }
+      return Response.json({ status: 'success', race_date: raceDate, readiness_recalc: readinessResult });
+    }
+
     const now = new Date().toISOString();
 
     // 1. V2公式データを取得
@@ -73,6 +84,11 @@ export default async function (req) {
       const raceNumber = Number(v2.race_number);
       const logicalKey = `${jcd}_${raceNumber}`;
 
+      const seriesDay = v2.series_day_number || 1;
+      const seriesStartDate = new Date(raceDate);
+      seriesStartDate.setDate(seriesStartDate.getDate() - (seriesDay - 1));
+      const seriesStartDateStr = seriesStartDate.toISOString().slice(0, 10);
+
       const raceData = {
         race_date: raceDate,
         venue_code: jcd,
@@ -82,11 +98,11 @@ export default async function (req) {
         deadline: v2.deadline_time || null,
         event_name: v2.series_title || null,
         grade: deriveGrade(v2.race_name, v2.series_title),
-        series_key: v2.series_title ? `${jcd}_${raceDate}` : null,
-        series_start_date: raceDate,
-        series_end_date: raceDate,
+        series_key: v2.series_title ? `${jcd}_${seriesStartDateStr}` : null,
+        series_start_date: seriesStartDateStr,
+        series_end_date: seriesStartDateStr,
         series_total_days: 1,
-        series_day: v2.series_day_number || 1,
+        series_day: seriesDay,
         is_final_day: false,
         time_slot: deriveTimeSlot(v2.deadline_time),
         status: 'scheduled',
