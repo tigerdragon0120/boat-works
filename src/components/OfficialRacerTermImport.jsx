@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Upload, Users, CheckCircle2, AlertTriangle, XCircle,
-  Loader2, FileText, Play, X, SkipForward,
+  Loader2, FileText, Play, X, SkipForward, RotateCcw,
 } from "lucide-react";
 
 const STATUS_CONFIG = {
@@ -18,10 +18,35 @@ const STATUS_CONFIG = {
   committing:  { label: "取込中",   color: "bg-blue-100 text-blue-700",       icon: Loader2 },
   done:        { label: "完了",     color: "bg-green-100 text-green-700",    icon: CheckCircle2 },
   error:       { label: "エラー",   color: "bg-red-100 text-red-700",        icon: XCircle },
+  retrying:    { label: "再試行中", color: "bg-blue-100 text-blue-700",        icon: Loader2 },
   skipped:     { label: "取込済",   color: "bg-amber-100 text-amber-700",    icon: SkipForward },
 };
 
 let fileCounter = 0;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientError = (error) => {
+  const message = String(error?.response?.data?.message || error?.message || "").toLowerCase();
+  const status = error?.response?.status;
+  return !status || status === 408 || status === 429 || status >= 500 ||
+    /network|connection lost|timeout|timed out|fetch|temporar/.test(message);
+};
+
+const withRetry = async (operation, onRetry, maxAttempts = 3) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientError(error) || attempt === maxAttempts) throw error;
+      onRetry?.(attempt, maxAttempts);
+      await sleep(1200 * attempt);
+    }
+  }
+  throw lastError;
+};
 
 export default function OfficialRacerTermImport({ onCommitDone }) {
   const [fileQueue, setFileQueue] = useState([]);
@@ -63,14 +88,26 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
       setProgress({ current: i + 1, total: pending.length, label: `解析: ${item.file.name}` });
       try {
         updateFile(item.id, { status: "uploading" });
-        const uploadResult = await base44.integrations.Core.UploadFile({ file: item.file });
+        const uploadResult = await withRetry(
+          () => base44.integrations.Core.UploadFile({ file: item.file }),
+          (attempt, max) => updateFile(item.id, {
+            status: "retrying",
+            error: `通信を再試行しています（${attempt}/${max - 1}）`,
+          })
+        );
         const file_url = uploadResult.file_url;
 
         updateFile(item.id, { status: "previewing", file_url });
-        const res = await base44.functions.invoke("previewOfficialRacerTermV2", {
-          file_url,
-          file_name: item.file.name,
-        });
+        const res = await withRetry(
+          () => base44.functions.invoke("previewOfficialRacerTermV2", {
+            file_url,
+            file_name: item.file.name,
+          }),
+          (attempt, max) => updateFile(item.id, {
+            status: "retrying",
+            error: `解析通信を再試行しています（${attempt}/${max - 1}）`,
+          })
+        );
         const preview = res.data;
 
         if (preview.already_imported) {
@@ -94,11 +131,17 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
     if (!item.file_url || !item.preview?.checksum) return;
     updateFile(item.id, { status: "committing" });
     try {
-      const res = await base44.functions.invoke("commitOfficialRacerTermV2", {
-        file_url: item.file_url,
-        file_name: item.file.name,
-        expected_checksum: item.preview.checksum,
-      });
+      const res = await withRetry(
+        () => base44.functions.invoke("commitOfficialRacerTermV2", {
+          file_url: item.file_url,
+          file_name: item.file.name,
+          expected_checksum: item.preview.checksum,
+        }),
+        (attempt, max) => updateFile(item.id, {
+          status: "retrying",
+          error: `取込通信を再試行しています（${attempt}/${max - 1}）`,
+        })
+      );
       const result = res.data;
       if (result.status === "success") {
         updateFile(item.id, { status: "done", commit_result: result });
@@ -111,6 +154,52 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
     } catch (e) {
       const errMsg = e?.response?.data?.message || e?.message || "取込に失敗しました";
       updateFile(item.id, { status: "error", error: errMsg });
+    }
+  };
+
+  const retryFile = async (item) => {
+    setIsProcessing(true);
+    updateFile(item.id, { status: "retrying", error: null });
+    try {
+      if (item.file_url && item.preview?.checksum && item.preview?.is_importable) {
+        await commitFile(item);
+        return;
+      }
+
+      updateFile(item.id, { status: "uploading" });
+      const uploadResult = await withRetry(
+        () => base44.integrations.Core.UploadFile({ file: item.file }),
+        (attempt, max) => updateFile(item.id, {
+          status: "retrying",
+          error: `通信を再試行しています（${attempt}/${max - 1}）`,
+        })
+      );
+      const file_url = uploadResult.file_url;
+      updateFile(item.id, { status: "previewing", file_url, error: null });
+
+      const res = await withRetry(
+        () => base44.functions.invoke("previewOfficialRacerTermV2", {
+          file_url,
+          file_name: item.file.name,
+        }),
+        (attempt, max) => updateFile(item.id, {
+          status: "retrying",
+          error: `解析通信を再試行しています（${attempt}/${max - 1}）`,
+        })
+      );
+      const preview = res.data;
+      if (preview.already_imported) {
+        updateFile(item.id, { status: "skipped", preview, error: null });
+      } else if (preview.is_importable) {
+        updateFile(item.id, { status: "previewed", preview, error: null });
+      } else {
+        updateFile(item.id, { status: "error", preview, error: "検証エラーのため取込不可" });
+      }
+    } catch (e) {
+      const errMsg = e?.response?.data?.message || e?.message || "再試行に失敗しました";
+      updateFile(item.id, { status: "error", error: errMsg });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -198,7 +287,7 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
           {fileQueue.map((item) => {
             const cfg = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
             const Icon = cfg.icon;
-            const spin = item.status === "uploading" || item.status === "previewing" || item.status === "committing";
+            const spin = item.status === "uploading" || item.status === "previewing" || item.status === "committing" || item.status === "retrying";
             return (
               <Card key={item.id} className="p-3">
                 <div className="flex items-start justify-between gap-2">
@@ -275,8 +364,13 @@ export default function OfficialRacerTermImport({ onCommitDone }) {
                         取込
                       </Button>
                     )}
+                    {item.status === "error" && (
+                      <Button size="sm" variant="outline" onClick={() => retryFile(item)} disabled={isProcessing}>
+                        <RotateCcw className="w-3 h-3 mr-1" />再試行
+                      </Button>
+                    )}
                     {(item.status === "pending" || item.status === "error" || item.status === "done" || item.status === "skipped") && (
-                      <Button size="sm" variant="ghost" onClick={() => removeFile(item.id)}>
+                      <Button size="sm" variant="ghost" onClick={() => removeFile(item.id)} disabled={isProcessing}>
                         <X className="w-3 h-3" />
                       </Button>
                     )}
