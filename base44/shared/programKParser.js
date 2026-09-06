@@ -4,7 +4,7 @@
 
 import { VENUE_MASTER, computeSHA256, decodeShiftJIS } from './programBParser.js';
 
-export const K_PARSER_VERSION = "K2V1.0.0";
+export const K_PARSER_VERSION = "K2V1.1.0";
 
 // ─── 文字列正規化 ──────────────────────────────────────
 function toHalfWidth(str) {
@@ -74,8 +74,9 @@ function parseFinishStatus(raceTimeRaw, startTimingRaw) {
 function parseRacerResultLine(line, lineNumber) {
   if (!line || line.length < 47) return null;
 
-  // 着順・艇番・登録番号のパターンチェック (数字 or S0/S1/S2/F)
-  if (!/^\s*[\dSF]\d?\s+\d\s+\d{4}/.test(line.substring(0, 15))) return null;
+  // 着順・艇番・登録番号のパターンチェック
+  // 数字のほか、S0/S1/S2(失格)、F/L(スタート事故)、K1(欠場)を受け付ける。
+  if (!/^\s*(?:\d{1,2}|S\d|F|L|K\d)\s+\d\s+\d{4}/.test(line.substring(0, 15))) return null;
 
   const finishRaw = line.substring(2, 4).trim();
   const boat_number = parseIntOrNull(line.substring(6, 7));
@@ -91,16 +92,18 @@ function parseRacerResultLine(line, lineNumber) {
   if (boat_number == null) return null;
   if (!/^\d{4}$/.test(registration_number)) return null;
 
-  // 着順解析: 数字の場合はそのまま、S/Fの場合は特殊ステータス
+  // 着順解析: 数字の場合はそのまま、特殊コードは公式状態へ変換する。
   const finish_order = /^\d+$/.test(finishRaw) ? parseIntOrNull(finishRaw) : null;
-  let finish_status = parseFinishStatus(race_time, start_timing);
-  // S0/S1/S2 = スタート事故、F = フライング → いずれも失格
-  if (/^S\d$/.test(finishRaw) || /^F/.test(finishRaw)) {
+  let finish_status = parseFinishStatus(race_time, startTimingRaw);
+  if (/^K\d$/.test(finishRaw)) {
+    finish_status = "ABSENT";
+  } else if (/^S\d$/.test(finishRaw) || /^[FL]$/.test(finishRaw)) {
     finish_status = "DISQUALIFIED";
   }
   const is_absent = finish_status === "ABSENT";
   const is_disqualified = finish_status === "DISQUALIFIED";
-  const is_returned = finish_status === "RETURNED";
+  // F/L/K系は舟券返還対象として保持する。
+  const is_returned = finish_status === "RETURNED" || /^[FL]$/.test(finishRaw) || /^K\d$/.test(finishRaw);
 
   return {
     finish_order,
@@ -251,9 +254,10 @@ function parseRaceHeader(line, lineNumber) {
 // "着 艇 登番 選手名 モータ ボート 展示 進入 タイミング タイム まくり差し"
 // → 決まり手を抽出
 function parseColumnHeader(line) {
-  const idx = line.indexOf("タイム");
-  if (idx < 0) return null;
-  const method = line.substring(idx + 3).trim();
+  // 公式Kは通常「ﾚｰｽﾀｲﾑ まくり」のように半角カナを使用する。
+  const match = line.match(/(?:ﾚｰｽﾀｲﾑ|レースタイム|タイム)\s*(.*)$/);
+  if (!match) return null;
+  const method = match[1].trim();
   return method || null;
 }
 
