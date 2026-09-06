@@ -131,6 +131,29 @@ export default function OfficialDataImportV2() {
     }
   };
 
+  const runTermAudit = async (termCode) => {
+    const target = termCode || termAuditDate;
+    if (!target) return;
+    setTermAuditLoading(true);
+    try {
+      const res = await base44.functions.invoke("auditOfficialRacerTermV2", { term_code: target });
+      setTermAuditResult(res.data);
+    } catch (e) {
+      const errMsg = e?.response?.data?.message || e?.message || "監査に失敗しました";
+      setTermAuditResult({ status: "error", message: errMsg });
+    } finally {
+      setTermAuditLoading(false);
+    }
+  };
+
+  const handleTermCommitDone = useCallback((termCode) => {
+    if (termCode) {
+      setTermAuditDate(termCode);
+      runTermAudit(termCode);
+    }
+    loadTermBatches();
+  }, [loadTermBatches]);
+
   const handleKCommitDone = useCallback((sourceDate) => {
     if (sourceDate) {
       setKAuditDate(sourceDate);
@@ -451,24 +474,34 @@ export default function OfficialDataImportV2() {
                   onClick={() => { setAuditMode("K"); setKAuditResult(null); }}
                 >
                   <Trophy className="w-3 h-3 mr-1" />K競走成績
-                </Button>
+                  </Button>
+                  <Button
+                  size="sm"
+                  variant={auditMode === "TERM" ? "default" : "outline"}
+                  onClick={() => { setAuditMode("TERM"); setTermAuditResult(null); }}
+                  >
+                  <Users className="w-3 h-3 mr-1" />選手期別
+                  </Button>
               </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <Label htmlFor="audit-date">対象日</Label>
+                  <Label htmlFor="audit-date">
+                    {auditMode === "TERM" ? "期コード (例: 2025_1)" : "対象日"}
+                  </Label>
                   <Input
                     id="audit-date"
-                    type="date"
-                    value={auditMode === "B" ? bAuditDate : kAuditDate}
-                    onChange={(e) => auditMode === "B" ? setBAuditDate(e.target.value) : setKAuditDate(e.target.value)}
+                    type={auditMode === "TERM" ? "text" : "date"}
+                    placeholder={auditMode === "TERM" ? "2025_1" : undefined}
+                    value={auditMode === "B" ? bAuditDate : auditMode === "K" ? kAuditDate : termAuditDate}
+                    onChange={(e) => auditMode === "B" ? setBAuditDate(e.target.value) : auditMode === "K" ? setKAuditDate(e.target.value) : setTermAuditDate(e.target.value)}
                   />
                 </div>
                 <div className="flex items-end">
                   <Button
-                    onClick={() => auditMode === "B" ? runAudit() : runKAudit()}
-                    disabled={auditMode === "B" ? auditLoading : kAuditLoading}
+                    onClick={() => auditMode === "B" ? runAudit() : auditMode === "K" ? runKAudit() : runTermAudit()}
+                    disabled={auditMode === "B" ? auditLoading : auditMode === "K" ? kAuditLoading : termAuditLoading}
                   >
-                    {(auditMode === "B" ? auditLoading : kAuditLoading) ? (
+                    {(auditMode === "B" ? auditLoading : auditMode === "K" ? kAuditLoading : termAuditLoading) ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Search className="w-4 h-4 mr-1" />
@@ -625,6 +658,64 @@ export default function OfficialDataImportV2() {
                   {kAuditResult.message}
                 </div>
               )}
+
+              {/* 選手期別監査結果 */}
+              {auditMode === "TERM" && termAuditResult && termAuditResult.status !== "error" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge className={
+                      termAuditResult.overall === "PASS" ? "bg-green-100 text-green-700" :
+                      termAuditResult.overall === "EMPTY" ? "bg-gray-100 text-gray-700" :
+                      "bg-red-100 text-red-700"
+                    }>
+                      {termAuditResult.overall}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      期: {termAuditResult.term_code}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <StatBox label="登録選手数" value={termAuditResult.racer_count} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div className={`rounded p-2 ${termAuditResult.racer_term_key_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      racer_term_key重複: {termAuditResult.racer_term_key_duplicates?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.missing_registration_number === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      登録番号欠落: {termAuditResult.missing_registration_number}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.missing_racer_name === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      選手名欠落: {termAuditResult.missing_racer_name}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.missing_term_code === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      期コード欠落: {termAuditResult.missing_term_code}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.missing_racer_class === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      級別欠落: {termAuditResult.missing_racer_class}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.numeric_conversion_errors === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      数値変換エラー: {termAuditResult.numeric_conversion_errors}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.name_mismatches?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      氏名不一致: {termAuditResult.name_mismatches?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${termAuditResult.stuck_batches?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      取込途中バッチ: {termAuditResult.stuck_batches?.length || 0}
+                    </div>
+                  </div>
+                  {termAuditResult.latest_batch_file_name && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>最新ファイル: {termAuditResult.latest_batch_file_name}</div>
+                      <div>parser_version: {termAuditResult.latest_parser_version}</div>
+                    </div>
+                  )}
+                </>
+              )}
+              {auditMode === "TERM" && termAuditResult?.status === "error" && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                  {termAuditResult.message}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -711,6 +802,45 @@ export default function OfficialDataImportV2() {
                       {b.is_publishable && (
                         <Badge className="bg-green-100 text-green-700 text-xs">publishable</Badge>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="w-4 h-4" />選手期別データ 取込履歴
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {termBatchesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : termBatches.length === 0 ? (
+                <div className="text-center text-sm text-muted-foreground py-8">選手期別取込履歴がありません</div>
+              ) : (
+                <div className="space-y-2">
+                  {termBatches.map((b) => (
+                    <div key={b.id} className="border rounded-lg p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{b.term_label || b.term_code || "—"}</span>
+                        <Badge className={STATUS_COLORS[b.status] || "bg-gray-100"} variant="outline">
+                          {b.status}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">{b.source_file_name}</div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span>選手:{b.parsed_row_count}</span>
+                        <span className="text-green-600">新規:{b.inserted_count}</span>
+                        <span className="text-blue-600">更新:{b.updated_count}</span>
+                        <span className="text-gray-500">変更なし:{b.unchanged_count}</span>
+                        {b.error_count > 0 && <span className="text-red-600">エラー:{b.error_count}</span>}
+                        <span className="text-muted-foreground">v:{b.parser_version}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
