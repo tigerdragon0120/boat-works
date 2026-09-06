@@ -105,7 +105,7 @@ export default async function (req) {
 
     // 既存バッチ確認
     const existingBatches = await base44.asServiceRole.entities.OfficialImportBatchV2.filter(
-      { batch_key }, '-completed_at', 5
+      { batch_key: batchKey }, '-completed_at', 5
     ).catch(() => []);
 
     if (existingBatches.length > 0 && existingBatches[0].status === 'COMPLETED') {

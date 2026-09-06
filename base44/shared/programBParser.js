@@ -228,7 +228,7 @@ export function parseProgramB(rawText, fileName) {
 
     // ヘッダー解析: 開催日・シリーズ名・何日目
     const headerText = headerLines.join("\n");
-    const dateMatch = headerText.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    const dateMatch = headerText.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
     const sourceDate = dateMatch
       ? `${dateMatch[1]}-${pad2(parseInt(dateMatch[2], 10))}-${pad2(parseInt(dateMatch[3], 10))}`
       : null;
