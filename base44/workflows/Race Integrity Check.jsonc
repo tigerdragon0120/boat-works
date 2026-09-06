@@ -1,0 +1,47 @@
+{
+  "name": "Race Integrity Check",
+  "description": "BOAT WORKS\u8efd\u91cfDB\u6574\u5408\u6027\u30c1\u30a7\u30c3\u30af\u30025\u5206\u3054\u3068\u306bDB\u5185\u90e8\u3060\u3051\u3092\u898b\u3066Race\u91cd\u8907\u30fbRaceEntry\u91cd\u8907\u30fb\u5b64\u7acb\u30c7\u30fc\u30bf\u30fbfinal\u9006\u623b\u308a\u3092\u78ba\u8a8d\u3057\u3001\u516c\u5f0f\u30b5\u30a4\u30c8\u3078\u306f\u4e00\u5207\u30a2\u30af\u30bb\u30b9\u3057\u306a\u3044\u3002Race/RaceEntry\u306e\u65b0\u898f\u4f5c\u6210\u3082\u884c\u308f\u306a\u3044\u3002",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 0-23 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "race_integrity_check",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "check_integrity": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "runRaceIntegrityCheck",
+            "args": {
+              "target_offset": 0
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "DB\u5185\u90e8\u6574\u5408\u6027\u30c1\u30a7\u30c3\u30af",
+            "description": "\u516c\u5f0f\u30b5\u30a4\u30c8\u3078\u30a2\u30af\u30bb\u30b9\u305b\u305aDB\u5185\u90e8\u306e\u91cd\u8907\u30fb\u5b64\u7acb\u30fb\u9006\u623b\u308a\u3060\u3051\u30925\u5206\u3054\u3068\u306b\u78ba\u8a8d"
+          }
+        }
+      }
+    ]
+  }
+}
