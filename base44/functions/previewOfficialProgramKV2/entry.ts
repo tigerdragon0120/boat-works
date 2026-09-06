@@ -39,8 +39,10 @@ export default async function (req) {
     let bMatchCount = 0;
     let bMismatchCount = 0;
     let entryMismatchCount = 0;
+    let bMissingEntryCount = 0;
     const bMismatchDetails = [];
     const entryMismatchDetails = [];
+    const bMissingEntryDetails = [];
 
     if (sourceDate) {
       const bRaces = await base44.asServiceRole.entities.OfficialRaceCoreV2.filter(
@@ -65,9 +67,21 @@ export default async function (req) {
         }
       }
 
+      const parsedEntryKeySet = new Set(parsed.entry_results.map((entry) => entry.entry_key));
+      for (const bEntry of bEntries) {
+        if (!parsedEntryKeySet.has(bEntry.entry_key)) {
+          bMissingEntryCount++;
+          bMissingEntryDetails.push({ entry_key: bEntry.entry_key, message: 'K結果にB出走選手が存在しません' });
+        }
+      }
+
       for (const entry of parsed.entry_results) {
         const bEntry = bEntryMap[entry.entry_key];
-        if (!bEntry) continue;
+        if (!bEntry) {
+          entryMismatchCount++;
+          entryMismatchDetails.push({ entry_key: entry.entry_key, message: 'B番組表に存在しない選手結果' });
+          continue;
+        }
         if (bEntry.registration_number !== entry.registration_number ||
             bEntry.boat_number !== entry.boat_number) {
           entryMismatchCount++;
@@ -90,11 +104,14 @@ export default async function (req) {
     if (entryMismatchCount > 0) {
       criticalErrors.push({ line: 0, severity: "ERROR", message: `選手照合不一致: ${entryMismatchCount}件`, raw: "" });
     }
+    if (bMissingEntryCount > 0) {
+      criticalErrors.push({ line: 0, severity: "ERROR", message: `K選手結果欠落: ${bMissingEntryCount}件`, raw: "" });
+    }
 
     const existingBatches = await base44.asServiceRole.entities.OfficialResultImportBatchV2.filter(
       { file_hash: checksum, status: 'COMPLETED' }, '-completed_at', 5
     ).catch(() => []);
-    const alreadyImported = existingBatches.length > 0;
+    const alreadyImported = existingBatches.some((batch) => batch.parser_version === K_PARSER_VERSION);
 
     const isImportable = criticalErrors.length === 0 && validation.is_importable;
 
@@ -113,6 +130,8 @@ export default async function (req) {
       b_match_count: bMatchCount,
       b_mismatch_count: bMismatchCount,
       entry_mismatch_count: entryMismatchCount,
+      b_missing_entry_count: bMissingEntryCount,
+      b_missing_entry_details: bMissingEntryDetails.slice(0, 50),
       unparsed_line_count: parsed.unparsed_lines?.length || 0,
       unparsed_lines: (parsed.unparsed_lines || []).slice(0, 50),
       venues: parsed.venues.map((v) => ({
