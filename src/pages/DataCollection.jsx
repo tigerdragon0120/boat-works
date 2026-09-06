@@ -74,12 +74,17 @@ export default function DataCollection(){
       const futureAlertsComplete=futureRaceNums.every(n=>analyzedRaceNums.has(n));
       const alertsComplete=(anCount[v.venue_code]||0)>=12 || futureAlertsComplete;
       const previousDone=rd.series_points_ready===true || seriesReady;
-      const complete=racesComplete&&coreComplete===12&&previousDone&&alertsComplete;
+      const evalReady=rd.racer_evaluations_ready===true;
+      const structReady=rd.player_structures_ready===true;
+      const complete=racesComplete&&coreComplete===12&&previousDone&&evalReady&&structReady&&alertsComplete;
       const missing=[];
-      if(!racesComplete) missing.push(`翌日出走表 ${uniqueRaces.length}/12R`);
-      if(coreComplete<12) missing.push(`レース基本情報 ${coreComplete}/12R`);
-      if(!previousDone) missing.push("前日結果・節間ポイント");
-      if(!alertsComplete) missing.push(`未締切レース分析 ${futureRaceNums.filter(n=>!analyzedRaceNums.has(n)).length}R`);
+      if(!racesComplete) missing.push(`①翌日出走表 ${uniqueRaces.length}/12R`);
+      if(coreComplete<12) missing.push(`②基本情報 ${coreComplete}/12R`);
+      if(!previousDone) missing.push("③前日結果・節間ポイント");
+      if(!evalReady) missing.push(`④選手評価 ${rd.racer_evaluations_count||0}/${rd.racer_evaluations_total||0}`);
+      if(!structReady) missing.push(`⑤ういち配置 ${rd.player_structures_count||0}/12R`);
+      if(!structReady) missing.push(`⑥裏ういち配置 ${rd.player_structures_count||0}/12R`);
+      if(!alertsComplete) missing.push(`⑦翌日事前アラート ${rd.pre_alerts_count||0}/12R`);
       return {...v,...rd,races:uniqueRaces,time_slot:slot,racesComplete,coreComplete,seriesReady:previousDone,analysisCount:anCount[v.venue_code]||0,alertsComplete,complete,missing};
     }).sort((a,b)=>new Date(a.first_deadline)-new Date(b.first_deadline));
   },[rows,races,analyses,series]);
@@ -126,7 +131,7 @@ export default function DataCollection(){
 }
 
 function VenueCard({v}){ const meta=slotMeta[v.time_slot]||slotMeta.day; const Icon=meta.Icon; return <div className={cn("rounded-2xl border bg-card p-4",v.full_complete?"border-emerald-300":v.pre_race_ready?"border-blue-300":"border-amber-200")}>
-  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.full_complete?"bg-emerald-50 text-emerald-600":v.pre_race_ready?"bg-blue-50 text-blue-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div>{v.event_name&&<div className="text-xs font-medium text-foreground/80 mt-1 leading-snug">{v.event_name}</div>}<div className={cn("text-xs font-bold mt-1",v.full_complete?"text-emerald-600":v.pre_race_ready?"text-blue-600":"text-amber-600")}>{v.full_complete?"✓ 全工程完了":v.pre_race_ready?"✓ 開始前データ準備完了":"収集中・未完了あり"}</div></div></div>
+  <div className="flex items-start gap-3"><div className={cn("w-10 h-10 rounded-xl flex items-center justify-center",v.full_complete?"bg-emerald-50 text-emerald-600":v.pre_race_ready?"bg-blue-50 text-blue-600":"bg-amber-50 text-amber-600")}><Icon className="w-5 h-5"/></div><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><h2 className="font-bold">{v.venue_name}</h2><span className="text-[10px] px-2 py-0.5 rounded-full bg-muted">{meta.label}</span><span className="text-xs text-muted-foreground">1R {fmt(v.first_deadline)}</span></div>{v.event_name&&<div className="text-xs font-medium text-foreground/80 mt-1 leading-snug">{v.event_name}</div>}<div className={cn("text-xs font-bold mt-1",v.full_complete?"text-emerald-600":v.pre_race_ready?"text-blue-600":"text-amber-600")}>{v.full_complete?"✓ 全工程完了":v.pre_race_ready?"✓ 前日準備完了（7工程完了）":"収集中・未完了あり"}</div></div></div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
     <Step label="翌日出走表" ok={v.racesComplete} sub={`${v.races.length}/12R`}/>
     <Step label="基本情報" ok={v.coreComplete===12} sub={`${v.coreComplete}/12R`}/>
