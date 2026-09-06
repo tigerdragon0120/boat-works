@@ -1,0 +1,77 @@
+{
+  "name": "OfficialRaceEntryResultV2",
+  "type": "object",
+  "properties": {
+    "entry_result_key": {
+      "type": "string",
+      "description": "entry_key\u3068\u540c\u4e00"
+    },
+    "entry_key": {
+      "type": "string"
+    },
+    "race_key": {
+      "type": "string"
+    },
+    "boat_number": {
+      "type": "number"
+    },
+    "registration_number": {
+      "type": "string"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "finish_order": {
+      "type": "number",
+      "description": "\u7740\u9806(1-6)"
+    },
+    "finish_status": {
+      "type": "string",
+      "enum": [
+        "FINISHED",
+        "DISQUALIFIED",
+        "ABSENT",
+        "CAPSIZED",
+        "FELL",
+        "INCOMPLETE",
+        "RETURNED",
+        "PENDING"
+      ]
+    },
+    "start_course": {
+      "type": "number",
+      "description": "\u9032\u5165\u30b3\u30fc\u30b9(1-6)"
+    },
+    "start_timing": {
+      "type": "string",
+      "description": "ST(\u751f\u6587\u5b57\u5217\u3001F/L\u542b\u3080)"
+    },
+    "race_time": {
+      "type": "string",
+      "description": "\u30ec\u30fc\u30b9\u30bf\u30a4\u30e0(\u751f\u6587\u5b57\u5217)"
+    },
+    "is_absent": {
+      "type": "boolean"
+    },
+    "is_disqualified": {
+      "type": "boolean"
+    },
+    "is_returned": {
+      "type": "boolean"
+    },
+    "source_batch_key": {
+      "type": "string"
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    }
+  },
+  "required": [
+    "entry_result_key",
+    "entry_key"
+  ]
+}

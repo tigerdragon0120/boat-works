@@ -1,0 +1,53 @@
+{
+  "name": "OfficialRacePayoutV2",
+  "type": "object",
+  "properties": {
+    "payout_key": {
+      "type": "string",
+      "description": "race_key + _ + bet_type + _ + combination"
+    },
+    "race_key": {
+      "type": "string"
+    },
+    "bet_type": {
+      "type": "string",
+      "enum": [
+        "\u5358\u52dd",
+        "\u8907\u52dd",
+        "2\u9023\u5358",
+        "2\u9023\u8907",
+        "3\u9023\u5358",
+        "3\u9023\u8907",
+        "\u62e1\u9023\u8907"
+      ]
+    },
+    "combination": {
+      "type": "string",
+      "description": "\u7d44\u756a(\u6b63\u898f\u5316\u6e08\u307f)"
+    },
+    "payout_amount": {
+      "type": "number"
+    },
+    "popularity": {
+      "type": "number"
+    },
+    "is_refund": {
+      "type": "boolean",
+      "description": "\u8fd4\u9084/\u7279\u6255\u3044\u306e\u5834\u5408true"
+    },
+    "source_batch_key": {
+      "type": "string"
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    }
+  },
+  "required": [
+    "payout_key",
+    "race_key"
+  ]
+}

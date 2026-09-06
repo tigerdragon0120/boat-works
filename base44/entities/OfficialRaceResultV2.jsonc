@@ -1,0 +1,82 @@
+{
+  "name": "OfficialRaceResultV2",
+  "type": "object",
+  "properties": {
+    "result_key": {
+      "type": "string",
+      "description": "race_key\u3068\u540c\u4e00"
+    },
+    "race_key": {
+      "type": "string"
+    },
+    "source_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "race_name": {
+      "type": "string"
+    },
+    "winning_method": {
+      "type": "string",
+      "description": "\u6c7a\u307e\u308a\u624b"
+    },
+    "weather": {
+      "type": "string"
+    },
+    "wind_direction": {
+      "type": "string"
+    },
+    "wind_speed": {
+      "type": "number"
+    },
+    "wave_height": {
+      "type": "number"
+    },
+    "air_temperature": {
+      "type": "number"
+    },
+    "water_temperature": {
+      "type": "number"
+    },
+    "result_status": {
+      "type": "string",
+      "enum": [
+        "CONFIRMED",
+        "CANCELLED",
+        "PENDING"
+      ]
+    },
+    "official_confirmed": {
+      "type": "boolean"
+    },
+    "source_batch_key": {
+      "type": "string"
+    },
+    "source_file_name": {
+      "type": "string"
+    },
+    "parser_version": {
+      "type": "string"
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    }
+  },
+  "required": [
+    "result_key",
+    "race_key"
+  ]
+}

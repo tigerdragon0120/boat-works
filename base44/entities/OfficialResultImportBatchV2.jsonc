@@ -1,0 +1,84 @@
+{
+  "name": "OfficialResultImportBatchV2",
+  "type": "object",
+  "properties": {
+    "batch_key": {
+      "type": "string",
+      "description": "PROGRAM_K_YYYY-MM-DD_SHA256\u5148\u982d12\u6587\u5b57"
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "number"
+    },
+    "file_hash": {
+      "type": "string"
+    },
+    "source_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "UPLOADED",
+        "PREVIEWED",
+        "IMPORTING",
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "venue_count": {
+      "type": "number"
+    },
+    "race_count": {
+      "type": "number"
+    },
+    "entry_result_count": {
+      "type": "number"
+    },
+    "payout_count": {
+      "type": "number"
+    },
+    "created_count": {
+      "type": "number"
+    },
+    "updated_count": {
+      "type": "number"
+    },
+    "unchanged_count": {
+      "type": "number"
+    },
+    "error_count": {
+      "type": "number"
+    },
+    "warning_count": {
+      "type": "number"
+    },
+    "is_publishable": {
+      "type": "boolean"
+    },
+    "parser_version": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error_details": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u30a8\u30e9\u30fc\u8a73\u7d30"
+    }
+  },
+  "required": [
+    "batch_key"
+  ]
+}
