@@ -1,0 +1,74 @@
+{
+  "name": "RacerTermImportBatchV2",
+  "type": "object",
+  "properties": {
+    "batch_key": {
+      "type": "string",
+      "description": "checksum\u5148\u982d12\u6587\u5b57 + \"_\" + parser_version"
+    },
+    "source_file_name": {
+      "type": "string"
+    },
+    "source_checksum": {
+      "type": "string"
+    },
+    "term_code": {
+      "type": "string"
+    },
+    "term_label": {
+      "type": "string"
+    },
+    "parser_version": {
+      "type": "string"
+    },
+    "encoding": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "number"
+    },
+    "parsed_row_count": {
+      "type": "number"
+    },
+    "inserted_count": {
+      "type": "number"
+    },
+    "updated_count": {
+      "type": "number"
+    },
+    "unchanged_count": {
+      "type": "number"
+    },
+    "error_count": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "UPLOADED",
+        "PREVIEWED",
+        "IMPORTING",
+        "COMPLETED",
+        "FAILED"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u30a8\u30e9\u30fc\u8a73\u7d30: {line, severity, message, raw}"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "batch_key"
+  ]
+}
