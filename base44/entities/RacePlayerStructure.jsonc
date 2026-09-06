@@ -1,0 +1,56 @@
+{
+  "name": "RacePlayerStructure",
+  "type": "object",
+  "properties": {
+    "race_id": {
+      "type": "string",
+      "description": "Race.id\u3068\u540c\u4e00"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "uichi_player_structure_score": {
+      "type": "number",
+      "description": "\u3046\u3044\u3061\u9078\u624b\u914d\u7f6e\u6307\u6570 0-100"
+    },
+    "ura_uichi_player_structure_score": {
+      "type": "number",
+      "description": "\u88cf\u3046\u3044\u3061\u9078\u624b\u914d\u7f6e\u6307\u6570 0-100"
+    },
+    "boat_evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u5404\u8247(1-6)\u306e\u8a55\u4fa1: {boat_number, registration_number, racer_name, in_strength, mid_second, mid_third, outside_second, outside_third, player_types}"
+    },
+    "uichi_breakdown": {
+      "type": "object",
+      "description": "\u3046\u3044\u3061\u69cb\u6210\u8a73\u7d30: {in_strength, mid_second_candidates, outside_third_candidates, risk_factors}"
+    },
+    "ura_uichi_breakdown": {
+      "type": "object",
+      "description": "\u88cf\u3046\u3044\u3061\u69cb\u6210\u8a73\u7d30: {in_strength, outside_second_candidates, mid_third_candidates, risk_factors}"
+    },
+    "evaluation_version": {
+      "type": "string"
+    },
+    "computed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "race_id"
+  ]
+}

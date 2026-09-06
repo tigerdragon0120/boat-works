@@ -1,0 +1,58 @@
+{
+  "name": "RacerEvaluation",
+  "type": "object",
+  "properties": {
+    "registration_number": {
+      "type": "string",
+      "description": "\u9078\u624b\u767b\u9332\u756a\u53f74\u6841"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "in_strength_score": {
+      "type": "number",
+      "description": "\u30a4\u30f3\u9003\u3052\u80fd\u529b 0-100"
+    },
+    "mid_second_score": {
+      "type": "number",
+      "description": "\u4e2d\u67a02\u7740\u80fd\u529b 0-100"
+    },
+    "mid_third_score": {
+      "type": "number",
+      "description": "\u4e2d\u67a03\u7740\u80fd\u529b 0-100"
+    },
+    "outside_third_score": {
+      "type": "number",
+      "description": "\u5916\u67a03\u7740\u9032\u51fa\u80fd\u529b 0-100"
+    },
+    "outside_second_score": {
+      "type": "number",
+      "description": "\u5916\u67a02\u7740\u9032\u51fa\u80fd\u529b 0-100"
+    },
+    "player_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IN_SPECIALIST, MID_SECOND_SPECIALIST, MID_THIRD_SPECIALIST, UICHI_OUTSIDE_SPECIALIST, URA_UICHI_OUTSIDE_SPECIALIST, OUTSIDE_DANGER, UNSTABLE"
+    },
+    "period_data": {
+      "type": "object",
+      "description": "\u5404\u671f\u9593(6m/1y/3y)\u306e\u8a73\u7d30\u30b3\u30fc\u30b9\u5225\u7d71\u8a08\u30fb\u30b9\u30b3\u30a2"
+    },
+    "best_course": {
+      "type": "number",
+      "description": "\u6700\u3082\u5f97\u610f\u306a\u30b3\u30fc\u30b9(1-6)"
+    },
+    "evaluation_version": {
+      "type": "string"
+    },
+    "computed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "registration_number"
+  ]
+}
