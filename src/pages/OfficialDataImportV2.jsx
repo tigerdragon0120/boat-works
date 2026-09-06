@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Upload, FileText, CheckCircle2, AlertTriangle, XCircle,
-  Loader2, Database, ShieldCheck, History, Search,
+  Loader2, Database, ShieldCheck, History, Search, Trophy,
 } from "lucide-react";
+import OfficialKImport from "@/components/OfficialKImport";
 
 const STATUS_COLORS = {
   COMPLETED: "bg-green-100 text-green-700 border-green-300",
@@ -61,6 +62,11 @@ export default function OfficialDataImportV2() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [batches, setBatches] = useState([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
+  const [kBatches, setKBatches] = useState([]);
+  const [kBatchesLoading, setKBatchesLoading] = useState(false);
+  const [auditMode, setAuditMode] = useState("B");
+  const [kAuditResult, setKAuditResult] = useState(null);
+  const [kAuditLoading, setKAuditLoading] = useState(false);
   const fileInputRef = useRef(null);
 
   const loadBatches = useCallback(async () => {
@@ -75,7 +81,42 @@ export default function OfficialDataImportV2() {
     }
   }, []);
 
-  useEffect(() => { loadBatches(); }, [loadBatches]);
+  const loadKBatches = useCallback(async () => {
+    setKBatchesLoading(true);
+    try {
+      const result = await base44.entities.OfficialResultImportBatchV2.list("-created_date", 20);
+      setKBatches(result || []);
+    } catch {
+      setKBatches([]);
+    } finally {
+      setKBatchesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadBatches(); loadKBatches(); }, [loadBatches, loadKBatches]);
+
+  const runKAudit = async (date) => {
+    const targetDate = date || auditDate;
+    if (!targetDate) return;
+    setKAuditLoading(true);
+    try {
+      const res = await base44.functions.invoke("auditOfficialProgramDayKV2", { race_date: targetDate });
+      setKAuditResult(res.data);
+    } catch (e) {
+      const errMsg = e?.response?.data?.message || e?.message || "K監査に失敗しました";
+      setKAuditResult({ status: "error", message: errMsg });
+    } finally {
+      setKAuditLoading(false);
+    }
+  };
+
+  const handleKCommitDone = useCallback((sourceDate) => {
+    if (sourceDate) {
+      setAuditDate(sourceDate);
+      runKAudit(sourceDate);
+    }
+    loadKBatches();
+  }, [loadKBatches]);
 
   const handleFileSelect = (e) => {
     const f = e.target.files?.[0];
@@ -160,14 +201,17 @@ export default function OfficialDataImportV2() {
         <ShieldCheck className="w-6 h-6 text-primary" />
         <div>
           <h1 className="text-xl font-bold">公式データ取込V2</h1>
-          <p className="text-xs text-muted-foreground">公式番組表Bファイルの安全な取込（第1段階）</p>
+          <p className="text-xs text-muted-foreground">公式番組表B・競走成績Kファイルの安全な取込</p>
         </div>
       </div>
 
       <Tabs defaultValue="program-b">
-        <TabsList className="grid grid-cols-3 w-full">
+        <TabsList className="grid grid-cols-4 w-full">
           <TabsTrigger value="program-b" className="text-xs sm:text-sm">
             <FileText className="w-4 h-4 mr-1" />番組表B
+          </TabsTrigger>
+          <TabsTrigger value="program-k" className="text-xs sm:text-sm">
+            <Trophy className="w-4 h-4 mr-1" />競走成績K
           </TabsTrigger>
           <TabsTrigger value="audit" className="text-xs sm:text-sm">
             <Search className="w-4 h-4 mr-1" />監査
@@ -350,6 +394,11 @@ export default function OfficialDataImportV2() {
           )}
         </TabsContent>
 
+        {/* ─── 競走成績Kファイル タブ ─── */}
+        <TabsContent value="program-k" className="space-y-4 mt-4">
+          <OfficialKImport onCommitDone={handleKCommitDone} />
+        </TabsContent>
+
         {/* ─── 監査タブ ─── */}
         <TabsContent value="audit" className="space-y-4 mt-4">
           <Card>
@@ -359,6 +408,22 @@ export default function OfficialDataImportV2() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={auditMode === "B" ? "default" : "outline"}
+                  onClick={() => setAuditMode("B")}
+                >
+                  <FileText className="w-3 h-3 mr-1" />B番組表
+                </Button>
+                <Button
+                  size="sm"
+                  variant={auditMode === "K" ? "default" : "outline"}
+                  onClick={() => setAuditMode("K")}
+                >
+                  <Trophy className="w-3 h-3 mr-1" />K競走成績
+                </Button>
+              </div>
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Label htmlFor="audit-date">対象日</Label>
@@ -370,14 +435,22 @@ export default function OfficialDataImportV2() {
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button onClick={() => runAudit()} disabled={auditLoading}>
-                    {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4 mr-1" />}
+                  <Button
+                    onClick={() => auditMode === "B" ? runAudit() : runKAudit()}
+                    disabled={auditMode === "B" ? auditLoading : kAuditLoading}
+                  >
+                    {(auditMode === "B" ? auditLoading : kAuditLoading) ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4 mr-1" />
+                    )}
                     監査実行
                   </Button>
                 </div>
               </div>
 
-              {auditResult && auditResult.status !== "error" && (
+              {/* B監査結果 */}
+              {auditMode === "B" && auditResult && auditResult.status !== "error" && (
                 <>
                   <div className="flex items-center gap-2">
                     <Badge className={
@@ -436,9 +509,85 @@ export default function OfficialDataImportV2() {
                   )}
                 </>
               )}
-              {auditResult?.status === "error" && (
+              {auditMode === "B" && auditResult?.status === "error" && (
                 <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
                   {auditResult.message}
+                </div>
+              )}
+
+              {/* K監査結果 */}
+              {auditMode === "K" && kAuditResult && kAuditResult.status !== "error" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge className={
+                      kAuditResult.overall === "PASS" ? "bg-green-100 text-green-700" :
+                      kAuditResult.overall === "EMPTY" ? "bg-gray-100 text-gray-700" :
+                      "bg-red-100 text-red-700"
+                    }>
+                      {kAuditResult.overall}
+                    </Badge>
+                    {kAuditResult.last_completed_batch_key && (
+                      <span className="text-xs text-muted-foreground">
+                        最終batch: {kAuditResult.last_completed_batch_key}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <StatBox label="会場数" value={kAuditResult.venue_count} />
+                    <StatBox label="レース数" value={kAuditResult.race_count} color="bg-emerald-50 border-emerald-200" />
+                    <StatBox label="確定R数" value={kAuditResult.confirmed_race_count} color="bg-green-50 border-green-200" />
+                    <StatBox label="未確定R数" value={kAuditResult.pending_race_count} color="bg-amber-50 border-amber-200" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div className={`rounded p-2 ${kAuditResult.result_key_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      result_key重複: {kAuditResult.result_key_duplicates?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.entry_result_key_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      entry_result_key重複: {kAuditResult.entry_result_key_duplicates?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.payout_key_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      payout_key重複: {kAuditResult.payout_key_duplicates?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.results_not_in_b?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      B未登録: {kAuditResult.results_not_in_b?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.entry_mismatches?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      選手照合不一致: {kAuditResult.entry_mismatches?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.finish_duplicates?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      着順重複: {kAuditResult.finish_duplicates?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.missing_first?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      1着不在: {kAuditResult.missing_first?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.confirmed_without_entries?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      確定・選手結果なし: {kAuditResult.confirmed_without_entries?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.regression_races?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      確定→未確定逆戻り: {kAuditResult.regression_races?.length || 0}
+                    </div>
+                    <div className={`rounded p-2 ${kAuditResult.stuck_batches?.length === 0 ? "bg-green-50" : "bg-red-50"}`}>
+                      取込途中バッチ: {kAuditResult.stuck_batches?.length || 0}
+                    </div>
+                  </div>
+                  {kAuditResult.venues?.length > 0 && (
+                    <div>
+                      <div className="text-sm font-semibold mb-2">会場別件数</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {kAuditResult.venues.map((v) => (
+                          <div key={v.venue_code} className="flex items-center justify-between text-xs bg-muted rounded px-2 py-1">
+                            <span>{v.venue_code} {v.venue_name}</span>
+                            <Badge variant="secondary" className="ml-1">{v.race_count}R / {v.entry_count}人</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {auditMode === "K" && kAuditResult?.status === "error" && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                  {kAuditResult.message}
                 </div>
               )}
             </CardContent>
@@ -450,7 +599,7 @@ export default function OfficialDataImportV2() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <History className="w-4 h-4" />取込履歴
+                <FileText className="w-4 h-4" />番組表B 取込履歴
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -475,6 +624,50 @@ export default function OfficialDataImportV2() {
                         <span>会場:{b.venue_count}</span>
                         <span>レース:{b.race_count}</span>
                         <span>選手:{b.entry_count}</span>
+                        <span className="text-green-600">作成:{b.created_count}</span>
+                        <span className="text-blue-600">更新:{b.updated_count}</span>
+                        <span className="text-gray-500">変更なし:{b.unchanged_count}</span>
+                        {b.error_count > 0 && <span className="text-red-600">エラー:{b.error_count}</span>}
+                      </div>
+                      {b.is_publishable && (
+                        <Badge className="bg-green-100 text-green-700 text-xs">publishable</Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Trophy className="w-4 h-4" />競走成績K 取込履歴
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {kBatchesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : kBatches.length === 0 ? (
+                <div className="text-center text-sm text-muted-foreground py-8">K取込履歴がありません</div>
+              ) : (
+                <div className="space-y-2">
+                  {kBatches.map((b) => (
+                    <div key={b.id} className="border rounded-lg p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{b.source_date || "—"}</span>
+                        <Badge className={STATUS_COLORS[b.status] || "bg-gray-100"} variant="outline">
+                          {b.status}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">{b.file_name}</div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span>会場:{b.venue_count}</span>
+                        <span>レース:{b.race_count}</span>
+                        <span>選手結果:{b.entry_result_count}</span>
+                        <span>払戻:{b.payout_count}</span>
                         <span className="text-green-600">作成:{b.created_count}</span>
                         <span className="text-blue-600">更新:{b.updated_count}</span>
                         <span className="text-gray-500">変更なし:{b.unchanged_count}</span>
