@@ -94,7 +94,7 @@ function parseRacerResultLine(line, lineNumber) {
 
   // 着順解析: 数字の場合はそのまま、特殊コードは公式状態へ変換する。
   const finish_order = /^\d+$/.test(finishRaw) ? parseIntOrNull(finishRaw) : null;
-  let finish_status = parseFinishStatus(race_time, startTimingRaw);
+  let finish_status = parseFinishStatus(race_time, start_timing);
   if (/^K\d$/.test(finishRaw)) {
     finish_status = "ABSENT";
   } else if (/^S\d$/.test(finishRaw) || /^[FL]$/.test(finishRaw)) {
