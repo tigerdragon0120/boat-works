@@ -73,9 +73,17 @@ export default async function (req) {
     // B出走選手に一致しない選手結果
     const entryMismatches = entryResults.filter((e) => {
       const bEntry = bEntryMap[e.entry_key];
-      if (!bEntry) return false;
+      if (!bEntry) return true;
       return bEntry.registration_number !== e.registration_number || bEntry.boat_number !== e.boat_number;
     });
+
+    // Bに存在する6艇がK結果にもすべて存在することを確認する。
+    // 欠場艇もK1等の公式コードからABSENTとして1件保持される必要がある。
+    const entryResultKeySet = new Set(entryResults.map((e) => e.entry_key));
+    const bEntriesMissingInK = bEntries.filter((e) => !entryResultKeySet.has(e.entry_key));
+
+    // 確定レースの決まり手欠落
+    const missingWinningMethod = results.filter((r) => r.official_confirmed === true && !r.winning_method);
 
     // 着順重複・1着不在チェック
     const finishByRace = {};
@@ -135,6 +143,8 @@ export default async function (req) {
       payoutKeyDuplicates.length === 0,
       resultsNotInB.length === 0,
       entryMismatches.length === 0,
+      bEntriesMissingInK.length === 0,
+      missingWinningMethod.length === 0,
       missingVenue === 0,
       missingRaceNum === 0,
       missingBoat === 0,
@@ -162,6 +172,10 @@ export default async function (req) {
       payout_key_duplicates: payoutKeyDuplicates,
       results_not_in_b: resultsNotInB.map(r => r.race_key),
       entry_mismatches: entryMismatches.map(e => e.entry_result_key),
+      b_entries_missing_in_k: bEntriesMissingInK.map(e => e.entry_key),
+      missing_winning_method: missingWinningMethod.map(r => r.race_key),
+      absent_entry_count: entryResults.filter(e => e.is_absent === true).length,
+      returned_entry_count: entryResults.filter(e => e.is_returned === true).length,
       missing_venue_code: missingVenue,
       missing_race_number: missingRaceNum,
       missing_boat_number: missingBoat,
