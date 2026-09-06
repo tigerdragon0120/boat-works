@@ -230,7 +230,8 @@ export function blendPeriodScores(periodScores, periodSampleCounts, scoreKey) {
     const count = periodSampleCounts[p]?.[scoreKey] || 0;
     const adjW = count >= minSample ? w[p] : w[p] * Math.max(0.1, count / minSample);
     aw[p] = adjW;
-    totalW += adjW;
+    // スコアが存在する期間のみ重みに加算
+    if (periodScores[p]?.[scoreKey] != null) totalW += adjW;
   }
   if (totalW === 0) return null;
   let blended = 0;

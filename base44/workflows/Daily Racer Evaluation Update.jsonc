@@ -1,0 +1,45 @@
+{
+  "name": "Daily Racer Evaluation Update",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_racer_evaluation",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "compute_evaluations": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "computeRacerEvaluations",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u9078\u624b\u8a55\u4fa1\u66f4\u65b0",
+            "description": "\u5168\u9078\u624b\u306e6m/1y/3y\u8a55\u4fa1\u3092\u518d\u8a08\u7b97"
+          }
+        }
+      }
+    ]
+  },
+  "description": "\u6bce\u65e5\u65e9\u671d\u306b\u5168\u9078\u624b\u306e\u3046\u3044\u3061\u7279\u5316\u578b\u8a55\u4fa1\uff086m/1y/3y\uff09\u3092\u518d\u8a08\u7b97\u3059\u308b",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 4 * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}

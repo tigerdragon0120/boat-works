@@ -6,6 +6,7 @@ import StatTile from "@/components/StatTile";
 import TrustScoreCard from "@/components/TrustScoreCard";
 import BuyReasonCard from "@/components/BuyReasonCard";
 import EvaluationReasonCard from "@/components/EvaluationReasonCard";
+import PlayerStructureCard from "@/components/PlayerStructureCard";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
 import {
@@ -452,6 +453,9 @@ export default function RaceDetail() {
 
       {/* 買える理由カード + 不安材料 */}
       <BuyReasonCard trust={trust || analysis?.boat1_trust} />
+
+      {/* 選手配置指数（ういち・裏ういち） */}
+      <PlayerStructureCard raceId={id} race={race} entries={entries} />
 
       {/* 6点オッズ */}
       <div className="rounded-2xl bg-card border border-border p-4">
