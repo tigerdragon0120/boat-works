@@ -18,7 +18,7 @@ const COMPARE_FIELDS = [
   'win_rate', 'second_place_rate', 'third_place_rate', 'top2_rate', 'top3_rate',
   'average_start_timing', 'race_count', 'first_place_count', 'second_place_count',
   'third_place_count', 'start_accident_count', 'late_count', 'accident_rate',
-  'ability_index', 'championship_entries', 'championship_wins',
+  'ability_index', 'championship_entries', 'championship_wins', 'course_stats',
 ];
 
 export default async function (req) {
@@ -178,6 +178,7 @@ export default async function (req) {
         ability_index: racer.ability_index,
         championship_entries: racer.championship_entries,
         championship_wins: racer.championship_wins,
+        course_stats: racer.course_stats,
         source_file_name: file_name,
         source_checksum: checksum,
         parser_version: PARSER_VERSION,
