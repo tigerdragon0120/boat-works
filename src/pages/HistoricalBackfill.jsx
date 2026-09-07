@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { History, Play, Pause, Square, RotateCcw, RefreshCw, AlertTriangle, CheckCircle2, Database, Users, Calendar, Eye, Shield, Zap, Clock } from "lucide-react";
+import { History, Play, Pause, Square, RotateCcw, RefreshCw, AlertTriangle, CheckCircle2, Database, Users, Calendar, Eye, Shield, Zap, Clock, Gauge, TrendingUp, Rocket } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +100,19 @@ export default function HistoricalBackfill() {
     COMPLETED: 'bg-emerald-100 text-emerald-700',
   };
 
+  const modeColor = {
+    TURBO: 'bg-purple-100 text-purple-700',
+    NORMAL: 'bg-blue-100 text-blue-700',
+    SAFE: 'bg-amber-100 text-amber-700',
+    DEFERRED: 'bg-rose-100 text-rose-700',
+  };
+
+  const currentMode = progress?.current_mode || 'NORMAL';
+  const currentBatchSize = progress?.current_batch_size || 3;
+  const currentPhase = progress?.phase || 1;
+  const venueList = progress?.current_venue_list || [];
+  const venuePos = progress?.current_venue_position || 0;
+  const currentVenue = venueList[venuePos] || '—';
   const currentVenueName = (() => {
     const venues = [
       ["01","桐生"],["02","戸田"],["03","江戸川"],["04","平和島"],["05","多摩川"],
@@ -108,9 +121,14 @@ export default function HistoricalBackfill() {
       ["16","児島"],["17","宮島"],["18","徳山"],["19","下関"],["20","若松"],
       ["21","芦屋"],["22","福岡"],["23","唐津"],["24","大村"],
     ];
-    const idx = progress?.current_venue_index || 0;
-    return venues[idx]?.[1] || '—';
+    return venues.find(v => v[0] === currentVenue)?.[1] || '—';
   })();
+
+  const eta = progress?.estimated_completion_at
+    ? new Date(progress.estimated_completion_at).toLocaleDateString('ja-JP')
+    : '計算中...';
+  const etaDays = progress?.estimated_remaining_days;
+  const venueDaysPerHour = progress?.venue_days_per_hour;
 
   return (
     <div className="space-y-5">
@@ -118,7 +136,7 @@ export default function HistoricalBackfill() {
         <History className="w-5 h-5 text-primary" />
         <div>
           <h1 className="text-xl font-bold">過去レース結果バックフィル</h1>
-          <p className="text-xs text-muted-foreground">2002年〜現在の個別レース結果を蓄積するマスターDB基盤</p>
+          <p className="text-xs text-muted-foreground">2002年〜現在 · Adaptive Batch + Turbo Mode · 開催場のみ取得</p>
         </div>
         <button onClick={load} className="ml-auto p-2 rounded-xl border border-border bg-card">
           <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
@@ -135,9 +153,21 @@ export default function HistoricalBackfill() {
       {/* ステータスカード */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={cn("px-3 py-1 rounded-full text-xs font-bold", statusColor[status])}>
               {status}
+            </span>
+            {status === 'RUNNING' && (
+              <span className={cn("px-2 py-1 rounded-full text-[10px] font-bold flex items-center gap-1", modeColor[currentMode])}>
+                {currentMode === 'TURBO' && <Rocket className="w-3 h-3" />}
+                {currentMode === 'NORMAL' && <Zap className="w-3 h-3" />}
+                {currentMode === 'SAFE' && <Shield className="w-3 h-3" />}
+                {currentMode === 'DEFERRED' && <Clock className="w-3 h-3" />}
+                {currentMode}
+              </span>
+            )}
+            <span className={cn("px-2 py-1 rounded-full text-[10px] font-bold", currentPhase >= 3 ? 'bg-purple-100 text-purple-700' : currentPhase === 2 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600')}>
+              Phase {currentPhase}
             </span>
             <span className="text-sm text-muted-foreground">
               {progress?.current_batch_label || '—'}
@@ -157,7 +187,7 @@ export default function HistoricalBackfill() {
           </div>
           <div className="h-3 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full bg-primary rounded-full transition-all duration-500"
+              className={cn("h-full rounded-full transition-all duration-500", currentMode === 'TURBO' ? 'bg-purple-500' : 'bg-primary')}
               style={{ width: `${progressPct}%` }}
             />
           </div>
@@ -172,7 +202,15 @@ export default function HistoricalBackfill() {
           <InfoTile icon={Calendar} label="対象開始日" value={progress?.target_start_date || '—'} />
           <InfoTile icon={Calendar} label="対象終了日" value={progress?.target_end_date || '—'} />
           <InfoTile icon={Calendar} label="現在処理日" value={progress?.current_processing_date || '—'} />
-          <InfoTile icon={Zap} label="現在の場" value={`${progress?.current_venue_index || 0}/24 ${currentVenueName}`} />
+          <InfoTile icon={Zap} label="現在の場" value={`${venuePos}/${venueList.length || 0}場 ${currentVenueName}`} />
+        </div>
+
+        {/* Adaptive Batch情報 */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-xs">
+          <InfoTile icon={Gauge} label="バッチサイズ" value={`${currentBatchSize} venue-days/実行`} />
+          <InfoTile icon={TrendingUp} label="処理速度" value={venueDaysPerHour ? `${venueDaysPerHour} vd/h` : '計算中'} />
+          <InfoTile icon={Clock} label="平均処理時間" value={progress?.average_venue_duration_ms ? `${Math.round(progress.average_venue_duration_ms / 1000)}s/vd` : '—'} />
+          <InfoTile icon={Calendar} label="完了予測" value={etaDays ? `約${etaDays}日 (${eta})` : '計算中'} />
         </div>
 
         {/* 統計グリッド */}
@@ -183,8 +221,14 @@ export default function HistoricalBackfill() {
           <StatCard icon={AlertTriangle} label="失敗数" value={progress?.failure_count || 0} color="text-rose-600" />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+          <StatCard icon={Eye} label="SKIP_COMPLETE" value={progress?.skip_complete_count || 0} color="text-cyan-600" />
+          <StatCard icon={AlertTriangle} label="6艇欠損" value={progress?.missing_boats_count || 0} color="text-amber-600" />
+          <StatCard icon={Gauge} label="venue-day総数" value={progress?.total_venue_days_processed || 0} color="text-indigo-600" />
+          <StatCard icon={AlertTriangle} label="エラー対象" value={progress?.error_dates?.length || 0} color="text-rose-600" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <StatCard icon={Eye} label="スキップ数" value={progress?.skip_count || 0} color="text-slate-600" />
-          <StatCard icon={AlertTriangle} label="エラー対象数" value={progress?.error_dates?.length || 0} color="text-amber-600" />
+          <StatCard icon={CheckCircle2} label="連続成功" value={progress?.consecutive_successes || 0} color="text-emerald-600" />
           <StatCard icon={Clock} label="完了日数" value={progress?.completed_dates || 0} color="text-cyan-600" />
           <StatCard icon={Calendar} label="全対象日数" value={progress?.total_target_days || 0} color="text-indigo-600" />
         </div>
@@ -248,9 +292,16 @@ export default function HistoricalBackfill() {
           >
             <Shield className="w-4 h-4" /> プレフライト
           </button>
+          <button
+            onClick={() => handleAction('reset_metrics')}
+            disabled={acting}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border text-sm font-semibold disabled:opacity-50"
+          >
+            <Gauge className="w-4 h-4" /> 指標リセット
+          </button>
         </div>
         <p className="text-[11px] text-muted-foreground mt-2">
-          「全削除して最初からやり直す」操作は意図的に用意していません。保存済みデータは保持されます。
+          進捗は保持されます。5分ごとにAdaptive Batchで自動実行 · 開催場のみ取得 · Turbo Mode夜間加速
         </p>
       </div>
 
@@ -317,7 +368,7 @@ export default function HistoricalBackfill() {
       <div className="rounded-2xl border border-border bg-card p-4">
         <h2 className="font-bold text-sm mb-3">手動テスト実行</h2>
         <p className="text-xs text-muted-foreground mb-3">
-          特定の日付・開催場を指定して1件だけ処理します。本格バックフィル開始前にデータ検証に使用します。
+          特定の日付・開催場を指定して1件だけ処理します。データ検証に使用します。
         </p>
         <TestForm onTest={handleTestDate} testing={testing} />
         {testResult && (
@@ -338,7 +389,7 @@ export default function HistoricalBackfill() {
       </div>
 
       <div className="text-[11px] text-muted-foreground text-center">
-        10秒ごとに自動更新 · 通常収集優先ガード付き · 3分ごとに1開催場×1日を自動処理
+        10秒ごとに自動更新 · 5分間隔Adaptive Batch · 開催場のみ取得 · Turbo Mode夜間加速 · Safety Brake付き
       </div>
     </div>
   );

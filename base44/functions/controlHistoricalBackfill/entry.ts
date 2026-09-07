@@ -1,8 +1,15 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { getProgress, initProgress, updateProgress, preFlightCheck, backfillIncrementalDate } from '../../shared/historicalBackfill.js';
+import {
+  getProgress,
+  initProgress,
+  updateProgress,
+  preFlightCheck,
+  backfillIncrementalDate,
+  computeETA,
+} from '../../shared/historicalBackfill.js';
 
-// バックフィル操作関数: 開始・一時停止・再開・停止・エラー再試行・エラー確認・ステータス
-// action: start | pause | resume | stop | retry_errors | view_errors | status | incremental
+// バックフィル操作関数(高速化版対応)
+// action: start | pause | resume | stop | retry_errors | view_errors | status | incremental | preflight | reset_metrics
 
 function jstDate(offset = 0) {
   const d = new Date(Date.now() + 9 * 3600000);
@@ -26,7 +33,6 @@ export default async function (req) {
 
     switch (action) {
       case 'start': {
-        // プレフライトチェック: 全条件を満たす場合のみRUNNINGへ移行
         const preFlight = await preFlightCheck(base44);
         if (!preFlight.passed) {
           const failedChecks = preFlight.checks.filter(c => !c.passed);
@@ -45,9 +51,6 @@ export default async function (req) {
         if (!progress) {
           progress = await initProgress(base44, startDate, endDate);
         } else {
-          // 既存進捗がある場合:
-          // - current_processing_dateが既に進んでいる場合はそのまま続き
-          // - まだ初期位置の場合は日付範囲のみ更新
           const currentPos = progress.current_processing_date || startDate;
           const alreadyAdvanced = currentPos > startDate;
           await updateProgress(base44, progress.id, {
@@ -56,8 +59,13 @@ export default async function (req) {
             status: 'RUNNING',
             last_run_at: new Date().toISOString(),
             last_error: null,
-            // 既に進んでいる場合はcurrent_processing_dateをリセットしない
-            ...(alreadyAdvanced ? {} : { current_processing_date: startDate, current_venue_index: 0 }),
+            worker_heartbeat: null,
+            ...(alreadyAdvanced ? {} : {
+              current_processing_date: startDate,
+              current_venue_index: 0,
+              current_venue_list: [],
+              current_venue_position: 0,
+            }),
           });
         }
         return Response.json({
@@ -71,41 +79,41 @@ export default async function (req) {
 
       case 'pause': {
         if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
-        // 現在処理中の1単位が完了した後に安全に停止(次回呼び出し時にPAUSEDを検知してスキップ)
         await updateProgress(base44, progress.id, {
           status: 'PAUSED',
           last_run_at: new Date().toISOString(),
+          worker_heartbeat: null,
         });
         return Response.json({
           status: 'success',
           action: 'pause',
-          message: 'バックフィルを一時停止しました(現在処理中の1単位完了後に停止)',
+          message: 'バックフィルを一時停止しました',
           progress: { ...progress, status: 'PAUSED' },
         });
       }
 
       case 'resume': {
         if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
-        // current_processing_dateとcurrent_venue_indexから続きを開始(2002年に戻らない)
         await updateProgress(base44, progress.id, {
           status: 'RUNNING',
           last_run_at: new Date().toISOString(),
           last_error: null,
+          worker_heartbeat: null,
         });
         return Response.json({
           status: 'success',
           action: 'resume',
-          message: `バックフィルを再開しました(${progress.current_processing_date}_${progress.current_venue_index}から)`,
+          message: `バックフィルを再開しました(${progress.current_processing_date} ${progress.current_venue_list?.length || 0}場中${progress.current_venue_position || 0}場目から)`,
           progress: { ...progress, status: 'RUNNING' },
         });
       }
 
       case 'stop': {
         if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
-        // Stop = IDLEに設定(進捗は保持・Resume時はStartで再開)
         await updateProgress(base44, progress.id, {
           status: 'IDLE',
           last_run_at: new Date().toISOString(),
+          worker_heartbeat: null,
         });
         return Response.json({
           status: 'success',
@@ -117,8 +125,6 @@ export default async function (req) {
 
       case 'retry_errors': {
         if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
-        // エラー日付リストをクリアして再実行可能にする
-        // attemptsが3以上の対象は自動再試行対象外
         const errorDates = progress.error_dates || [];
         const retryable = errorDates.filter(e => (e.attempts || 0) < 3);
         const permanent = errorDates.filter(e => (e.attempts || 0) >= 3);
@@ -128,6 +134,8 @@ export default async function (req) {
           last_error: null,
           status: 'RUNNING',
           last_run_at: new Date().toISOString(),
+          consecutive_errors: 0,
+          worker_heartbeat: null,
         });
         return Response.json({
           status: 'success',
@@ -153,7 +161,6 @@ export default async function (req) {
       }
 
       case 'incremental': {
-        // 日次差分更新: 指定日付(デフォルト前日)の未登録レース結果を補完
         const targetDate = body.race_date || jstDate(-1);
         const result = await backfillIncrementalDate(base44, targetDate);
         return Response.json({
@@ -177,12 +184,37 @@ export default async function (req) {
         });
       }
 
+      case 'reset_metrics': {
+        if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
+        await updateProgress(base44, progress.id, {
+          consecutive_errors: 0,
+          consecutive_successes: 0,
+          recent_durations: [],
+          average_venue_duration_ms: null,
+          phase: 1,
+        });
+        return Response.json({
+          status: 'success',
+          action: 'reset_metrics',
+          message: 'パフォーマンス指標をリセットしました(Phase 1に戻ります)',
+          progress: { ...progress, consecutive_errors: 0, phase: 1 },
+        });
+      }
+
       case 'status':
       default: {
+        if (!progress) {
+          return Response.json({
+            status: 'success',
+            action: 'status',
+            progress: { message: '進捗レコードがありません。startで初期化してください。' },
+          });
+        }
+        const eta = computeETA(progress);
         return Response.json({
           status: 'success',
           action: 'status',
-          progress: progress || { message: '進捗レコードがありません。startで初期化してください。' },
+          progress: { ...progress, ...eta },
         });
       }
     }

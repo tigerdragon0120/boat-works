@@ -1,0 +1,58 @@
+{
+  "name": "HistoricalBackfillDayStatus",
+  "type": "object",
+  "properties": {
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u5f53\u65e5\u306b\u5b9f\u969b\u306b\u958b\u50ac\u3057\u3066\u3044\u305f\u5834\u30b3\u30fc\u30c9\u4e00\u89a7"
+    },
+    "venue_count": {
+      "type": "number"
+    },
+    "venue_statuses": {
+      "type": "object",
+      "description": "{venue_code: {status, processed_at, race_count, racer_result_count, missing_boats, locked_at, worker_id}}"
+    },
+    "race_count": {
+      "type": "number"
+    },
+    "racer_result_count": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "COMPLETED",
+        "PARTIAL",
+        "ERROR",
+        "NO_RACE"
+      ]
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error_venues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "race_date"
+  ]
+}

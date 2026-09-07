@@ -20,7 +20,85 @@
     },
     "current_venue_index": {
       "type": "number",
-      "description": "\u73fe\u5728\u51e6\u7406\u4e2d\u306e\u5834\u30a4\u30f3\u30c7\u30c3\u30af\u30b9(0-23)"
+      "description": "\u65e7\u30d5\u30a3\u30fc\u30eb\u30c9(\u5f8c\u65b9\u4e92\u63db\u7528)"
+    },
+    "current_venue_list": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u73fe\u5728\u51e6\u7406\u4e2d\u306e\u65e5\u4ed8\u306e\u958b\u50ac\u5834\u30b3\u30fc\u30c9\u4e00\u89a7"
+    },
+    "current_venue_position": {
+      "type": "number",
+      "description": "current_venue_list\u5185\u306e\u73fe\u5728\u4f4d\u7f6e(0\u30d9\u30fc\u30b9)"
+    },
+    "current_batch_size": {
+      "type": "number",
+      "description": "\u73fe\u5728\u306e\u30d0\u30c3\u30c1\u30b5\u30a4\u30ba"
+    },
+    "current_mode": {
+      "type": "string",
+      "enum": [
+        "SAFE",
+        "NORMAL",
+        "TURBO",
+        "DEFERRED"
+      ],
+      "description": "\u73fe\u5728\u306e\u51e6\u7406\u30e2\u30fc\u30c9"
+    },
+    "phase": {
+      "type": "number",
+      "description": "\u6bb5\u968e\u7684\u9ad8\u901f\u5316\u30d5\u30a7\u30fc\u30ba(1|2|3)"
+    },
+    "consecutive_errors": {
+      "type": "number"
+    },
+    "consecutive_successes": {
+      "type": "number"
+    },
+    "total_venue_days_processed": {
+      "type": "number",
+      "description": "\u7d2f\u8a08venue-day\u51e6\u7406\u6570"
+    },
+    "duplicate_count": {
+      "type": "number",
+      "description": "\u91cd\u8907\u691c\u51fa\u6570"
+    },
+    "missing_boats_count": {
+      "type": "number",
+      "description": "6\u8247\u6b20\u640d\u691c\u51fa\u6570"
+    },
+    "recent_durations": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "\u76f4\u8fd150\u4ef6\u306evenue-day\u51e6\u7406\u6642\u9593(ms)"
+    },
+    "average_venue_duration_ms": {
+      "type": "number"
+    },
+    "venue_days_per_hour": {
+      "type": "number"
+    },
+    "races_per_hour": {
+      "type": "number"
+    },
+    "racer_results_per_hour": {
+      "type": "number"
+    },
+    "estimated_remaining_days": {
+      "type": "number"
+    },
+    "estimated_completion_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "worker_heartbeat": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u30ef\u30fc\u30ab\u30fc\u30cf\u30fc\u30c8\u30d3\u30fc\u30c8(\u540c\u6642\u5b9f\u884c\u9632\u6b62\u7528)"
     },
     "last_completed_date": {
       "type": "string",
@@ -41,6 +119,10 @@
     "skip_count": {
       "type": "number"
     },
+    "skip_complete_count": {
+      "type": "number",
+      "description": "SKIP_COMPLETE(\u65e2\u5b58\u30c7\u30fc\u30bf\u5b8c\u5168)\u3067\u30b9\u30ad\u30c3\u30d7\u3057\u305f\u6570"
+    },
     "last_run_at": {
       "type": "string",
       "format": "date-time"
@@ -59,16 +141,13 @@
       "type": "string"
     },
     "current_batch_label": {
-      "type": "string",
-      "description": "\u4f8b: 2023-05-01_01"
+      "type": "string"
     },
     "total_target_days": {
-      "type": "number",
-      "description": "\u63a8\u5b9a\u7dcf\u65e5\u6570"
+      "type": "number"
     },
     "completed_dates": {
-      "type": "number",
-      "description": "\u5b8c\u4e86\u6e08\u307f\u65e5\u4ed8\u6570"
+      "type": "number"
     },
     "error_dates": {
       "type": "array",
