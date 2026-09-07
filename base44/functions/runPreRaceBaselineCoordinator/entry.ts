@@ -55,11 +55,9 @@ export default async function(req) {
       }
     }
 
-    // まず対象日のRace/出走表を徹底収集。ここでは分析を一切しない。
-    const sync=await base44.asServiceRole.functions.invoke('runRaceDayIntegritySync',{
-      race_date:raceDate, stage:'pre', collect_only:true, mode:'pre_race_collection',
-    }).catch(e=>({data:{status:'error',message:e?.message||String(e)}}));
-    const syncData=sync?.data||sync;
+    // 対象日のRace/出走表はBファイル取込済みデータを正とする。
+    // ここでは公式サイトへ出走表を取りに行かない。Web取得は展示・オッズ専用ワーカーだけに限定する。
+    const syncData={status:'db_only',message:'Bファイル由来のRace/RaceEntryを使用'};
 
     // VenueDayReadiness集計前に重複Raceを正規化（同時実行の残りを掃除）
     let dedupResult=null;
@@ -73,41 +71,10 @@ export default async function(req) {
       base44.asServiceRole.entities.VenueDayReadiness.filter({race_date:raceDate},'venue_code',100).catch(()=>[]),
     ]);
 
-    // 2日目以降なのに前日までの節間ポイントが無い場は、朝の収集処理自身で前日分を自己修復する。
-    // 特にモーニング場は1Rが早いため、夜間処理の取りこぼしを朝まで放置しない。
-    let seriesPoints=initialSeriesPoints;
-    const existingSeriesKeys=new Set(seriesPoints.map(x=>x.series_key).filter(Boolean));
-    const repairTargets=[];
-    const seenRepair=new Set();
-    for (const r of races) {
-      const seriesDay=Number(r.series_day||1);
-      const seriesKey=r.series_key;
-      const jcd=String(r.venue_code).padStart(2,'0');
-      if (seriesDay<=1 || !seriesKey || existingSeriesKeys.has(seriesKey) || seenRepair.has(seriesKey)) continue;
-      seenRepair.add(seriesKey);
-      repairTargets.push({jcd,series_key:seriesKey,venue_name:r.venue_name||jcd,slot:timeSlotFromDeadline(r.deadline)});
-    }
-    repairTargets.sort((a,b)=>({morning:0,day:1,night:2}[a.slot]??9)-({morning:0,day:1,night:2}[b.slot]??9));
-
+    // 節間ポイントもWebから補修しない。Kファイル/既存DBにある範囲だけ利用する。
+    // 期別レーサー成績を主軸にするため、節間ポイント欠落だけで全体を停止させない。
+    const seriesPoints=initialSeriesPoints;
     const seriesRepair=[];
-    const sourceDate=previousDateStr(raceDate);
-    for (const target of repairTargets) {
-      try {
-        // 前日結果と詳細を場単位で補完してから節間ポイントを再生成する。
-        const fr=await base44.asServiceRole.functions.invoke('fetchHistoricalResults',{race_date:sourceDate,jcd:target.jcd});
-        const fd=fr?.data||fr;
-        const er=await base44.asServiceRole.functions.invoke('enrichRaceResultDetails',{race_date:sourceDate,jcd:target.jcd,force:true});
-        const ed=er?.data||er;
-        const sr=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:sourceDate,jcd:target.jcd});
-        const sd=sr?.data||sr;
-        seriesRepair.push({venue_code:target.jcd,venue_name:target.venue_name,time_slot:target.slot,status:sd?.status||'success',result_status:fd?.status||null,detail_status:ed?.status||null,series:sd});
-      } catch(e) {
-        seriesRepair.push({venue_code:target.jcd,venue_name:target.venue_name,time_slot:target.slot,status:'error',message:e?.message||String(e)});
-      }
-    }
-    if (repairTargets.length>0) {
-      seriesPoints=await base44.asServiceRole.entities.SeriesRacerPoint.filter({as_of_date:{$lt:raceDate}},'-as_of_date',3000).catch(()=>seriesPoints);
-    }
 
     const entriesByRace=new Map();
     for (const e of entries) {
