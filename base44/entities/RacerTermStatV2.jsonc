@@ -7,12 +7,10 @@
       "description": "term_code + \"_\" + registration_number"
     },
     "term_code": {
-      "type": "string",
-      "description": "YYYY_T (T=1:\u524d\u671f, 2:\u5f8c\u671f)"
+      "type": "string"
     },
     "term_label": {
-      "type": "string",
-      "description": "YYYY\u5e74\u524d\u671f/\u5f8c\u671f"
+      "type": "string"
     },
     "term_start_date": {
       "type": "string",
@@ -23,8 +21,7 @@
       "format": "date"
     },
     "registration_number": {
-      "type": "string",
-      "description": "\u767b\u756a4\u6841"
+      "type": "string"
     },
     "racer_name": {
       "type": "string"
@@ -33,16 +30,13 @@
       "type": "string"
     },
     "branch": {
-      "type": "string",
-      "description": "\u652f\u90e8"
+      "type": "string"
     },
     "birthplace": {
-      "type": "string",
-      "description": "\u51fa\u8eab\u5730(2014\u5e74\u5f8c\u671f\u4ee5\u964d)"
+      "type": "string"
     },
     "gender": {
-      "type": "string",
-      "description": "1:\u7537, 2:\u5973"
+      "type": "string"
     },
     "age": {
       "type": "number"
@@ -51,76 +45,65 @@
       "type": "number"
     },
     "racer_class": {
-      "type": "string",
-      "description": "\u7d1a\u5225 A1/A2/B1/B2"
+      "type": "string"
     },
     "previous_class": {
-      "type": "string",
-      "description": "\u524d\u671f\u7d1a"
+      "type": "string"
     },
     "win_rate": {
-      "type": "number",
-      "description": "\u52dd\u7387(\u5c0f\u6570\u70b9\u4ee5\u4e0b2\u6841)"
+      "type": "number"
     },
     "second_place_rate": {
-      "type": "number",
-      "description": "\u8907\u52dd\u7387(2\u9023\u5bfe\u7387, \u5c0f\u6570\u70b9\u4ee5\u4e0b1\u6841%)"
+      "type": "number"
     },
     "third_place_rate": {
-      "type": "number",
-      "description": "3\u7740\u7387(\u30d5\u30a1\u30a4\u30eb\u306b\u5b58\u5728\u3057\u306a\u3044\u305f\u3081null)"
+      "type": "number"
     },
     "top2_rate": {
-      "type": "number",
-      "description": "2\u9023\u5bfe\u7387=\u8907\u52dd\u7387"
+      "type": "number"
     },
     "top3_rate": {
-      "type": "number",
-      "description": "3\u9023\u5bfe\u7387(\u30d5\u30a1\u30a4\u30eb\u306b\u5b58\u5728\u3057\u306a\u3044\u305f\u3081null)"
+      "type": "number"
     },
     "average_start_timing": {
-      "type": "number",
-      "description": "\u5e73\u5747ST(\u5c0f\u6570\u70b9\u4ee5\u4e0b2\u6841)"
+      "type": "number"
     },
     "race_count": {
-      "type": "number",
-      "description": "\u51fa\u8d70\u56de\u6570"
+      "type": "number"
     },
     "first_place_count": {
-      "type": "number",
-      "description": "1\u7740\u56de\u6570"
+      "type": "number"
     },
     "second_place_count": {
-      "type": "number",
-      "description": "2\u7740\u56de\u6570"
+      "type": "number"
     },
     "third_place_count": {
-      "type": "number",
-      "description": "3\u7740\u56de\u6570(\u30b3\u30fc\u30b9\u5225\u96c6\u8a08)"
+      "type": "number"
     },
     "start_accident_count": {
-      "type": "number",
-      "description": "F\u56de\u6570\u5408\u8a08(\u30b3\u30fc\u30b9\u5225\u96c6\u8a08)"
+      "type": "number"
     },
     "late_count": {
-      "type": "number",
-      "description": "L0+L1\u56de\u6570\u5408\u8a08(\u30b3\u30fc\u30b9\u5225\u96c6\u8a08)"
+      "type": "number"
     },
     "accident_rate": {
-      "type": "number",
-      "description": "\u4e8b\u6545\u7387(\u30d5\u30a1\u30a4\u30eb\u306b\u5b58\u5728\u3057\u306a\u3044\u305f\u3081null)"
+      "type": "number"
     },
     "ability_index": {
-      "type": "number",
-      "description": "\u4eca\u671f\u80fd\u529b\u6307\u6570(\u5c0f\u6570\u70b9\u4ee5\u4e0b2\u6841)"
+      "type": "number"
     },
     "championship_entries": {
-      "type": "number",
-      "description": "\u512a\u51fa\u56de\u6570"
+      "type": "number"
     },
     "championship_wins": {
-      "type": "number",
-      "description": "\u512a\u52dd\u56de\u6570"
+      "type": "number"
+    },
+    "course_stats": {
+      "type": "array",
+      "description": "1\u301c6\u30b3\u30fc\u30b9\u5225\u306e\u671f\u5225\u8a73\u7d30\u3002\u5404\u8981\u7d20: course, first, second, third, other, f, l0, l1, k0, k1, starts, first_rate, top2_rate, top3_rate",
+      "items": {
+        "type": "object"
+      }
     },
     "source_file_name": {
       "type": "string"
@@ -136,8 +119,7 @@
       "format": "date-time"
     },
     "raw_line": {
-      "type": "string",
-      "description": "\u5143\u306e\u884c(Shift-JIS\u2192UTF-8\u30c7\u30b3\u30fc\u30c9)"
+      "type": "string"
     }
   },
   "required": [
