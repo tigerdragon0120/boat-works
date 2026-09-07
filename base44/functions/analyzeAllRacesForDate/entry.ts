@@ -183,6 +183,19 @@ export default async function(req) {
           const races = Number(r.race_count || 0);
           return races > 0 ? Number(r.championship_wins || 0) / races * 100 : null;
         });
+        // 当日の艇番を基本コースとして、そのコースでの1/2/3着適性を最大6期で評価。
+        // 展示で進入が変わった場合は分析直前のentry_courseを優先する。
+        const targetCourse = Number(e.entry_course || e.boat_number || 0);
+        const courseMetric = (r, field) => {
+          const cs = Array.isArray(r.course_stats) ? r.course_stats.find(x => Number(x.course) === targetCourse) : null;
+          return cs?.[field] ?? null;
+        };
+        const courseStarts = weighted(rows, r => courseMetric(r, 'starts'));
+        const courseFirst = weighted(rows, r => courseMetric(r, 'first_rate'));
+        const courseSecond = weighted(rows, r => courseMetric(r, 'second_rate'));
+        const courseThird = weighted(rows, r => courseMetric(r, 'third_rate'));
+        const courseTop2 = weighted(rows, r => courseMetric(r, 'top2_rate'));
+        const courseTop3 = weighted(rows, r => courseMetric(r, 'top3_rate'));
 
         const recentAbility = weighted(rows.slice(0, 2), r => r.ability_index);
         const olderAbility = weighted(rows.slice(2, 6), r => r.ability_index);
@@ -215,6 +228,13 @@ export default async function(req) {
         e.racer_term_weighted_l = weightedL;
         e.racer_term_championship_entry_rate = weightedChampEntry;
         e.racer_term_championship_win_rate = weightedChampWin;
+        e.racer_term_course = targetCourse || null;
+        e.racer_term_course_starts = courseStarts;
+        e.racer_term_course_first_rate = courseFirst;
+        e.racer_term_course_second_rate = courseSecond;
+        e.racer_term_course_third_rate = courseThird;
+        e.racer_term_course_top2_rate = courseTop2;
+        e.racer_term_course_top3_rate = courseTop3;
         e.racer_term_ability_trend = abilityTrend;
         e.racer_term_win_trend = winTrend;
       }
