@@ -1,0 +1,20 @@
+{
+  "name": "Immediate Sep08 Pre Analysis",
+  "description": "One-shot recovery trigger for 2026-09-08 pre analysis after B-file import.",
+  "trigger": {
+    "type": "schedule",
+    "cron": "* * * * *"
+  },
+  "steps": [
+    {
+      "name": "run_pre_analysis",
+      "type": "function",
+      "function": "analyzeAllRacesForDate",
+      "input": {
+        "race_date": "2026-09-08",
+        "stage": "pre",
+        "force": true
+      }
+    }
+  ]
+}
