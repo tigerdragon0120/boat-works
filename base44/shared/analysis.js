@@ -147,8 +147,22 @@ function computeRacerExecution(entries, boat1Trust) {
   const outerThird = pool([5,6].map(n=>third(b(n))));
   const boat1 = b(1);
   // trustにはモーターが混じるため、1号艇実行力は選手項目を中心に再計算しtrustは補助に留める。
-  const escape = Math.round(clamp(
+  // 1コース履歴がまだ薄い場合は、レーサー期別成績の1着率・全国勝率・平均ST・級別から
+  // 保守的な基礎逃げ力を作る。期別成績だけでも予想に参加できるようにする。
+  const termFirst = boat1?.racer_term_first_rate;
+  const termBaseEscape = termFirst != null
+    ? Math.round(clamp(
+        clamp(termFirst/35,0,1)*34 +
+        clamp((boat1?.national_win_rate||0)/8,0,1)*24 +
+        clamp((.24-(boat1?.avg_st||.24))/.16,0,1)*20 +
+        (gradeToScore(boat1?.grade_class) ?? .5)*14 +
+        ((boat1?.f_count||0)===0?8:0), 0, 100))
+    : null;
+  const directEscape = Math.round(clamp(
     clamp((boat1?.c1_win_rate||0)/70,0,1)*36 + clamp((boat1?.national_win_rate||0)/8,0,1)*20 + clamp((boat1?.local_win_rate||0)/8,0,1)*18 + clamp((.24-(boat1?.avg_st||.24))/.16,0,1)*18 + ((boat1?.f_count||0)===0?8:0), 0, 100));
+  const escape = boat1?.c1_win_rate != null
+    ? directEscape
+    : (termBaseEscape != null ? termBaseEscape : directEscape);
   const mainExecution = Math.round(clamp(escape*.40 + midSecond*.32 + outerThird*.28, 0, 100));
   const uraExecution = Math.round(clamp(escape*.40 + outerSecond*.34 + midThird*.26, 0, 100));
   return { escape, main_execution: mainExecution, ura_execution: uraExecution, mid_second: midSecond, mid_third: midThird, outer_second: outerSecond, outer_third: outerThird, trust_reference: boat1Trust || 0 };
