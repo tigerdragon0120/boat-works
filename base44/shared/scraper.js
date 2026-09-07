@@ -46,8 +46,16 @@ export function toPayout(s) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
+function assertAllowedBoatRaceFetch(url) {
+  const u = String(url || '');
+  if (!/https?:\/\/(www\.)?boatrace\.jp\//i.test(u)) return;
+  if (/\/beforeinfo\?/i.test(u) || /\/odds3t\?/i.test(u)) return;
+  throw new Error(`BOAT RACE公式サイト取得は禁止されています（展示・オッズのみ許可）: ${u}`);
+}
+
 // AbortController付きHTTP fetch（タイムアウト保証）
 export async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  assertAllowedBoatRaceFetch(url);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
