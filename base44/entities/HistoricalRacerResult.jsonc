@@ -36,7 +36,11 @@
     },
     "finish_order": {
       "type": "number",
-      "description": "\u7740\u9806 1-6"
+      "description": "\u7740\u9806 1-6\u3002\u7279\u6b8a\u7d50\u679c(\u843d\u6c34/\u8ee2\u8986/\u5931\u683c/\u6b20\u5834/\u8fd4\u9084\u7b49)\u306e\u5834\u5408\u306fnull"
+    },
+    "official_finish_raw": {
+      "type": "string",
+      "description": "\u516c\u5f0f\u306e\u7740\u9806\u751f\u8868\u8a18(\u4f8b: \uff11,\uff12,\uff13,\u843d,\u8ee2,\u5931,\u6b20,\u8fd4,F,L\u7b49)"
     },
     "finish_status": {
       "type": "string",
@@ -47,8 +51,12 @@
         "CAPSIZED",
         "FELL",
         "RETURNED",
+        "INCOMPLETE",
+        "FOUL",
+        "LATE",
         "PENDING"
-      ]
+      ],
+      "description": "FINISHED=\u6b63\u5e38\u7740, DISQUALIFIED=\u5931\u683c, ABSENT=\u6b20\u5834, CAPSIZED=\u8ee2\u8986, FELL=\u843d\u6c34, RETURNED=\u8fd4\u9084, INCOMPLETE=\u4e0d\u5b8c\u8d70, FOUL=F, LATE=L, PENDING=\u4e0d\u660e"
     },
     "start_timing": {
       "type": "number",
@@ -59,7 +67,7 @@
     },
     "start_course": {
       "type": "number",
-      "description": "\u9032\u5165\u30b3\u30fc\u30b9 1-6"
+      "description": "\u9032\u5165\u30b3\u30fc\u30b9 1-6\u3002\u8247\u756a\u3068\u306f\u7570\u306a\u308b\u5b9f\u969b\u306e\u672c\u756a\u9032\u5165\u4f4d\u7f6e"
     },
     "race_time_raw": {
       "type": "string"
@@ -98,6 +106,10 @@
     "is_returned": {
       "type": "boolean",
       "description": "\u8fd4\u9084"
+    },
+    "is_incomplete": {
+      "type": "boolean",
+      "description": "\u4e0d\u5b8c\u8d70"
     },
     "imported_at": {
       "type": "string",

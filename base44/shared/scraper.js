@@ -282,8 +282,6 @@ export function parseDailyVenueList(html) {
 }
 
 // 1日のレース一覧パース（raceindexページから各レース番号と締切時刻を抽出）
-// raceindex?jcd=XX&hd=YYYYMMDD のページ構造:
-//   <tr> ... <a href="...racelist?rno=1&jcd=18&hd=...">1R</a> ... >08:40< ... </tr>
 export function parseDaySchedule(html, raceDate) {
   const races = [];
   const seen = new Set();
@@ -304,8 +302,6 @@ export function parseDaySchedule(html, raceDate) {
 }
 
 // raceindexページの早見テーブルをパース（全レース全選手の登録番号・名前・級別を抽出）
-// 1HTTPアクセスで1日分の全レース全選手の担当艇番号と登録番号が分かる
-// 戻り値: { [raceNumber]: [{ boat_number, registration_number, racer_name, grade_class }, ...6艇] }
 export function parseRaceIndexHayami(html) {
   const races = {};
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
@@ -317,14 +313,12 @@ export function parseRaceIndexHayami(html) {
     const raceNumber = parseInt(rnoMatch[1], 10);
     if (races[raceNumber]) continue;
 
-    // 各選手のプロフィールリンクを抽出（boat順）
     const racerRe = /racersearch\/profile\?toban=(\d+)[^>]*>([\s\S]*?)<\/a>/g;
     const racers = [];
     let racerMatch;
     while ((racerMatch = racerRe.exec(row)) !== null && racers.length < 6) {
       const regNum = racerMatch[1];
       const name = stripTags(racerMatch[2]);
-      // 級別: リンク直後の <br> の後にある (例: B1, A2)
       const afterLink = row.substring(racerMatch.index + racerMatch[0].length);
       const gradeMatch = afterLink.match(/^\s*(?:<br\s*\/?>)?\s*([A-Z]\d)/);
       racers.push({
@@ -342,7 +336,6 @@ export function parseRaceIndexHayami(html) {
 }
 
 // 結果一覧ページパース（1日1場分の全レース結果）
-// 3連単組合わせと払戻金を抽出
 export function parseResultList(html) {
   const results = [];
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
@@ -359,7 +352,6 @@ export function parseResultList(html) {
     while ((cm = cellRe.exec(row)) !== null) cells.push(cm[1]);
     if (cells.length < 3) continue;
 
-    // 3連単セル: "1<br>-4<br>-5" → "1-4-5"
     const trifectaRaw = stripTags(cells[1]).replace(/\s+/g, "");
     if (!/^\d-\d-\d$/.test(trifectaRaw)) continue;
 
@@ -411,7 +403,6 @@ export function parseSeriesContext(html, raceDate) {
     if (!md) continue;
     let year = base.getUTCFullYear();
     const month = Number(md[1]), day = Number(md[2]);
-    // 年跨ぎシリーズにも耐えるよう、基準日から最も近い年を採用。
     const candidates = [year - 1, year, year + 1].map(y => ({ y, diff: Math.abs(new Date(Date.UTC(y, month - 1, day)) - base) }));
     year = candidates.sort((a,b)=>a.diff-b.diff)[0].y;
     const hd = `${year}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}`;
@@ -485,6 +476,11 @@ export function parsePointRank(html) {
   return { available: standings.length > 0, as_of_label: asOfLabel, standings };
 }
 
+// レース結果詳細ページをパースする。
+// 重要:
+//   - 着順が正常(1-6)でなくても、F/L/落/転/失/欠/返/不等の特殊結果も記録する
+//   - スタート情報の行順序＝進入コース(1-6)。艇番≠コース(進入変更)も正確に記録
+//   - 6艇未満のレースでも取得できた全艇を返す
 export function parseRaceResultDetail(html) {
   if (!html || !html.includes('レースタイム')) return null;
 
@@ -494,6 +490,19 @@ export function parseRaceResultDetail(html) {
     if (!m) return null;
     return Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 10;
   };
+
+  // 特殊結果マーカー → finish_status + フラグのマッピング
+  const SPECIAL_FINISH_MAP = {
+    '落': { status: 'FELL', flag: 'is_fell' },          // 落水
+    '転': { status: 'CAPSIZED', flag: 'is_capsized' },   // 転覆
+    '失': { status: 'DISQUALIFIED', flag: 'is_disqualified' }, // 失格
+    '欠': { status: 'ABSENT', flag: 'is_absent' },        // 欠場
+    '返': { status: 'RETURNED', flag: 'is_returned' },   // 返還
+    '不': { status: 'INCOMPLETE', flag: 'is_incomplete' }, // 不完走
+    '妨': { status: 'DISQUALIFIED', flag: 'is_disqualified' }, // 妨害失格
+    '除': { status: 'DISQUALIFIED', flag: 'is_disqualified' }, // 除外
+  };
+  const finishMap = { '１': 1, '２': 2, '３': 3, '４': 4, '５': 5, '６': 6 };
 
   const finishers = [];
   const tableStart = html.indexOf('レースタイム');
@@ -512,11 +521,35 @@ export function parseRaceResultDetail(html) {
     const regMatch = cells[2].match(/is-fs12">\s*(\d{4})\s*<\/span>/);
     const nameMatch = cells[2].match(/is-lh24__3rdadd">([^<]+)<\/span>/);
     const timeRaw = stripTags(cells[3]).replace(/\s+/g, '');
-    const finishMap = { '１': 1, '２': 2, '３': 3, '４': 4, '５': 5, '６': 6 };
-    const finish = finishMap[finishRaw] || Number(finishRaw);
-    if (!Number.isFinite(finish) || !Number.isFinite(boat) || boat < 1 || boat > 6) continue;
+
+    // 艇番が不正ならスキップ(着順が不正でも艇番が正しければ記録)
+    if (!Number.isFinite(boat) || boat < 1 || boat > 6) continue;
+
+    // 着順判定: 正常着(1-6) or 特殊結果
+    let finish = null;
+    let finishStatus = 'FINISHED';
+    let specialFlag = null;
+    if (finishMap[finishRaw]) {
+      finish = finishMap[finishRaw];
+    } else if (SPECIAL_FINISH_MAP[finishRaw]) {
+      const special = SPECIAL_FINISH_MAP[finishRaw];
+      finishStatus = special.status;
+      specialFlag = special.flag;
+    } else if (/^F/i.test(finishRaw)) {
+      finishStatus = 'FOUL';
+      specialFlag = 'is_foul';
+    } else if (/^L/i.test(finishRaw)) {
+      finishStatus = 'LATE';
+      specialFlag = 'is_late';
+    } else {
+      finishStatus = 'PENDING';
+    }
+
     finishers.push({
       finish,
+      finish_raw: finishRaw,
+      finish_status: finishStatus,
+      special_flag: specialFlag,
       boat_number: boat,
       registration_number: regMatch ? regMatch[1] : null,
       racer_name: nameMatch ? stripTags(nameMatch[1]).replace(/\s+/g, ' ') : null,
@@ -524,18 +557,28 @@ export function parseRaceResultDetail(html) {
       race_time_seconds: normalizeTime(timeRaw),
     });
   }
-  finishers.sort((a, b) => a.finish - b.finish);
+  // 正常着順でソート(特殊結果は着順nullなので最後尾)
+  finishers.sort((a, b) => {
+    if (a.finish == null && b.finish == null) return a.boat_number - b.boat_number;
+    if (a.finish == null) return 1;
+    if (b.finish == null) return -1;
+    return a.finish - b.finish;
+  });
 
+  // スタート情報: 行順序＝進入コース(1-6)
+  // is-typeNは艇番の色クラス。行順序が実際の進入コース。
+  // 進入変更(艇番≠コース)も正確に記録する。
   const startInfo = [];
   const startStart = html.indexOf('スタート情報');
   if (startStart >= 0) {
     const startEnd = html.indexOf('勝式', startStart);
     const startSection = html.substring(startStart, startEnd > startStart ? startEnd : startStart + 12000);
-    const rowRe = /table1_boatImage1Number[^>]*>(\d)<\/span>[\s\S]{0,900}?table1_boatImage1TimeInner[^>]*>([\s\S]*?)<\/span>/g;
+    const rowRe = /table1_boatImage1Number\s+is-type(\d)">(\d)<\/span>[\s\S]{0,900}?table1_boatImage1TimeInner[^>]*>([\s\S]*?)<\/span>/g;
     let sm;
+    let courseNum = 1;
     while ((sm = rowRe.exec(startSection)) !== null) {
-      const boat = Number(sm[1]);
-      const rawText = stripTags(sm[2]).replace(/&nbsp;| /g, ' ').trim();
+      const boat = Number(sm[2]);
+      const rawText = stripTags(sm[3]).replace(/&nbsp;|\u00a0/g, ' ').trim();
       const stMatch = rawText.match(/F?\.?\d{1,2}/i);
       const stRaw = stMatch ? stMatch[0] : null;
       let st = null;
@@ -544,7 +587,9 @@ export function parseRaceResultDetail(html) {
         const n = Number(stRaw.replace(/^F/i, ''));
         if (Number.isFinite(n)) st = neg ? -Math.abs(n) : n;
       }
-      startInfo.push({ boat_number: boat, st, st_raw: stRaw });
+      // 行順序＝進入コース。艇番≠コースの場合(進入変更)も正確に記録。
+      startInfo.push({ boat_number: boat, start_course: courseNum, st, st_raw: stRaw });
+      courseNum++;
     }
   }
 

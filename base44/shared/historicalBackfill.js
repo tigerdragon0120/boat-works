@@ -1,7 +1,7 @@
 // BOAT WORKS 2002年〜現在 個別レース結果バックフィル共通ロジック
 // runHistoricalRaceBackfill と controlHistoricalBackfill で共有使用
 
-import { VENUE_NAMES, parseResultList, parseRaceResultDetail, parseSeriesContext, fetchWithRetry, sleep } from './scraper.js';
+import { VENUE_NAMES, parseResultList, parseRaceResultDetail, parseRacelist, parseSeriesContext, fetchWithRetry, sleep } from './scraper.js';
 
 const RESULT_BASE = 'https://boatrace.jp/owpc/pc/race';
 
@@ -136,7 +136,24 @@ export async function backfillVenueDate(base44, raceDate, jcd) {
   for (const rr of raceResults) {
     const natKey = raceNaturalKey(raceDate, jcd, rr.race_number);
     try {
-      // 詳細ページ取得
+      // 3a) 出走表を取得して6艇の基準データを確保
+      // 結果ページだけでは欠場・失格艇が抜けるため、出走表を先に取得する
+      let entryMap = new Map(); // boat_number → {registration_number, racer_name, ...}
+      try {
+        const racelistUrl = `${RESULT_BASE}/racelist?rno=${rr.race_number}&jcd=${jcd}&hd=${hd}`;
+        const rlRes = await fetchWithRetry(racelistUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000, 2);
+        const rlHtml = await rlRes.text();
+        const rlParsed = parseRacelist(rlHtml, rr.race_number, raceDate);
+        for (const e of (rlParsed.entries || [])) {
+          if (e.boat_number >= 1 && e.boat_number <= 6) {
+            entryMap.set(Number(e.boat_number), e);
+          }
+        }
+      } catch (e) {
+        errors.push({ phase: 'racelist', race_number: rr.race_number, message: e?.message || '出走表取得失敗' });
+      }
+
+      // 3b) 結果詳細ページ取得
       const detailUrl = `${RESULT_BASE}/raceresult?rno=${rr.race_number}&jcd=${jcd}&hd=${hd}`;
       const detailRes = await fetchWithRetry(detailUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 12000, 2);
       const detailHtml = await detailRes.text();
@@ -185,75 +202,103 @@ export async function backfillVenueDate(base44, raceDate, jcd) {
       }
       raceCount++;
 
+      // 3c) 既存Raceエンティティとの統合(欠損補完のみ・上書き禁止)
+      await integrateWithExistingRace(base44, raceDate, jcd, rr.race_number, seriesCtx);
+
       // 4) 各艇の個別結果を保存
-      if (detail?.finishers && detail.finishers.length > 0) {
-        // 既存racer結果を取得
-        const existingRacerResults = await base44.asServiceRole.entities.HistoricalRacerResult.filter(
-          { race_natural_key: natKey }, 'boat_number', 10
-        ).catch(() => []);
-        const existingRacerMap = new Map(existingRacerResults.map(r => [r.result_key, r]));
+      // 出走表の6艇を基準とし、結果詳細を重ね合わせる
+      // これにより欠場・失格・転覆等の特殊結果艇もレコードが作成される
 
-        // ST情報をboat_numberでマップ
-        const stMap = new Map();
-        if (detail.start_info) {
-          for (const si of detail.start_info) {
-            stMap.set(Number(si.boat_number), si);
-          }
-        }
-
-        // finishersから着順・艇番・登録番号・タイムを取得
+      // 結果詳細のfinisherをboat_numberでマップ
+      const finisherMap = new Map();
+      if (detail?.finishers) {
         for (const f of detail.finishers) {
-          const boatNum = Number(f.boat_number);
-          if (!boatNum || boatNum < 1 || boatNum > 6) continue;
-          const rKey = racerResultKey(raceDate, jcd, rr.race_number, boatNum);
-          const stInfo = stMap.get(boatNum) || {};
-          const stRaw = stInfo.st_raw || null;
-          let stVal = stInfo.st != null ? Number(stInfo.st) : null;
-
-          // ST事故判定
-          const isFoul = stRaw != null && /^F/i.test(stRaw);
-          const isLate = stRaw != null && /^L/i.test(stRaw);
-
-          // 着順からステータス判定
-          let finishStatus = 'FINISHED';
-          if (f.finish > 6 || f.finish < 1) finishStatus = 'PENDING';
-
-          const racerFields = {
-            result_key: rKey,
-            race_natural_key: natKey,
-            race_date: raceDate,
-            venue_code: jcd,
-            race_number: rr.race_number,
-            boat_number: boatNum,
-            frame_number: boatNum,
-            registration_number: f.registration_number || null,
-            racer_name: f.racer_name || null,
-            finish_order: Number(f.finish) || null,
-            finish_status: finishStatus,
-            start_timing: stVal,
-            start_timing_raw: stRaw,
-            start_course: null,
-            race_time_raw: f.race_time_raw || null,
-            race_time_seconds: f.race_time_seconds || null,
-            winning_method: Number(f.finish) === 1 ? (detail.winning_method || null) : null,
-            is_foul: isFoul,
-            is_late: isLate,
-            is_capsized: false,
-            is_fell: false,
-            is_disqualified: false,
-            is_absent: false,
-            is_returned: false,
-            imported_at: now,
-          };
-
-          const exRacer = existingRacerMap.get(rKey);
-          if (exRacer) {
-            await base44.asServiceRole.entities.HistoricalRacerResult.update(exRacer.id, racerFields);
-          } else {
-            await base44.asServiceRole.entities.HistoricalRacerResult.create(racerFields);
-          }
-          racerResultCount++;
+          finisherMap.set(Number(f.boat_number), f);
         }
+      }
+
+      // スタート情報をboat_numberでマップ(進入コース含む)
+      const stMap = new Map();
+      if (detail?.start_info) {
+        for (const si of detail.start_info) {
+          stMap.set(Number(si.boat_number), si);
+        }
+      }
+
+      // 既存racer結果を取得
+      const existingRacerResults = await base44.asServiceRole.entities.HistoricalRacerResult.filter(
+        { race_natural_key: natKey }, 'boat_number', 10
+      ).catch(() => []);
+      const existingRacerMap = new Map(existingRacerResults.map(r => [r.result_key, r]));
+
+      // 6艇すべてを保存(出走表基準 + 結果オーバーレイ)
+      for (let boatNum = 1; boatNum <= 6; boatNum++) {
+        const rKey = racerResultKey(raceDate, jcd, rr.race_number, boatNum);
+        const entry = entryMap.get(boatNum) || {};
+        const finisher = finisherMap.get(boatNum) || {};
+        const stInfo = stMap.get(boatNum) || {};
+
+        const stRaw = stInfo.st_raw || null;
+        let stVal = stInfo.st != null ? Number(stInfo.st) : null;
+        const startCourse = stInfo.start_course != null ? Number(stInfo.start_course) : null;
+
+        // finish_status + 事故フラグ判定
+        let finishStatus = finisher.finish_status || 'PENDING';
+        let finishOrder = finisher.finish != null ? Number(finisher.finish) : null;
+        const officialFinishRaw = finisher.finish_raw || null;
+        const specialFlag = finisher.special_flag || null;
+
+        // 結果ページにいない艇 = 欠場または出走なし
+        if (!finisher.boat_number) {
+          finishStatus = 'ABSENT';
+        }
+
+        const isFoul = specialFlag === 'is_foul' || (stRaw != null && /^F/i.test(stRaw)) || finishStatus === 'FOUL';
+        const isLate = specialFlag === 'is_late' || (stRaw != null && /^L/i.test(stRaw)) || finishStatus === 'LATE';
+        const isCapsized = specialFlag === 'is_capsized' || finishStatus === 'CAPSIZED';
+        const isFell = specialFlag === 'is_fell' || finishStatus === 'FELL';
+        const isDisqualified = specialFlag === 'is_disqualified' || finishStatus === 'DISQUALIFIED';
+        const isAbsent = specialFlag === 'is_absent' || finishStatus === 'ABSENT';
+        const isReturned = specialFlag === 'is_returned' || finishStatus === 'RETURNED';
+        const isIncomplete = specialFlag === 'is_incomplete' || finishStatus === 'INCOMPLETE';
+
+        const racerFields = {
+          result_key: rKey,
+          race_natural_key: natKey,
+          race_date: raceDate,
+          venue_code: jcd,
+          race_number: rr.race_number,
+          boat_number: boatNum,
+          frame_number: boatNum,
+          registration_number: finisher.registration_number || entry.registration_number || null,
+          racer_name: finisher.racer_name || entry.racer_name || null,
+          finish_order: finishOrder,
+          official_finish_raw: officialFinishRaw,
+          finish_status: finishStatus,
+          start_timing: stVal,
+          start_timing_raw: stRaw,
+          start_course: startCourse,
+          race_time_raw: finisher.race_time_raw || null,
+          race_time_seconds: finisher.race_time_seconds || null,
+          winning_method: finishOrder === 1 ? (detail?.winning_method || null) : null,
+          is_foul: isFoul,
+          is_late: isLate,
+          is_capsized: isCapsized,
+          is_fell: isFell,
+          is_disqualified: isDisqualified,
+          is_absent: isAbsent,
+          is_returned: isReturned,
+          is_incomplete: isIncomplete,
+          imported_at: now,
+        };
+
+        const exRacer = existingRacerMap.get(rKey);
+        if (exRacer) {
+          await base44.asServiceRole.entities.HistoricalRacerResult.update(exRacer.id, racerFields);
+        } else {
+          await base44.asServiceRole.entities.HistoricalRacerResult.create(racerFields);
+        }
+        racerResultCount++;
       }
       await sleep(300);
     } catch (e) {
