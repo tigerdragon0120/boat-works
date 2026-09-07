@@ -97,17 +97,51 @@ export async function fetchWithBackoff(url, options = {}, timeoutMs = 10000, max
 export async function fetchDailyVenueList(raceDate) {
   const hd = raceDate.replace(/-/g, '');
   const url = `${INDEX_URL}?hd=${hd}`;
+
+  // まず日次indexを使う。古い日付では200 OKでも空/エラーページを返すことがあるため、
+  // 空結果は「開催なし」と確定せず、公式resultlistを24場だけフォールバック確認する。
+  let indexVenueCodes = [];
   try {
     const res = await fetchWithBackoff(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000, 2);
     const html = await res.text();
-    if (html.includes('予期せぬエラーが発生しました') || html.includes('データがありません')) {
-      return [];
+    const indexLooksInvalid = html.includes('予期せぬエラーが発生しました') || html.includes('データがありません');
+    if (!indexLooksInvalid) {
+      indexVenueCodes = parseDailyVenueList(html) || [];
+      if (indexVenueCodes.length > 0) return indexVenueCodes;
     }
-    return parseDailyVenueList(html);
-  } catch (e) {
-    // 取得失敗時は空配列ではなく例外を投げる(呼び出し元でエラー処理)
-    throw e;
+  } catch (_) {
+    // index失敗時も下記の公式resultlistフォールバックへ進む
   }
+
+  // 公式過去結果の軽量存在確認。4場ずつに制限して通常運用への負荷を抑える。
+  const found = [];
+  let successfulProbes = 0;
+  for (let i = 0; i < VENUE_JCDS_SORTED.length; i += 4) {
+    const chunk = VENUE_JCDS_SORTED.slice(i, i + 4);
+    const checks = await Promise.all(chunk.map(async (jcd) => {
+      try {
+        const probeUrl = `${RESULT_BASE}/resultlist?jcd=${jcd}&hd=${hd}`;
+        const probeRes = await fetchWithBackoff(probeUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 8000, 1);
+        const probeHtml = await probeRes.text();
+        successfulProbes++;
+        const noData = probeHtml.includes('予期せぬエラーが発生しました') || probeHtml.includes('データがありません');
+        if (noData) return null;
+        const parsed = parseResultList(probeHtml) || [];
+        return parsed.length > 0 ? jcd : null;
+      } catch (_) {
+        return null;
+      }
+    }));
+    for (const jcd of checks) if (jcd) found.push(jcd);
+    if (i + 4 < VENUE_JCDS_SORTED.length) await sleep(150);
+  }
+
+  if (found.length > 0) return found;
+
+  // 全24場を十分確認できた場合だけ開催なしを確定可能にする。
+  // 通信障害等で確認不足ならUNKNOWNへ送るため例外にする。
+  if (successfulProbes >= 20) return [];
+  throw new Error(`historical venue discovery inconclusive: ${raceDate} probes=${successfulProbes}/24`);
 }
 
 // === 進捗レコード取得(シングルトン) ===
