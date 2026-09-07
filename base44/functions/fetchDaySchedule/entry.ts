@@ -25,6 +25,11 @@ export default async function(req) {
     }
 
     const hd = raceDate.replace(/-/g, "");
+    return Response.json({
+      status: 'disabled',
+      message: '出走表・開催情報はBファイルを正とするため、raceindexのWeb取得は停止しました。'
+    }, { status: 410 });
+
     const url = `${BASE}/raceindex?jcd=${jcd}&hd=${hd}`;
     const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!res.ok) return Response.json({ status: "error", message: `スケジュール取得失敗 (HTTP ${res.status})` }, { status: 502 });
