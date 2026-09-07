@@ -1,8 +1,10 @@
 {
+  "name": "HistoricalBackfillDayStatus",
   "type": "object",
   "properties": {
     "race_date": {
-      "type": "string"
+      "type": "string",
+      "format": "date"
     },
     "venue_codes": {
       "type": "array",
@@ -40,6 +42,7 @@
       "type": "string",
       "enum": [
         "online_schedule",
+        "monthly_schedule",
         "historical_result_fallback",
         "not_checked"
       ]
@@ -48,13 +51,15 @@
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "format": "date-time"
     },
     "processed_at": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "format": "date-time"
     },
     "error_venues": {
       "type": "array",
@@ -63,6 +68,7 @@
       }
     }
   },
-  "required": [],
-  "name": "HistoricalBackfillDayStatus"
+  "required": [
+    "race_date"
+  ]
 }
