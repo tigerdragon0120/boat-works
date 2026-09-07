@@ -119,9 +119,10 @@ export default async function(req) {
     const regList = [...boat1Regs];
     const participantRegList = [...participantRegs];
 
-    // 最新の期別成績を全6艇へ補完。
-    // Bファイルの当日値を上書きせず、欠損項目だけを期別成績で補う。
-    const latestTermByReg = {};
+    // レーサー期別成績を全6艇へ補完。
+    // 最新1期だけでなく最大6期(約3年)を時系列で使い、最近ほど重く評価する。
+    // Bファイルの当日値は上書きせず、欠損補完 + 期別プロファイルを分析専用特徴量として追加する。
+    const termHistoryByReg = {};
     if (participantRegList.length > 0) {
       for (let i = 0; i < participantRegList.length; i += 200) {
         const chunk = participantRegList.slice(i, i + 200);
@@ -131,36 +132,91 @@ export default async function(req) {
         for (const ts of termRows) {
           const rn = ts.registration_number;
           if (!rn) continue;
-          if (!latestTermByReg[rn] || String(ts.term_code || '') > String(latestTermByReg[rn].term_code || '')) {
-            latestTermByReg[rn] = ts;
-          }
+          (termHistoryByReg[rn] = termHistoryByReg[rn] || []).push(ts);
         }
       }
 
+      const weights = [0.34, 0.24, 0.16, 0.11, 0.08, 0.07];
+      const weighted = (rows, getter) => {
+        let sum = 0, wsum = 0;
+        rows.slice(0, 6).forEach((row, idx) => {
+          const v = getter(row);
+          if (v == null || !Number.isFinite(Number(v))) return;
+          const w = weights[idx] || 0;
+          sum += Number(v) * w;
+          wsum += w;
+        });
+        return wsum > 0 ? sum / wsum : null;
+      };
+      const rateFromCounts = (ts, fields) => {
+        const rc = Number(ts?.race_count || 0);
+        if (rc <= 0) return null;
+        const total = fields.reduce((s, f) => s + Number(ts?.[f] || 0), 0);
+        return total / rc * 100;
+      };
+
       for (const e of allEntries) {
-        const ts = latestTermByReg[e.registration_number];
+        const rows = (termHistoryByReg[e.registration_number] || [])
+          .sort((a, b) => String(b.term_code || '').localeCompare(String(a.term_code || '')))
+          .slice(0, 6);
+        const ts = rows[0];
         if (!ts) continue;
+
         const rc = Number(ts.race_count || 0);
-        const first = Number(ts.first_place_count || 0);
-        const second = Number(ts.second_place_count || 0);
-        const third = Number(ts.third_place_count || 0);
-        const derivedTop3 = rc > 0 ? ((first + second + third) / rc) * 100 : null;
-        const firstRate = rc > 0 ? (first / rc) * 100 : null;
+        const latestFirstRate = rateFromCounts(ts, ['first_place_count']);
+        const latestTop3 = rateFromCounts(ts, ['first_place_count','second_place_count','third_place_count']);
+        const weightedFirstRate = weighted(rows, r => rateFromCounts(r, ['first_place_count']));
+        const weightedSecondRate = weighted(rows, r => rateFromCounts(r, ['second_place_count']));
+        const weightedThirdRate = weighted(rows, r => rateFromCounts(r, ['third_place_count']));
+        const weightedTop2 = weighted(rows, r => r.top2_rate);
+        const weightedTop3 = weighted(rows, r => rateFromCounts(r, ['first_place_count','second_place_count','third_place_count']));
+        const weightedWinRate = weighted(rows, r => r.win_rate);
+        const weightedST = weighted(rows, r => r.average_start_timing);
+        const weightedAbility = weighted(rows, r => r.ability_index);
+        const weightedF = weighted(rows, r => r.start_accident_count);
+        const weightedL = weighted(rows, r => r.late_count);
+        const weightedChampEntry = weighted(rows, r => {
+          const races = Number(r.race_count || 0);
+          return races > 0 ? Number(r.championship_entries || 0) / races * 100 : null;
+        });
+        const weightedChampWin = weighted(rows, r => {
+          const races = Number(r.race_count || 0);
+          return races > 0 ? Number(r.championship_wins || 0) / races * 100 : null;
+        });
+
+        const recentAbility = weighted(rows.slice(0, 2), r => r.ability_index);
+        const olderAbility = weighted(rows.slice(2, 6), r => r.ability_index);
+        const abilityTrend = recentAbility != null && olderAbility != null ? recentAbility - olderAbility : 0;
+        const recentWin = weighted(rows.slice(0, 2), r => r.win_rate);
+        const olderWin = weighted(rows.slice(2, 6), r => r.win_rate);
+        const winTrend = recentWin != null && olderWin != null ? recentWin - olderWin : 0;
 
         if (e.grade_class == null && ts.racer_class) e.grade_class = ts.racer_class;
         if (e.national_win_rate == null && ts.win_rate != null) e.national_win_rate = Number(ts.win_rate);
         if (e.national_2rate == null && ts.top2_rate != null) e.national_2rate = Number(ts.top2_rate);
-        if (e.national_3rate == null && derivedTop3 != null) e.national_3rate = derivedTop3;
+        if (e.national_3rate == null && latestTop3 != null) e.national_3rate = latestTop3;
         if (e.avg_st == null && ts.average_start_timing != null) e.avg_st = Number(ts.average_start_timing);
         if (e.f_count == null && ts.start_accident_count != null) e.f_count = Number(ts.start_accident_count);
 
-        // 期別成績由来の補助特徴量。1コース履歴が未整備でも1号艇を0評価にしない。
         e.racer_term_code = ts.term_code || null;
+        e.racer_term_count = rows.length;
         e.racer_term_race_count = rc;
-        e.racer_term_first_rate = firstRate;
-        e.racer_term_ability_index = ts.ability_index ?? null;
-        e.racer_term_top2_rate = ts.top2_rate ?? null;
-        e.racer_term_top3_rate = derivedTop3;
+        e.racer_term_first_rate = latestFirstRate;
+        e.racer_term_top3_rate = latestTop3;
+        e.racer_term_weighted_first_rate = weightedFirstRate;
+        e.racer_term_weighted_second_rate = weightedSecondRate;
+        e.racer_term_weighted_third_rate = weightedThirdRate;
+        e.racer_term_weighted_top2_rate = weightedTop2;
+        e.racer_term_weighted_top3_rate = weightedTop3;
+        e.racer_term_weighted_win_rate = weightedWinRate;
+        e.racer_term_weighted_avg_st = weightedST;
+        e.racer_term_weighted_ability = weightedAbility;
+        e.racer_term_weighted_f = weightedF;
+        e.racer_term_weighted_l = weightedL;
+        e.racer_term_championship_entry_rate = weightedChampEntry;
+        e.racer_term_championship_win_rate = weightedChampWin;
+        e.racer_term_ability_trend = abilityTrend;
+        e.racer_term_win_trend = winTrend;
       }
     }
 
