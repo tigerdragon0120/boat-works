@@ -266,6 +266,7 @@ export default async function (req) {
       entry_updated: entryUpdated,
       entry_skipped: entrySkipped,
       readiness_recalc: readinessResult,
+      pre_analysis: preAnalysis,
       final_counts: {
         race_count: finalRaces.length,
         entry_count: finalEntries.length,
