@@ -319,71 +319,87 @@ export async function getOrCreateDayStatus(base44, raceDate) {
   const existing = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.filter(
     { race_date: raceDate }, '-updated_date', 3
   ).catch(() => []);
+  const target = existing[0] || null;
 
-  if (existing.length > 0) return existing[0];
+  // 完了済み、または新しい月間スケジュール方式で確定済みなら再利用。
+  if (target) {
+    const reusable = target.status === 'COMPLETED' || target.status === 'NO_RACE' ||
+      (target.discovery_source === 'monthly_schedule' && ['PENDING','RUNNING','PARTIAL'].includes(target.status));
+    if (reusable) return target;
+  }
 
-  // 新規作成: 開催場一覧を取得
   let venueCodes;
-  let discoverySource = 'online_schedule';
   try {
     venueCodes = await fetchDailyVenueList(raceDate);
   } catch (e) {
-    // 取得失敗 → UNKNOWN(開催なしと断定しない)
-    const created = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create({
+    const fields = {
       race_date: raceDate,
       venue_codes: [],
       venue_count: 0,
       venue_statuses: {},
-      race_count: 0,
-      racer_result_count: 0,
+      race_count: target?.race_count || 0,
+      racer_result_count: target?.racer_result_count || 0,
       status: 'UNKNOWN',
       discovery_source: 'not_checked',
       completed_at: null,
       processed_at: new Date().toISOString(),
-      error_venues: [],
-    });
-    return created;
+      error_venues: target?.error_venues || [],
+    };
+    if (target) {
+      await base44.asServiceRole.entities.HistoricalBackfillDayStatus.update(target.id, fields);
+      return { ...target, ...fields };
+    }
+    return await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create(fields);
   }
 
   const now = new Date().toISOString();
-
   if (venueCodes.length === 0) {
-    // 開催なし日 → NO_RACE_CONFIRMED(開催場一覧取得成功・開催なし)
-    const created = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create({
+    const fields = {
       race_date: raceDate,
       venue_codes: [],
       venue_count: 0,
       venue_statuses: {},
-      race_count: 0,
-      racer_result_count: 0,
+      race_count: target?.race_count || 0,
+      racer_result_count: target?.racer_result_count || 0,
       status: 'NO_RACE',
-      discovery_source: discoverySource,
+      discovery_source: 'monthly_schedule',
       completed_at: now,
       processed_at: now,
       error_venues: [],
-    });
-    return created;
+    };
+    if (target) {
+      await base44.asServiceRole.entities.HistoricalBackfillDayStatus.update(target.id, fields);
+      return { ...target, ...fields };
+    }
+    return await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create(fields);
   }
 
   const venueStatuses = {};
   for (const jcd of venueCodes) {
-    venueStatuses[jcd] = { status: 'PENDING', processed_at: null, race_count: 0, racer_result_count: 0, missing_boats: 0 };
+    const old = target?.venue_statuses?.[jcd];
+    venueStatuses[jcd] = old?.status === 'COMPLETED'
+      ? old
+      : { status: 'PENDING', processed_at: null, race_count: old?.race_count || 0, racer_result_count: old?.racer_result_count || 0, missing_boats: old?.missing_boats || 0 };
   }
 
-  const created = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create({
+  const fields = {
     race_date: raceDate,
     venue_codes: venueCodes,
     venue_count: venueCodes.length,
     venue_statuses: venueStatuses,
-    race_count: 0,
-    racer_result_count: 0,
+    race_count: target?.race_count || 0,
+    racer_result_count: target?.racer_result_count || 0,
     status: 'PENDING',
-    discovery_source: discoverySource,
+    discovery_source: 'monthly_schedule',
     completed_at: null,
     processed_at: now,
-    error_venues: [],
-  });
-  return created;
+    error_venues: target?.error_venues || [],
+  };
+  if (target) {
+    await base44.asServiceRole.entities.HistoricalBackfillDayStatus.update(target.id, fields);
+    return { ...target, ...fields };
+  }
+  return await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create(fields);
 }
 
 // === completed_dates実データ再計算 ===
