@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { Waves, Bell, BarChart3, Settings, Home, CheckCircle2, LineChart, Activity, Database, ClipboardCheck, History } from "lucide-react";
+import { Waves, Bell, BarChart3, Settings, Home, CheckCircle2, LineChart, Activity, Database, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Layout() {
@@ -13,7 +13,6 @@ export default function Layout() {
     { to: "/verification", label: "検証", icon: CheckCircle2 },
     { to: "/collection", label: "収集", icon: Database },
     { to: "/import-v2", label: "公式V2", icon: ClipboardCheck },
-    { to: "/backfill", label: "過去DB", icon: History },
     { to: "/admin", label: "設定", icon: Settings },
   ];
   const isActive = (to) => (to === "/" ? location.pathname === "/" : location.pathname.startsWith(to));
@@ -43,7 +42,7 @@ export default function Layout() {
 
       {/* Bottom nav (mobile-first) */}
       <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur-md">
-        <div className="mx-auto max-w-5xl grid grid-cols-10">
+        <div className="mx-auto max-w-5xl grid grid-cols-9">
           {nav.map((n) => {
             const active = isActive(n.to);
             const Icon = n.icon;
