@@ -3,7 +3,7 @@
 // バイトレベルで解析し、構造化データへ変換する。
 // 予想ロジック・B/K取込・分析機能には一切接続しない（第2段階）。
 
-export const PARSER_VERSION = "RT2V1.0.0";
+export const PARSER_VERSION = "RT2V1.1.0";
 
 // ─── 固定長フィールド定義（バイト位置） ────────────────────
 // 公式レイアウト: https://www.boatrace.jp/owpc/pc/extra/data/layout.html
@@ -179,25 +179,41 @@ function parseRacerLine(decoder, uint8Array, lineInfo, lineNum) {
   let third_place_count = null;
   let start_accident_count = null;
   let late_count = null;
+  let course_stats = null;
 
   if (length >= COURSE_DETAIL_BASE + 6 * COURSE_DETAIL_SIZE) {
     let total3rd = 0;
     let totalF = 0;
     let totalL = 0;
+    course_stats = [];
     for (let c = 0; c < 6; c++) {
       const base = start + COURSE_DETAIL_BASE + c * COURSE_DETAIL_SIZE;
-      // 3着: base+6, 3 bytes
-      const third = parseNumRaw(decodeField(decoder, uint8Array, base + 6, base + 9));
-      if (third != null) total3rd += third;
-      // F: base+18, 2 bytes
-      const f = parseNumRaw(decodeField(decoder, uint8Array, base + 18, base + 20));
-      if (f != null) totalF += f;
-      // L0: base+20, 2 bytes
-      const l0 = parseNumRaw(decodeField(decoder, uint8Array, base + 20, base + 22));
-      if (l0 != null) totalL += l0;
-      // L1: base+22, 2 bytes
-      const l1 = parseNumRaw(decodeField(decoder, uint8Array, base + 22, base + 24));
-      if (l1 != null) totalL += l1;
+      // Section4の先頭18 bytesは1〜6着回数（各3 bytes）。
+      // 続くF/L0/L1/K0/K1等の事故系フィールドも保持する。
+      const first = parseNumRaw(decodeField(decoder, uint8Array, base + 0, base + 3)) || 0;
+      const second = parseNumRaw(decodeField(decoder, uint8Array, base + 3, base + 6)) || 0;
+      const third = parseNumRaw(decodeField(decoder, uint8Array, base + 6, base + 9)) || 0;
+      const fourth = parseNumRaw(decodeField(decoder, uint8Array, base + 9, base + 12)) || 0;
+      const fifth = parseNumRaw(decodeField(decoder, uint8Array, base + 12, base + 15)) || 0;
+      const sixth = parseNumRaw(decodeField(decoder, uint8Array, base + 15, base + 18)) || 0;
+      const f = parseNumRaw(decodeField(decoder, uint8Array, base + 18, base + 20)) || 0;
+      const l0 = parseNumRaw(decodeField(decoder, uint8Array, base + 20, base + 22)) || 0;
+      const l1 = parseNumRaw(decodeField(decoder, uint8Array, base + 22, base + 24)) || 0;
+      const k0 = parseNumRaw(decodeField(decoder, uint8Array, base + 24, base + 26)) || 0;
+      const k1 = parseNumRaw(decodeField(decoder, uint8Array, base + 26, base + 28)) || 0;
+      const starts = first + second + third + fourth + fifth + sixth;
+      course_stats.push({
+        course: c + 1, first, second, third, fourth, fifth, sixth,
+        f, l0, l1, k0, k1, starts,
+        first_rate: starts > 0 ? first / starts * 100 : null,
+        second_rate: starts > 0 ? second / starts * 100 : null,
+        third_rate: starts > 0 ? third / starts * 100 : null,
+        top2_rate: starts > 0 ? (first + second) / starts * 100 : null,
+        top3_rate: starts > 0 ? (first + second + third) / starts * 100 : null,
+      });
+      total3rd += third;
+      totalF += f;
+      totalL += l0 + l1;
     }
     // Section5: コースなしL0, L1
     if (length >= NO_COURSE_BASE + 4) {
@@ -245,6 +261,7 @@ function parseRacerLine(decoder, uint8Array, lineInfo, lineNum) {
     third_place_count,
     start_accident_count,
     late_count,
+    course_stats,
     accident_rate: null,
     ability_index,
     championship_entries,
