@@ -208,7 +208,22 @@ export default function OfficialDataImportV2() {
         file_name: selectedFile.name,
         expected_checksum: preview.checksum,
       });
-      setCommitResult(res.data);
+      let result = res.data;
+      // Bファイル確定直後にV2→Race/RaceEntryへ同期し、同期完了をトリガーに事前予想を自動開始する。
+      if (res.data?.status === "success" && res.data?.source_date) {
+        try {
+          const syncRes = await base44.functions.invoke("syncV2ToV1Races", {
+            race_date: res.data.source_date,
+          });
+          result = { ...res.data, sync: syncRes.data };
+        } catch (syncError) {
+          result = {
+            ...res.data,
+            sync: { status: "error", message: syncError?.response?.data?.message || syncError?.message || "同期・事前予想の開始に失敗しました" },
+          };
+        }
+      }
+      setCommitResult(result);
       if (res.data?.source_date) {
         setBAuditDate(res.data.source_date);
         runAudit(res.data.source_date);
