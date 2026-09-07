@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValu
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v11";
+export const ANALYSIS_VERSION = "v12";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -132,13 +132,39 @@ function computeProgramIntent(entries, vrs) {
 // 第2層: 番組意図を選手が実現できるか。モーターは見ない。
 function computeRacerExecution(entries, boat1Trust) {
   const b = n => entries.find(e => e.boat_number === n);
+  const trendAdj = e => clamp((e?.racer_term_ability_trend || 0) * 1.2 + (e?.racer_term_win_trend || 0) * 4, -8, 8);
+  const riskPenalty = e => clamp((e?.racer_term_weighted_f || 0) * 3 + (e?.racer_term_weighted_l || 0) * 2, 0, 12);
   const second = e => {
     if (!e) return 0;
-    return Math.round(clamp((gradeToScore(e.grade_class) ?? .5)*12 + clamp((e.national_2rate||0)/60,0,1)*32 + clamp((e.local_2rate||0)/60,0,1)*22 + clamp((.23-(e.avg_st||.23))/.15,0,1)*20 + clamp((e.national_win_rate||0)/8,0,1)*14, 0, 100));
+    const term2 = e.racer_term_weighted_top2_rate ?? e.national_2rate ?? 0;
+    const termSecond = e.racer_term_weighted_second_rate ?? 0;
+    const termAbility = e.racer_term_weighted_ability ?? 50;
+    const termST = e.racer_term_weighted_avg_st ?? e.avg_st ?? .23;
+    return Math.round(clamp(
+      (gradeToScore(e.grade_class) ?? .5)*10 +
+      clamp(term2/60,0,1)*27 +
+      clamp(termSecond/25,0,1)*16 +
+      clamp((e.local_2rate||0)/60,0,1)*12 +
+      clamp((.23-termST)/.15,0,1)*14 +
+      clamp(termAbility/60,0,1)*13 +
+      clamp((e.racer_term_championship_entry_rate||0)/8,0,1)*5 +
+      trendAdj(e) - riskPenalty(e), 0, 100));
   };
   const third = e => {
     if (!e) return 0;
-    return Math.round(clamp((gradeToScore(e.grade_class) ?? .5)*10 + clamp((e.national_3rate||0)/70,0,1)*36 + clamp((e.local_3rate||0)/70,0,1)*25 + clamp((.24-(e.avg_st||.24))/.16,0,1)*17 + clamp((e.national_win_rate||0)/8,0,1)*12, 0, 100));
+    const term3 = e.racer_term_weighted_top3_rate ?? e.national_3rate ?? 0;
+    const termThird = e.racer_term_weighted_third_rate ?? 0;
+    const termAbility = e.racer_term_weighted_ability ?? 50;
+    const termST = e.racer_term_weighted_avg_st ?? e.avg_st ?? .24;
+    return Math.round(clamp(
+      (gradeToScore(e.grade_class) ?? .5)*8 +
+      clamp(term3/70,0,1)*29 +
+      clamp(termThird/25,0,1)*18 +
+      clamp((e.local_3rate||0)/70,0,1)*11 +
+      clamp((.24-termST)/.16,0,1)*12 +
+      clamp(termAbility/60,0,1)*12 +
+      clamp((e.racer_term_championship_entry_rate||0)/8,0,1)*4 +
+      trendAdj(e) - riskPenalty(e)*.7, 0, 100));
   };
   const pool = arr => Math.round(Math.max(...arr,0)*.62 + arr.reduce((a,c)=>a+c,0)/Math.max(arr.length,1)*.38);
   const midSecond = pool([2,3,4].map(n=>second(b(n))));
@@ -149,14 +175,17 @@ function computeRacerExecution(entries, boat1Trust) {
   // trustにはモーターが混じるため、1号艇実行力は選手項目を中心に再計算しtrustは補助に留める。
   // 1コース履歴がまだ薄い場合は、レーサー期別成績の1着率・全国勝率・平均ST・級別から
   // 保守的な基礎逃げ力を作る。期別成績だけでも予想に参加できるようにする。
-  const termFirst = boat1?.racer_term_first_rate;
+  const termFirst = boat1?.racer_term_weighted_first_rate ?? boat1?.racer_term_first_rate;
   const termBaseEscape = termFirst != null
     ? Math.round(clamp(
-        clamp(termFirst/35,0,1)*34 +
-        clamp((boat1?.national_win_rate||0)/8,0,1)*24 +
-        clamp((.24-(boat1?.avg_st||.24))/.16,0,1)*20 +
-        (gradeToScore(boat1?.grade_class) ?? .5)*14 +
-        ((boat1?.f_count||0)===0?8:0), 0, 100))
+        clamp(termFirst/35,0,1)*29 +
+        clamp((boat1?.racer_term_weighted_win_rate ?? boat1?.national_win_rate ?? 0)/8,0,1)*18 +
+        clamp((.24-(boat1?.racer_term_weighted_avg_st ?? boat1?.avg_st ?? .24))/.16,0,1)*16 +
+        clamp((boat1?.racer_term_weighted_ability ?? 50)/60,0,1)*14 +
+        (gradeToScore(boat1?.grade_class) ?? .5)*10 +
+        clamp((boat1?.racer_term_championship_win_rate||0)/3,0,1)*5 +
+        trendAdj(boat1) +
+        ((boat1?.f_count||0)===0?8:0) - riskPenalty(boat1), 0, 100))
     : null;
   const directEscape = Math.round(clamp(
     clamp((boat1?.c1_win_rate||0)/70,0,1)*36 + clamp((boat1?.national_win_rate||0)/8,0,1)*20 + clamp((boat1?.local_win_rate||0)/8,0,1)*18 + clamp((.24-(boat1?.avg_st||.24))/.16,0,1)*18 + ((boat1?.f_count||0)===0?8:0), 0, 100));
