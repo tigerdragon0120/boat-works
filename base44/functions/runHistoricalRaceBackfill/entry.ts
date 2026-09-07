@@ -7,11 +7,14 @@ import {
   backfillVenueDate,
   addDays,
   daysBetween,
+  preFlightCheck,
+  checkDailyPriority,
 } from '../../shared/historicalBackfill.js';
 
 // BOAT WORKS 2002年〜現在 個別レース結果バックフィルエンジン
 // 1回の呼び出しで1開催場・1日分を処理する(再開可能・冪等)
 // 進捗はHistoricalBackfillProgressで管理され、最後に完了した地点から再開する
+// ワークフローから定期的に呼び出され、RUNNING中は自動継続する
 
 function jstDate(offset = 0) {
   const d = new Date(Date.now() + 9 * 3600000);
@@ -62,13 +65,27 @@ export default async function (req) {
     if (progress.status === 'COMPLETED') {
       return Response.json({ status: 'completed', message: 'バックフィルは完了しています', progress });
     }
+    if (progress.status === 'ERROR') {
+      return Response.json({ status: 'error_stopped', message: 'バックフィルはエラー停止中です。retry_errorsで再開', progress });
+    }
+    if (progress.status === 'IDLE') {
+      return Response.json({ status: 'idle', message: 'バックフィルは未開始です。controlHistoricalBackfillでstartしてください', progress });
+    }
 
-    // RUNNINGに設定(初回または再開時)
+    // RUNNING以外は処理しない
     if (progress.status !== 'RUNNING') {
-      await updateProgress(base44, progress.id, {
-        status: 'RUNNING',
-        last_run_at: new Date().toISOString(),
-        last_error: null,
+      return Response.json({ status: 'skipped', message: `status=${progress.status}のため処理スキップ`, progress });
+    }
+
+    // 通常収集優先ガード: 当日に緊急レースがある場合はバックフィルをスキップ
+    const priority = await checkDailyPriority(base44);
+    if (priority.busy) {
+      return Response.json({
+        status: 'deferred',
+        message: `通常収集優先: ${priority.reason}のため今回スキップ`,
+        progress,
+        priority,
+        elapsed_ms: Date.now() - t0,
       });
     }
 
@@ -132,7 +149,7 @@ export default async function (req) {
     try {
       result = await backfillVenueDate(base44, currentDate, jcd);
     } catch (e) {
-      result = { races: 0, racerResults: 0, errors: [{ phase: 'venue', message: e?.message || String(e) }], skipped: 0 };
+      result = { races: 0, racerResults: 0, errors: [{ phase: 'venue', message: e?.message || String(e) }], skipped: 0, missingBoatsRaces: [] };
     }
 
     // 進捗更新
@@ -179,6 +196,7 @@ export default async function (req) {
       races_saved: result.races,
       racer_results_saved: result.racerResults,
       errors: result.errors.slice(0, 10),
+      missing_boats_races: result.missingBoatsRaces || [],
       skipped: result.skipped,
       cumulative: {
         processed_race_count: newRaceCount,
