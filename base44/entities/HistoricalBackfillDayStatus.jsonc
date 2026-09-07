@@ -1,24 +1,20 @@
 {
-  "name": "HistoricalBackfillDayStatus",
   "type": "object",
   "properties": {
     "race_date": {
-      "type": "string",
-      "format": "date"
+      "type": "string"
     },
     "venue_codes": {
       "type": "array",
       "items": {
         "type": "string"
-      },
-      "description": "\u5f53\u65e5\u306b\u5b9f\u969b\u306b\u958b\u50ac\u3057\u3066\u3044\u305f\u5834\u30b3\u30fc\u30c9\u4e00\u89a7"
+      }
     },
     "venue_count": {
       "type": "number"
     },
     "venue_statuses": {
-      "type": "object",
-      "description": "{venue_code: {status, processed_at, race_count, racer_result_count, missing_boats, locked_at, worker_id}}"
+      "type": "object"
     },
     "race_count": {
       "type": "number"
@@ -35,27 +31,30 @@
         "PARTIAL",
         "ERROR",
         "NO_RACE",
-        "UNKNOWN"
-      ],
-      "description": "UNKNOWN=\u958b\u50ac\u5834\u4e00\u89a7\u53d6\u5f97\u5931\u6557\u30fb\u8981\u518d\u8abf\u67fb"
+        "UNKNOWN",
+        "RETRY_PENDING",
+        "PARSE_ERROR"
+      ]
     },
     "discovery_source": {
       "type": "string",
       "enum": [
         "online_schedule",
-        "k_file",
-        "24_venue_scan",
+        "historical_result_fallback",
         "not_checked"
-      ],
-      "description": "\u958b\u50ac\u5834\u4e00\u89a7\u306e\u53d6\u5f97\u5143"
+      ]
     },
     "completed_at": {
-      "type": "string",
-      "format": "date-time"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "processed_at": {
-      "type": "string",
-      "format": "date-time"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "error_venues": {
       "type": "array",
@@ -64,7 +63,6 @@
       }
     }
   },
-  "required": [
-    "race_date"
-  ]
+  "required": [],
+  "name": "HistoricalBackfillDayStatus"
 }
