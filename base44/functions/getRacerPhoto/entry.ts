@@ -28,6 +28,12 @@ export default async function(req) {
       return Response.json({ status: 'error', message: 'registration_number は4桁の数字が必要です' }, { status: 400 });
     }
 
+    return Response.json({
+      status: 'disabled',
+      registration_number: reg,
+      message: 'BOAT RACE公式サイトへのアクセスは展示データとオッズだけに限定しています。選手写真のWeb取得は停止しました。'
+    }, { status: 410 });
+
     const url = `${PHOTO_BASE}/${reg}.jpg`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
