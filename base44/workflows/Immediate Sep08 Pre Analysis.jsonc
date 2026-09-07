@@ -1,20 +1,49 @@
 {
   "name": "Immediate Sep08 Pre Analysis",
-  "description": "One-shot recovery trigger for 2026-09-08 pre analysis after B-file import.",
+  "description": "2026-09-08 B\u30d5\u30a1\u30a4\u30eb\u53d6\u8fbc\u6e08\u307f120\u30ec\u30fc\u30b9\u306e\u4e8b\u524d\u4e88\u60f3\u3092\u5373\u6642\u751f\u6210\u3059\u308b\u4e00\u6642\u30ea\u30ab\u30d0\u30ea\u30fc\u30ef\u30fc\u30ab\u30fc\u3002",
   "trigger": {
-    "type": "schedule",
-    "cron": "* * * * *"
-  },
-  "steps": [
-    {
-      "name": "run_pre_analysis",
-      "type": "function",
-      "function": "analyzeAllRacesForDate",
-      "input": {
-        "race_date": "2026-09-08",
-        "stage": "pre",
-        "force": true
-      }
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "* * * * *",
+      "one_time_date": null,
+      "timezone": "Asia/Tokyo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
     }
-  ]
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "immediate_sep08_pre_analysis",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_pre_analysis": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "analyzeAllRacesForDate",
+            "args": {
+              "race_date": "2026-09-08",
+              "stage": "pre",
+              "force": true
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "9\u67088\u65e5\u5168\u30ec\u30fc\u30b9\u4e8b\u524d\u4e88\u60f3",
+            "description": "B\u30d5\u30a1\u30a4\u30eb\u3068\u500b\u5225\u30ec\u30fc\u30b5\u30fc\u671f\u5225\u30c7\u30fc\u30bf\u3092\u4f7f\u3063\u3066\u4e8b\u524d\u4e88\u60f3\u3092\u751f\u6210"
+          }
+        }
+      }
+    ]
+  }
 }
