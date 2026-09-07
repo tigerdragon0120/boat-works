@@ -9,6 +9,10 @@ export { RETRY_DELAYS_MS, ODDS_CACHE_MS };
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function fetchTextWithRetry(url, validate, label) {
+  const u = String(url || '');
+  if (/https?:\/\/(www\.)?boatrace\.jp\//i.test(u) && !/\/odds3t\?/i.test(u)) {
+    throw new Error(`BOAT RACE公式サイト取得は禁止されています（この経路はオッズ専用）: ${u}`);
+  }
   let lastMessage = `${label}取得失敗`;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
