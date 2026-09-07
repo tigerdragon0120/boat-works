@@ -4,7 +4,6 @@ import { getSettings, updateSettings } from "@/lib/boatService";
 import { base44 } from "@/api/base44Client";
 import { VENUES } from "@/lib/boat";
 import { cn } from "@/lib/utils";
-import BackfillStatusBanner from "@/components/BackfillStatusBanner";
 
 export default function Admin() {
   const [loading, setLoading] = useState(true);
@@ -100,13 +99,11 @@ export default function Admin() {
         <h1 className="text-xl font-bold">管理設定</h1>
       </div>
 
-      <BackfillStatusBanner />
-
       <div className="rounded-2xl bg-card border border-border p-4 space-y-3">
         <div>
           <div className="font-bold text-sm">データ更新は自動です</div>
           <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            レース結果の保存、過去データの補完、1号艇詳細の補完、集計更新はバックグラウンドで自動実行します。通常は手動操作不要です。
+            出走表・結果・選手基礎データはB/Kファイルとレーサー期別成績を使用します。公式サイトへアクセスするのは展示データとオッズだけです。
           </div>
         </div>
         <div className="border-t border-border pt-3">
