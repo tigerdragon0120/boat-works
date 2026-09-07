@@ -112,7 +112,9 @@ export default async function(req) {
       }
       const seriesDay=Number(first?.series_day||1);
       const seriesReady=seriesDay<=1 || (!!first?.series_key && seriesPointKeySet.has(first.series_key));
-      const collectionComplete=venueRaces.length===expected && completeEntries===expected && coreComplete===expected && seriesReady;
+      // Bファイル由来の12R/6艇/基本項目が揃えば事前処理は進める。
+      // 節間ポイントは補助特徴量であり、欠落だけで全レースを停止させない。
+      const collectionComplete=venueRaces.length===expected && completeEntries===expected && coreComplete===expected;
       const exhibitionAlreadyStarted=venueRaces.some(r=>r.exhibition_ready===true)
         || venueRaces.some(r=>(entriesByRace.get(r.id)||[]).some(e=>e.exhibition_time!=null || e.exhibition_st!=null));
       const existing=readinessByVenue.get(jcd);
