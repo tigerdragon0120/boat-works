@@ -204,6 +204,41 @@ export default async function(req) {
       }
     }
 
+    // 選手配置指数を毎回DB内だけで更新する。これが未生成だとVenueDayReadinessがWAITINGのままになる。
+    let structureResult:any=null;
+    try {
+      const sr=await base44.asServiceRole.functions.invoke('computeRacePlayerStructuresForDate',{race_date:raceDate});
+      structureResult=sr?.data||sr;
+    } catch(e) {
+      structureResult={status:'error',message:e?.message||String(e)};
+    }
+
+    // readinessの派生フラグを実データから再計算する。
+    const [structuresNow,preNow]=await Promise.all([
+      base44.asServiceRole.entities.RacePlayerStructure.filter({race_date:raceDate},'race_number',500).catch(()=>[]),
+      base44.asServiceRole.entities.UichiAnalysis.filter({race_date:raceDate,stage:'pre'},'-captured_at',500).catch(()=>[]),
+    ]);
+    const readinessNow=await base44.asServiceRole.entities.VenueDayReadiness.filter({race_date:raceDate},'venue_code',100).catch(()=>[]);
+    for (const rd of readinessNow) {
+      const jcd=String(rd.venue_code).padStart(2,'0');
+      const structureCount=new Set(structuresNow.filter(s=>String(s.venue_code).padStart(2,'0')===jcd).map(s=>s.race_id)).size;
+      const preCount=new Set(preNow.filter(a=>String(a.venue_code).padStart(2,'0')===jcd).map(a=>a.race_id)).size;
+      const structuresReady=Number(rd.races_collected||0)>=12 && structureCount>=12;
+      const alertsReady=preCount>=12;
+      const evalsReady=rd.racer_evaluations_ready===true;
+      const coreReady=Number(rd.core_complete_races||0)>=12 && Number(rd.complete_entry_races||0)>=12;
+      const preRaceReady=coreReady && evalsReady && structuresReady && alertsReady;
+      await base44.asServiceRole.entities.VenueDayReadiness.update(rd.id,{
+        player_structures_count:structureCount,
+        player_structures_ready:structuresReady,
+        pre_alerts_count:preCount,
+        pre_alerts_ready:alertsReady,
+        pre_race_ready:preRaceReady,
+        pre_race_completed_at:preRaceReady ? (rd.pre_race_completed_at || new Date().toISOString()) : null,
+        last_checked_at:new Date().toISOString(),
+      }).catch(()=>{});
+    }
+
     const finalReadiness=await base44.asServiceRole.entities.VenueDayReadiness.filter({race_date:raceDate},'first_deadline',100).catch(()=>[]);
     return Response.json({
       status:'success', race_date:raceDate,
