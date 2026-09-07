@@ -231,6 +231,29 @@ export default async function (req) {
 
     const venueSet = new Set(finalRaces.map(r => String(r.venue_code).padStart(2, '0')));
 
+    // 7. Bファイル同期が完了し、全レース6艇が揃ったら事前予想を即時開始する。
+    // Webサイトへの出走表取得は行わず、Bファイル由来のRace/RaceEntry + RacerTermStatV2だけで分析する。
+    let preAnalysis = null;
+    const expectedEntries = finalRaces.length * 6;
+    const programComplete = finalRaces.length > 0 && finalEntries.length >= expectedEntries;
+    if (programComplete && body.skip_pre_analysis !== true) {
+      try {
+        const res = await base44.asServiceRole.functions.invoke('analyzeAllRacesForDate', {
+          race_date: raceDate,
+          stage: 'pre',
+          force: true,
+        });
+        preAnalysis = res?.data || res || { status: 'started' };
+      } catch (e) {
+        preAnalysis = { status: 'error', message: e?.message || String(e) };
+      }
+    } else if (!programComplete) {
+      preAnalysis = {
+        status: 'waiting',
+        message: `Bファイル未完成: Race ${finalRaces.length} / Entry ${finalEntries.length} (必要 ${expectedEntries})`,
+      };
+    }
+
     return Response.json({
       status: 'success',
       race_date: raceDate,
