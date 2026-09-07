@@ -1,0 +1,110 @@
+{
+  "name": "HistoricalRacerResult",
+  "type": "object",
+  "properties": {
+    "result_key": {
+      "type": "string",
+      "description": "race_natural_key_boatnum (\u4f8b: 2023-05-01_01_01_1)"
+    },
+    "race_natural_key": {
+      "type": "string"
+    },
+    "race_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "venue_code": {
+      "type": "string"
+    },
+    "race_number": {
+      "type": "number"
+    },
+    "boat_number": {
+      "type": "number",
+      "description": "\u8247\u756a 1-6"
+    },
+    "frame_number": {
+      "type": "number",
+      "description": "\u67a0\u756a = \u8247\u756a\u3068\u540c\u4e00"
+    },
+    "registration_number": {
+      "type": "string",
+      "description": "\u9078\u624b\u767b\u9332\u756a\u53f74\u6841"
+    },
+    "racer_name": {
+      "type": "string"
+    },
+    "finish_order": {
+      "type": "number",
+      "description": "\u7740\u9806 1-6"
+    },
+    "finish_status": {
+      "type": "string",
+      "enum": [
+        "FINISHED",
+        "DISQUALIFIED",
+        "ABSENT",
+        "CAPSIZED",
+        "FELL",
+        "RETURNED",
+        "PENDING"
+      ]
+    },
+    "start_timing": {
+      "type": "number",
+      "description": "ST(\u79d2)\u3002F=\u8ca0\u5024"
+    },
+    "start_timing_raw": {
+      "type": "string"
+    },
+    "start_course": {
+      "type": "number",
+      "description": "\u9032\u5165\u30b3\u30fc\u30b9 1-6"
+    },
+    "race_time_raw": {
+      "type": "string"
+    },
+    "race_time_seconds": {
+      "type": "number"
+    },
+    "winning_method": {
+      "type": "string",
+      "description": "\u6c7a\u307e\u308a\u624b(1\u7740\u306e\u307f)"
+    },
+    "is_foul": {
+      "type": "boolean",
+      "description": "F\u4e8b\u6545"
+    },
+    "is_late": {
+      "type": "boolean",
+      "description": "L\u51fa\u9045\u308c"
+    },
+    "is_capsized": {
+      "type": "boolean",
+      "description": "\u8ee2\u8986"
+    },
+    "is_fell": {
+      "type": "boolean",
+      "description": "\u843d\u6c34"
+    },
+    "is_disqualified": {
+      "type": "boolean",
+      "description": "\u5931\u683c"
+    },
+    "is_absent": {
+      "type": "boolean",
+      "description": "\u6b20\u5834"
+    },
+    "is_returned": {
+      "type": "boolean",
+      "description": "\u8fd4\u9084"
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "result_key"
+  ]
+}

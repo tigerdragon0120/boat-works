@@ -1,0 +1,88 @@
+{
+  "name": "HistoricalBackfillProgress",
+  "type": "object",
+  "properties": {
+    "config_id": {
+      "type": "string",
+      "description": "\u5e38\u306bmain"
+    },
+    "target_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "target_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "current_processing_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "current_venue_index": {
+      "type": "number",
+      "description": "\u73fe\u5728\u51e6\u7406\u4e2d\u306e\u5834\u30a4\u30f3\u30c7\u30c3\u30af\u30b9(0-23)"
+    },
+    "last_completed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "processed_race_count": {
+      "type": "number"
+    },
+    "processed_racer_result_count": {
+      "type": "number"
+    },
+    "success_count": {
+      "type": "number"
+    },
+    "failure_count": {
+      "type": "number"
+    },
+    "skip_count": {
+      "type": "number"
+    },
+    "last_run_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "IDLE",
+        "RUNNING",
+        "PAUSED",
+        "ERROR",
+        "COMPLETED"
+      ]
+    },
+    "last_error": {
+      "type": "string"
+    },
+    "current_batch_label": {
+      "type": "string",
+      "description": "\u4f8b: 2023-05-01_01"
+    },
+    "total_target_days": {
+      "type": "number",
+      "description": "\u63a8\u5b9a\u7dcf\u65e5\u6570"
+    },
+    "completed_dates": {
+      "type": "number",
+      "description": "\u5b8c\u4e86\u6e08\u307f\u65e5\u4ed8\u6570"
+    },
+    "error_dates": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "\u30a8\u30e9\u30fc\u8a18\u9332: {date, venue_code, message, attempts}"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "config_id"
+  ]
+}
