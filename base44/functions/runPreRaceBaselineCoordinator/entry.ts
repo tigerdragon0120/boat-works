@@ -41,18 +41,12 @@ export default async function(req) {
     const raceDate=body.race_date || jstDateStr(targetOffset);
     const t0=Date.now();
 
-    // 前夜に翌日分析を始める場合は、まず当日全場の結果詳細→節間ポイント完成を必須にする。
-    // 23:50時点で未完なら翌日アラートは一切開始しない。
+    // Bファイル/Kファイル取込済みデータを正とする。
+    // runSeriesNightFinalize(公式サイト結果再取得・開催場探索)は呼ばない。
+    // 節間ポイント(SeriesRacerPoint)は補助データであり、欠落していても翌日pre分析を止めない。
     let sourceCollection:any=null;
     if (body.require_source_collection === true) {
-      const sourceDate=jstDateStr(targetOffset-1);
-      try {
-        const c=await base44.asServiceRole.functions.invoke('runSeriesNightFinalize',{race_date:sourceDate});
-        sourceCollection=c?.data||c;
-      } catch(e) { sourceCollection={status:'error',message:e?.message||String(e)}; }
-      if (sourceCollection?.status !== 'complete') {
-        return Response.json({status:'waiting_source_collection',source_date:sourceDate,race_date:raceDate,source_collection:sourceCollection,message:'当日全場の結果詳細・節間ポイントが未完了のため翌日アラート開始を待機',elapsed_ms:Date.now()-t0});
-      }
+      sourceCollection = { status: 'complete', message: 'B/Kファイル由来データを使用（公式サイトアクセスなし）' };
     }
 
     // 対象日のRace/出走表はBファイル取込済みデータを正とする。
