@@ -105,13 +105,64 @@ export default async function(req) {
     const venueStats = {};
     for (const v of allVS) venueStats[v.venue_code] = v;
 
-    // 3. 対象レースの1号艇登録番号リスト
+    // 3. 対象レースの全6艇登録番号リスト
+    // 選手基礎能力はRacerTermStatV2（レーサー期別成績）を主データ源として全艇に付与する。
+    const participantRegs = new Set();
     const boat1Regs = new Set();
     for (const r of targetRaces) {
+      for (const e of (entriesByRace[r.id] || [])) {
+        if (e?.registration_number) participantRegs.add(e.registration_number);
+      }
       const b1 = (entriesByRace[r.id] || []).find(e => e.boat_number === 1);
       if (b1?.registration_number) boat1Regs.add(b1.registration_number);
     }
     const regList = [...boat1Regs];
+    const participantRegList = [...participantRegs];
+
+    // 最新の期別成績を全6艇へ補完。
+    // Bファイルの当日値を上書きせず、欠損項目だけを期別成績で補う。
+    const latestTermByReg = {};
+    if (participantRegList.length > 0) {
+      for (let i = 0; i < participantRegList.length; i += 200) {
+        const chunk = participantRegList.slice(i, i + 200);
+        const termRows = await base44.asServiceRole.entities.RacerTermStatV2.filter(
+          { registration_number: { $in: chunk } }, '-term_code', 2000
+        ).catch(() => []);
+        for (const ts of termRows) {
+          const rn = ts.registration_number;
+          if (!rn) continue;
+          if (!latestTermByReg[rn] || String(ts.term_code || '') > String(latestTermByReg[rn].term_code || '')) {
+            latestTermByReg[rn] = ts;
+          }
+        }
+      }
+
+      for (const e of allEntries) {
+        const ts = latestTermByReg[e.registration_number];
+        if (!ts) continue;
+        const rc = Number(ts.race_count || 0);
+        const first = Number(ts.first_place_count || 0);
+        const second = Number(ts.second_place_count || 0);
+        const third = Number(ts.third_place_count || 0);
+        const derivedTop3 = rc > 0 ? ((first + second + third) / rc) * 100 : null;
+        const firstRate = rc > 0 ? (first / rc) * 100 : null;
+
+        if (e.grade_class == null && ts.racer_class) e.grade_class = ts.racer_class;
+        if (e.national_win_rate == null && ts.win_rate != null) e.national_win_rate = Number(ts.win_rate);
+        if (e.national_2rate == null && ts.top2_rate != null) e.national_2rate = Number(ts.top2_rate);
+        if (e.national_3rate == null && derivedTop3 != null) e.national_3rate = derivedTop3;
+        if (e.avg_st == null && ts.average_start_timing != null) e.avg_st = Number(ts.average_start_timing);
+        if (e.f_count == null && ts.start_accident_count != null) e.f_count = Number(ts.start_accident_count);
+
+        // 期別成績由来の補助特徴量。1コース履歴が未整備でも1号艇を0評価にしない。
+        e.racer_term_code = ts.term_code || null;
+        e.racer_term_race_count = rc;
+        e.racer_term_first_rate = firstRate;
+        e.racer_term_ability_index = ts.ability_index ?? null;
+        e.racer_term_top2_rate = ts.top2_rate ?? null;
+        e.racer_term_top3_rate = derivedTop3;
+      }
+    }
 
     const racerStats = {};
     const racerVenueStats = {};
