@@ -9,7 +9,8 @@ export default async function (req) {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (!user || user.role !== 'admin') {
+    // スケジュール/サービスロール実行はuserがnullになるため許可する。実ユーザーの場合だけadmin必須。
+    if (user && user.role !== 'admin') {
       return Response.json({ status: 'error', message: '管理者権限が必要です' }, { status: 403 });
     }
 
