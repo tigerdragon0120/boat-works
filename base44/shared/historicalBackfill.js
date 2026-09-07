@@ -27,6 +27,10 @@ import {
 
 const RESULT_BASE = 'https://boatrace.jp/owpc/pc/race';
 const INDEX_URL = 'https://boatrace.jp/owpc/pc/race/index';
+const MONTHLY_SCHEDULE_URL = 'https://boatrace.jp/owpc/pc/race/monthlyschedule';
+
+// 月間スケジュール方式のメモリキャッシュ（同一invocation内で再利用）
+const monthlyVenueDayCache = new Map();
 
 // 24場の開催場コード(後方互換用・非総当たり使用禁止)
 export const VENUE_JCDS_SORTED = [
@@ -91,10 +95,91 @@ export async function fetchWithBackoff(url, options = {}, timeoutMs = 10000, max
   throw lastError;
 }
 
-// === 開催場一覧取得(24場総当たり廃止の核心) ===
-// 指定日付に実際に開催していた場コード一覧のみを返す
-// 開催0件の場合は空配列を返す(24場調査しない)
+// === 月間スケジュールから開催日×場を先に発見 ===
+// 公式 monthlyschedule?ym=YYYYMM に載るシリーズリンクを入口にし、
+// 各シリーズの raceindex にある「初日〜最終日」リンクから全開催日を復元する。
+// 1日ごとの24場総当たりを避けるための新しい主経路。
+export async function fetchMonthlyVenueDayMap(raceDate) {
+  const ym = raceDate.slice(0, 7).replace('-', '');
+  if (monthlyVenueDayCache.has(ym)) return monthlyVenueDayCache.get(ym);
+
+  const scheduleUrl = `${MONTHLY_SCHEDULE_URL}?ym=${ym}`;
+  const res = await fetchWithBackoff(scheduleUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 12000, 2);
+  const html = await res.text();
+
+  // 月間表に含まれるraceindexリンクをシリーズseedとして抽出。
+  const seedMap = new Map();
+  const re = /raceindex\?[^"'<>]*?hd=(\d{8})[^"'<>]*?jcd=(\d{2})|raceindex\?[^"'<>]*?jcd=(\d{2})[^"'<>]*?hd=(\d{8})/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const hd = m[1] || m[4];
+    const jcd = m[2] || m[3];
+    if (!hd || !jcd) continue;
+    seedMap.set(`${jcd}_${hd}`, { jcd, hd });
+  }
+
+  if (seedMap.size === 0) {
+    throw new Error(`monthly schedule discovery empty: ${ym}`);
+  }
+
+  const dayMap = new Map();
+  const seeds = [...seedMap.values()];
+
+  // シリーズ単位で確認。6件ずつに制限し通常運用を優先。
+  for (let i = 0; i < seeds.length; i += 6) {
+    const chunk = seeds.slice(i, i + 6);
+    const results = await Promise.all(chunk.map(async ({ jcd, hd }) => {
+      try {
+        const u = `${RESULT_BASE}/raceindex?jcd=${jcd}&hd=${hd}`;
+        const r = await fetchWithBackoff(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000, 1);
+        const h = await r.text();
+        const days = new Set();
+        const linkRe = /raceindex\?[^"'<>]*?hd=(\d{8})[^"'<>]*?jcd=(\d{2})|raceindex\?[^"'<>]*?jcd=(\d{2})[^"'<>]*?hd=(\d{8})/g;
+        let lm;
+        while ((lm = linkRe.exec(h)) !== null) {
+          const d = lm[1] || lm[4];
+          const v = lm[2] || lm[3];
+          if (d && v === jcd) days.add(d);
+        }
+        // ページ自身の日付も必ず含める
+        days.add(hd);
+        return { jcd, days: [...days] };
+      } catch (_) {
+        return { jcd, days: [hd] };
+      }
+    }));
+
+    for (const { jcd, days } of results) {
+      for (const hd of days) {
+        if (!hd.startsWith(ym)) continue;
+        const ds = `${hd.slice(0,4)}-${hd.slice(4,6)}-${hd.slice(6,8)}`;
+        if (!dayMap.has(ds)) dayMap.set(ds, new Set());
+        dayMap.get(ds).add(jcd);
+      }
+    }
+    if (i + 6 < seeds.length) await sleep(100);
+  }
+
+  const normalized = new Map();
+  for (const [date, venues] of dayMap.entries()) {
+    normalized.set(date, [...venues].sort());
+  }
+  monthlyVenueDayCache.set(ym, normalized);
+  return normalized;
+}
+
+// === 開催場一覧取得 ===
+// 主経路: 月間スケジュール → 開催日×場を先に特定。
+// フォールバックのみ旧日次方式を使用する。
 export async function fetchDailyVenueList(raceDate) {
+  try {
+    const monthMap = await fetchMonthlyVenueDayMap(raceDate);
+    if (monthMap.has(raceDate)) return monthMap.get(raceDate);
+    // 月間表が正常取得でき、当日が存在しない場合だけ開催なしを確定。
+    return [];
+  } catch (_) {
+    // 月間表が取得不能な場合のみ旧日次方式へフォールバック
+  }
   const hd = raceDate.replace(/-/g, '');
   const url = `${INDEX_URL}?hd=${hd}`;
 
