@@ -34,8 +34,20 @@
         "COMPLETED",
         "PARTIAL",
         "ERROR",
-        "NO_RACE"
-      ]
+        "NO_RACE",
+        "UNKNOWN"
+      ],
+      "description": "UNKNOWN=\u958b\u50ac\u5834\u4e00\u89a7\u53d6\u5f97\u5931\u6557\u30fb\u8981\u518d\u8abf\u67fb"
+    },
+    "discovery_source": {
+      "type": "string",
+      "enum": [
+        "online_schedule",
+        "k_file",
+        "24_venue_scan",
+        "not_checked"
+      ],
+      "description": "\u958b\u50ac\u5834\u4e00\u89a7\u306e\u53d6\u5f97\u5143"
     },
     "completed_at": {
       "type": "string",

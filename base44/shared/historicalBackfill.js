@@ -189,7 +189,11 @@ export async function updateProgress(base44, progressId, fields) {
   });
 }
 
-// === DayStatus取得・作成(日付レベル完了キャッシュ) ===
+// === DayStatus取得・作成(日付レベル完了キャッシュ・3状態判定) ===
+// 3状態判定:
+// - HAS_RACE: 開催場一覧取得成功・開催あり → status=PENDING
+// - NO_RACE_CONFIRMED: 開催場一覧取得成功・開催なし → status=NO_RACE
+// - UNKNOWN: 開催場一覧取得失敗 → status=UNKNOWN(再調査対象)
 export async function getOrCreateDayStatus(base44, raceDate) {
   const existing = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.filter(
     { race_date: raceDate }, '-updated_date', 3
@@ -198,11 +202,32 @@ export async function getOrCreateDayStatus(base44, raceDate) {
   if (existing.length > 0) return existing[0];
 
   // 新規作成: 開催場一覧を取得
-  const venueCodes = await fetchDailyVenueList(raceDate);
+  let venueCodes;
+  let discoverySource = 'online_schedule';
+  try {
+    venueCodes = await fetchDailyVenueList(raceDate);
+  } catch (e) {
+    // 取得失敗 → UNKNOWN(開催なしと断定しない)
+    const created = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create({
+      race_date: raceDate,
+      venue_codes: [],
+      venue_count: 0,
+      venue_statuses: {},
+      race_count: 0,
+      racer_result_count: 0,
+      status: 'UNKNOWN',
+      discovery_source: 'not_checked',
+      completed_at: null,
+      processed_at: new Date().toISOString(),
+      error_venues: [],
+    });
+    return created;
+  }
+
   const now = new Date().toISOString();
 
   if (venueCodes.length === 0) {
-    // 開催なし日 → 即NO_RACE完了
+    // 開催なし日 → NO_RACE_CONFIRMED(開催場一覧取得成功・開催なし)
     const created = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.create({
       race_date: raceDate,
       venue_codes: [],
@@ -211,6 +236,7 @@ export async function getOrCreateDayStatus(base44, raceDate) {
       race_count: 0,
       racer_result_count: 0,
       status: 'NO_RACE',
+      discovery_source: discoverySource,
       completed_at: now,
       processed_at: now,
       error_venues: [],
@@ -231,11 +257,72 @@ export async function getOrCreateDayStatus(base44, raceDate) {
     race_count: 0,
     racer_result_count: 0,
     status: 'PENDING',
+    discovery_source: discoverySource,
     completed_at: null,
     processed_at: now,
     error_venues: [],
   });
   return created;
+}
+
+// === completed_dates実データ再計算 ===
+// DayStatusのCOMPLETED/NO_RACE数をDBから再計算
+export async function recalculateCompletedDates(base44) {
+  const completedStatuses = ['COMPLETED', 'NO_RACE', 'PARTIAL'];
+  let total = 0;
+  let skip = 0;
+  
+  while (true) {
+    const batch = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.filter(
+      {}, 'race_date', 500, skip
+    ).catch(() => []);
+    if (batch.length === 0) break;
+    
+    for (const ds of batch) {
+      if (completedStatuses.includes(ds.status)) total++;
+    }
+    skip += batch.length;
+    if (batch.length < 500) break;
+  }
+  
+  return total;
+}
+
+// === DayStatus重複クリーンアップ ===
+// 同一race_dateの重複レコードを削除(最新1件のみ残す)
+export async function cleanupDuplicateDayStatus(base44) {
+  const allDates = new Map();
+  let skip = 0;
+  
+  while (true) {
+    const batch = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.filter(
+      {}, '-updated_date', 500, skip
+    ).catch(() => []);
+    if (batch.length === 0) break;
+    
+    for (const ds of batch) {
+      if (!allDates.has(ds.race_date)) {
+        allDates.set(ds.race_date, []);
+      }
+      allDates.get(ds.race_date).push(ds);
+    }
+    skip += batch.length;
+    if (batch.length < 500) break;
+  }
+  
+  let deletedCount = 0;
+  for (const [date, records] of allDates) {
+    if (records.length > 1) {
+      // 最新(updated_date降順で最初)以外を削除
+      const toDelete = records.slice(1);
+      for (const ds of toDelete) {
+        await base44.asServiceRole.entities.HistoricalBackfillDayStatus.delete(ds.id).catch(() => {});
+        deletedCount++;
+      }
+    }
+  }
+  
+  return { duplicate_dates: [...allDates.entries()].filter(([_, r]) => r.length > 1).map(([d]) => d), deleted_count: deletedCount };
 }
 
 // === DayStatus更新 ===

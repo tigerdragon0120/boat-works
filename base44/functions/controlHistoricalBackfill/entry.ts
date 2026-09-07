@@ -6,6 +6,8 @@ import {
   preFlightCheck,
   backfillIncrementalDate,
   computeETA,
+  recalculateCompletedDates,
+  cleanupDuplicateDayStatus,
 } from '../../shared/historicalBackfill.js';
 
 // バックフィル操作関数(高速化版対応)
@@ -198,6 +200,81 @@ export default async function (req) {
           action: 'reset_metrics',
           message: 'パフォーマンス指標をリセットしました(Phase 1に戻ります)',
           progress: { ...progress, consecutive_errors: 0, phase: 1 },
+        });
+      }
+
+      case 'recalculate': {
+        if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
+        // DBから実データを再計算
+        const completedDates = await recalculateCompletedDates(base44);
+        
+        // processed_race_count, processed_racer_result_countも再計算
+        const raceCountResult = await base44.asServiceRole.entities.HistoricalRaceResult.list(1).catch(() => ({ total: 0 }));
+        const racerResultCountResult = await base44.asServiceRole.entities.HistoricalRacerResult.list(1).catch(() => ({ total: 0 }));
+        
+        // 全件取得はできないため、DayStatusから集計
+        let totalRaces = 0;
+        let totalRacerResults = 0;
+        let skip = 0;
+        while (true) {
+          const batch = await base44.asServiceRole.entities.HistoricalBackfillDayStatus.filter(
+            { status: { $in: ['COMPLETED', 'PARTIAL'] } }, 'race_date', 500, skip
+          ).catch(() => []);
+          if (batch.length === 0) break;
+          for (const ds of batch) {
+            totalRaces += ds.race_count || 0;
+            totalRacerResults += ds.racer_result_count || 0;
+          }
+          skip += batch.length;
+          if (batch.length < 500) break;
+        }
+        
+        await updateProgress(base44, progress.id, {
+          completed_dates: completedDates,
+          processed_race_count: totalRaces,
+          processed_racer_result_count: totalRacerResults,
+          updated_at: new Date().toISOString(),
+        });
+        
+        return Response.json({
+          status: 'success',
+          action: 'recalculate',
+          message: `進捗を再計算しました: completed_dates=${completedDates}, races=${totalRaces}, racer_results=${totalRacerResults}`,
+          progress: { ...progress, completed_dates: completedDates, processed_race_count: totalRaces, processed_racer_result_count: totalRacerResults },
+        });
+      }
+
+      case 'cleanup_duplicates': {
+        const result = await cleanupDuplicateDayStatus(base44);
+        return Response.json({
+          status: 'success',
+          action: 'cleanup_duplicates',
+          message: `DayStatus重複をクリーンアップしました: ${result.deleted_count}件削除`,
+          ...result,
+        });
+      }
+
+      case 'rollback': {
+        if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
+        const targetDate = body.target_date || '2002-01-01';
+        await updateProgress(base44, progress.id, {
+          current_processing_date: targetDate,
+          current_venue_list: [],
+          current_venue_position: 0,
+          completed_dates: 0,
+          status: 'IDLE',
+          worker_heartbeat: null,
+          last_error: null,
+          consecutive_errors: 0,
+          error_dates: [],
+          current_batch_label: targetDate,
+          updated_at: new Date().toISOString(),
+        });
+        return Response.json({
+          status: 'success',
+          action: 'rollback',
+          message: `進捗を${targetDate}に巻き戻しました`,
+          progress: { ...progress, current_processing_date: targetDate, status: 'IDLE' },
         });
       }
 

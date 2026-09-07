@@ -225,7 +225,7 @@ export default async function (req) {
         }
 
         if (dayStatus.status === 'NO_RACE') {
-          // 開催なし日 → 即日完了(24場調査しない)
+          // 開催なし日(NO_RACE_CONFIRMED) → 即日完了(24場調査しない)
           const nextDate = addDays(currentDate, 1);
           datesCompleted++;
           currentDate = nextDate;
@@ -240,6 +240,21 @@ export default async function (req) {
             current_batch_label: `${addDays(currentDate, -1)} (NO_RACE)`,
           });
           progress.completed_dates = (progress.completed_dates || 0) + 1;
+          continue;
+        }
+
+        if (dayStatus.status === 'UNKNOWN') {
+          // 開催場一覧取得失敗(UNKNOWN) → completed_datesに含めず次へ(後で再調査)
+          const nextDate = addDays(currentDate, 1);
+          currentDate = nextDate;
+          venueList = [];
+          venuePos = 0;
+          await updateProgress(base44, progress.id, {
+            current_processing_date: nextDate,
+            current_venue_list: [],
+            current_venue_position: 0,
+            current_batch_label: `${currentDate} (UNKNOWN)`,
+          });
           continue;
         }
 

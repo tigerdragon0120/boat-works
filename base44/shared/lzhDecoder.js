@@ -2,7 +2,7 @@
 // LHA/LHarc形式のLZHファイルをデコードする
 // Denoバックエンド関数環境用(Deno.Command不可・WebAssembly不可)
 // 
-// LH5方式の仕様に基づく実装:
+// LH5方式の仕様に基づく実装(LHA Level 1/2ヘッダー対応):
 // - LZSS + 動的Huffman符号化
 // - スライディングウィンドウ: 8192 bytes (LH5)
 // - 最小マッチ長: 3 bytes
@@ -13,52 +13,32 @@ export function decodeLzh(arrayBuffer) {
   let pos = 0;
 
   // === LZHアーカイブヘッダー解析 ===
-  // ヘッダーサイズ
+  // ヘッダーサイズ (1 byte) - このバイト自体を含まないサイズ
   const headerSize = bytes[pos++];
-  if (headerSize === 0) {
-    // エンドマーカー
-    return new Uint8Array(0);
-  }
 
-  // 圧縮方式 (5 bytes, 例: "-lh5-")
-  const method = String.fromCharCode(bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3], bytes[pos+4]);
-  pos += 5;
+  // Level判定 (byte 20にlevelが格納されている)
+  // Level 0: header_size + 1 byte = total header
+  // Level 1/2: header_size + 1 byte = total header (CRC含む)
+  const level = bytes[20];
+
+  // 圧縮方式 (5 bytes, bytes 2-6)
+  const method = String.fromCharCode(bytes[2], bytes[3], bytes[4], bytes[5], bytes[6]);
 
   if (!method.includes('lh5') && !method.includes('lh4') && !method.includes('lh6') && !method.includes('lh7') && !method.includes('lzs')) {
     throw new Error(`Unsupported compression method: ${method}`);
   }
 
-  // 圧縮サイズ
-  const compressedSize = bytes[pos] | (bytes[pos+1] << 8) | (bytes[pos+2] << 16) | (bytes[pos+3] << 24);
-  pos += 4;
+  // 圧縮サイズ (bytes 7-10, little-endian)
+  const compressedSize = bytes[7] | (bytes[8] << 8) | (bytes[9] << 16) | (bytes[10] << 24);
 
-  // 非圧縮サイズ
-  const uncompressedSize = bytes[pos] | (bytes[pos+1] << 8) | (bytes[pos+2] << 16) | (bytes[pos+3] << 24);
-  pos += 4;
+  // 非圧縮サイズ (bytes 11-14, little-endian)
+  const uncompressedSize = bytes[11] | (bytes[12] << 8) | (bytes[13] << 16) | (bytes[14] << 24);
 
-  // タイムスタンプ (4 bytes)
-  pos += 4;
-
-  // 属性 (1 byte)
-  pos += 1;
-
-  // レベル (1 byte)
-  const level = bytes[pos++];
-
-  if (level === 0) {
-    // Level 0 ヘッダー
-    // ファイル名長
-    const nameLen = bytes[pos++];
-    // ファイル名
-    pos += nameLen;
-    // CRC16 (2 bytes)
-    pos += 2;
-  } else if (level === 1 || level === 2) {
-    throw new Error(`LHA level ${level} headers not supported`);
-  }
+  // 圧縮データの開始位置 = headerSize + 1 (headerSize byte自体)
+  const dataStart = headerSize + 1;
 
   // === LZSS + Huffman デコード ===
-  const compressedData = bytes.slice(pos, pos + compressedSize);
+  const compressedData = bytes.slice(dataStart, dataStart + compressedSize);
   const output = decodeLh5(compressedData, uncompressedSize);
   return output;
 }
@@ -75,11 +55,11 @@ function decodeLh5(compressed, expectedSize) {
   const bitReader = new BitReader(compressed);
 
   while (outputPos < expectedSize) {
-    // ブロックサイズ取得
+    // ブロックサイズ取得 (16 bits, little-endian byte order)
     const blockSize = bitReader.readBits(16);
     if (blockSize === 0) break;
 
-    // ブロックの終了位置を設定
+    // ブロックの終了位置を設定 (blockSizeはバイト数)
     const blockEndBitPos = bitReader.bitPos + blockSize * 8;
 
     // Huffmanテーブル構築
@@ -89,6 +69,8 @@ function decodeLh5(compressed, expectedSize) {
     // ブロックデータのデコード
     while (bitReader.bitPos < blockEndBitPos && outputPos < expectedSize) {
       const symbol = decodeSymbol(bitReader, literalTree);
+
+      if (symbol < 0) break;
 
       if (symbol < 256) {
         // リテラル
@@ -101,15 +83,16 @@ function decodeLh5(compressed, expectedSize) {
 
         // オフセットをデコード
         const offsetSymbol = decodeSymbol(bitReader, offsetTree);
-        let offset;
+        if (offsetSymbol < 0) break;
 
+        let offset;
         if (offsetSymbol === 0) {
           offset = 1;
         } else {
           // offsetSymbol番目のビットを読む
           const extraBits = offsetSymbol;
           const extraValue = bitReader.readBits(extraBits);
-          offset = (1 << extraBits) + extraValue;
+          offset = (1 << extraBits) + extraValue + 1;
         }
 
         // マッチコピー
@@ -134,25 +117,19 @@ class BitReader {
   constructor(data) {
     this.data = data;
     this.bytePos = 0;
-    this.bitPos = 0; // 0-7, 現在のバイト内のビット位置
+    this.bitPos = 0; // 全体のビット位置
     this.currentByte = 0;
-    this.fillByte();
-  }
-
-  fillByte() {
-    if (this.bytePos < this.data.length) {
-      this.currentByte = this.data[this.bytePos++];
-    }
-    this.bitPos = 0;
+    this.bitsLeft = 0;
   }
 
   readBit() {
-    if (this.bitPos >= 8) {
-      this.fillByte();
+    if (this.bitsLeft === 0) {
+      this.currentByte = this.data[this.bytePos++];
+      this.bitsLeft = 8;
     }
-    const bit = (this.currentByte >> (7 - this.bitPos)) & 1;
+    this.bitsLeft--;
     this.bitPos++;
-    return bit;
+    return (this.currentByte >> this.bitsLeft) & 1;
   }
 
   readBits(n) {
@@ -166,23 +143,17 @@ class BitReader {
 
 // Huffmanテーブル構築
 function buildHuffmanTree(bitReader) {
-  // まず符号長テーブルを読む
+  // 符号数を取得 (9 bits)
   const numSymbols = bitReader.readBits(9);
   if (numSymbols === 0) return null;
 
   const codeLengths = new Array(numSymbols);
 
-  // 符号長をHuffman符号化して読む
-  // まず符号長のHuffmanテーブルを読む
-  const lengthCodeLengths = new Array(20);
+  // 符号長のHuffmanテーブルを構築
+  const lengthCodeLengths = new Array(20).fill(0);
   const numLengthCodes = bitReader.readBits(5);
   for (let i = 0; i < numLengthCodes; i++) {
     lengthCodeLengths[i] = bitReader.readBits(3);
-  }
-
-  // 残りは0
-  for (let i = numLengthCodes; i < 20; i++) {
-    lengthCodeLengths[i] = 0;
   }
 
   // 符号長のHuffmanテーブルを構築
@@ -192,10 +163,12 @@ function buildHuffmanTree(bitReader) {
   let i = 0;
   while (i < numSymbols) {
     const symbol = decodeSymbol(bitReader, lengthTree);
+    if (symbol < 0) break;
+
     if (symbol < 19) {
       codeLengths[i++] = symbol;
     } else if (symbol === 19) {
-      // 繰り返し(3-6回, 0)
+      // 繰り返し(3-6回, 前の値)
       const count = bitReader.readBits(2) + 3;
       const val = i > 0 ? codeLengths[i - 1] : 0;
       for (let j = 0; j < count && i < numSymbols; j++) {
@@ -255,8 +228,6 @@ function buildCanonicalHuffman(codeLengths) {
 // Huffman デコーダー
 class HuffmanDecoder {
   constructor(codes) {
-    this.codes = codes;
-    // ビット列からシンボルへのルックアップテーブル
     this.root = {};
     for (const { symbol, code, len } of codes) {
       let node = this.root;
@@ -290,8 +261,6 @@ function decodeSymbol(bitReader, tree) {
 
 // Shift-JIS デコード
 export function decodeShiftJIS(uint8Array) {
-  // 簡易Shift-JISデコーダー
-  // UTF-8のTextDecoderがcp932をサポートしていない場合のフォールバック
   const decoder = new TextDecoder('shift_jis');
   return decoder.decode(uint8Array);
 }
