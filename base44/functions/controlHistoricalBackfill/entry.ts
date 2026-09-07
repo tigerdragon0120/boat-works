@@ -256,24 +256,39 @@ export default async function (req) {
 
       case 'rollback': {
         if (!progress) return Response.json({ status: 'error', message: '進捗レコードがありません' }, { status: 400 });
-        const targetDate = body.target_date || '2002-01-01';
+
+        // 事故防止: 通常の修正・再検証では本線カーソルを巻き戻さない。
+        // 明示的に force=true が指定された管理操作だけを許可する。
+        if (body.force !== true) {
+          return Response.json({
+            status: 'blocked',
+            action: 'rollback',
+            message: '本線バックフィルの巻き戻しを安全装置が拒否しました。修正・再検証は現在位置を維持したまま行ってください。どうしても巻き戻す場合のみ force=true を明示してください。',
+            progress: {
+              current_processing_date: progress.current_processing_date,
+              current_venue_position: progress.current_venue_position || 0,
+              status: progress.status,
+              completed_dates: progress.completed_dates || 0,
+            },
+          }, { status: 409 });
+        }
+
+        const targetDate = body.target_date || progress.current_processing_date;
         await updateProgress(base44, progress.id, {
           current_processing_date: targetDate,
           current_venue_list: [],
           current_venue_position: 0,
-          completed_dates: 0,
           status: 'IDLE',
           worker_heartbeat: null,
           last_error: null,
           consecutive_errors: 0,
-          error_dates: [],
-          current_batch_label: targetDate,
+          current_batch_label: `${targetDate} (FORCED_ROLLBACK)`,
           updated_at: new Date().toISOString(),
         });
         return Response.json({
           status: 'success',
           action: 'rollback',
-          message: `進捗を${targetDate}に巻き戻しました`,
+          message: `強制指定により進捗を${targetDate}に巻き戻しました。既存Historicalデータは削除していません。`,
           progress: { ...progress, current_processing_date: targetDate, status: 'IDLE' },
         });
       }
