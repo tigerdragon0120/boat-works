@@ -6,7 +6,7 @@ import JudgmentBadge from "@/components/JudgmentBadge";
 import {
   seedIfNeeded, getSettings, getRacesByDate,
   getAlerts,
-  getBackfillProgressLight, invalidateCache,
+  invalidateCache,
 } from "@/lib/boatService";
 import { getCachedAnalysesByDate, computeCacheHitRate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
@@ -38,7 +38,6 @@ export default function Home() {
     tab === "today"
   );
   const [tick, setTick] = useState(0);
-  const [backfillProgress, setBackfillProgress] = useState(null);
   const [cacheHitRate, setCacheHitRate] = useState(null);
   const [seriesPoints, setSeriesPoints] = useState([]);
 
@@ -55,8 +54,6 @@ export default function Home() {
         if (!m) return;
         setSettings(s);
 
-        // バックフィル進捗（軽量・非ブロッキング）
-        getBackfillProgressLight().then(p => { if (m) setBackfillProgress(p); }).catch(() => {});
         const date = tab === "today" ? dateStr(0) : dateStr(1);
         // Homeは保存済みキャッシュだけを読む。外部取得・補修・再分析はバックグラウンド処理へ分離。
         const [rs, al, cachedAn, sp] = await Promise.all([
@@ -236,17 +233,6 @@ export default function Home() {
       {error && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-600">
           <AlertCircle className="w-4 h-4" /> データ取得失敗：{error}
-        </div>
-      )}
-
-      {/* バックフィル進捗（小さな表示） */}
-      {backfillProgress && backfillProgress.overall && backfillProgress.overall.rate < 0.99 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>過去6か月データ補完中 {Math.round((backfillProgress.overall.rate || 0) * 100)}%</span>
-          {backfillProgress.p1 && backfillProgress.p1.rate < 0.95 && (
-            <span className="text-emerald-600 font-semibold">直近30日 {Math.round((backfillProgress.p1.rate || 0) * 100)}%</span>
-          )}
         </div>
       )}
 
