@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValu
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v12";
+export const ANALYSIS_VERSION = "v13";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -136,8 +136,8 @@ function computeRacerExecution(entries, boat1Trust) {
   const riskPenalty = e => clamp((e?.racer_term_weighted_f || 0) * 3 + (e?.racer_term_weighted_l || 0) * 2, 0, 12);
   const second = e => {
     if (!e) return 0;
-    const term2 = e.racer_term_weighted_top2_rate ?? e.national_2rate ?? 0;
-    const termSecond = e.racer_term_weighted_second_rate ?? 0;
+    const term2 = e.racer_term_course_top2_rate ?? e.racer_term_weighted_top2_rate ?? e.national_2rate ?? 0;
+    const termSecond = e.racer_term_course_second_rate ?? e.racer_term_weighted_second_rate ?? 0;
     const termAbility = e.racer_term_weighted_ability ?? 50;
     const termST = e.racer_term_weighted_avg_st ?? e.avg_st ?? .23;
     return Math.round(clamp(
@@ -152,8 +152,8 @@ function computeRacerExecution(entries, boat1Trust) {
   };
   const third = e => {
     if (!e) return 0;
-    const term3 = e.racer_term_weighted_top3_rate ?? e.national_3rate ?? 0;
-    const termThird = e.racer_term_weighted_third_rate ?? 0;
+    const term3 = e.racer_term_course_top3_rate ?? e.racer_term_weighted_top3_rate ?? e.national_3rate ?? 0;
+    const termThird = e.racer_term_course_third_rate ?? e.racer_term_weighted_third_rate ?? 0;
     const termAbility = e.racer_term_weighted_ability ?? 50;
     const termST = e.racer_term_weighted_avg_st ?? e.avg_st ?? .24;
     return Math.round(clamp(
@@ -175,7 +175,7 @@ function computeRacerExecution(entries, boat1Trust) {
   // trustにはモーターが混じるため、1号艇実行力は選手項目を中心に再計算しtrustは補助に留める。
   // 1コース履歴がまだ薄い場合は、レーサー期別成績の1着率・全国勝率・平均ST・級別から
   // 保守的な基礎逃げ力を作る。期別成績だけでも予想に参加できるようにする。
-  const termFirst = boat1?.racer_term_weighted_first_rate ?? boat1?.racer_term_first_rate;
+  const termFirst = boat1?.racer_term_course_first_rate ?? boat1?.racer_term_weighted_first_rate ?? boat1?.racer_term_first_rate;
   const termBaseEscape = termFirst != null
     ? Math.round(clamp(
         clamp(termFirst/35,0,1)*29 +
