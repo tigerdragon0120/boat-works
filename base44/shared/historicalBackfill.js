@@ -138,10 +138,12 @@ export async function fetchDailyVenueList(raceDate) {
 
   if (found.length > 0) return found;
 
-  // 全24場を十分確認できた場合だけ開催なしを確定可能にする。
-  // 通信障害等で確認不足ならUNKNOWNへ送るため例外にする。
+  // 古い日付では公式index/resultlistの軽量probe自体が不安定なことがある。
+  // ここでUNKNOWNにして日付だけ進めると欠落を生むため、判定不能時は
+  // 24場を「処理対象候補」として返し、backfillVenueDate側の正式resultlistで
+  // 各場を確定する。これにより速度より完全性を優先し、開催日の取りこぼしを防ぐ。
   if (successfulProbes >= 20) return [];
-  throw new Error(`historical venue discovery inconclusive: ${raceDate} probes=${successfulProbes}/24`);
+  return [...VENUE_JCDS_SORTED];
 }
 
 // === 進捗レコード取得(シングルトン) ===
@@ -486,11 +488,18 @@ export function determineMode() {
 export function computeAdaptiveBatchSize(progress, mode) {
   const phase = progress?.phase || 1;
   const consecutiveErrors = progress?.consecutive_errors || 0;
+  const requestedBatchSize = Number(progress?.requested_batch_size || 0);
 
   // Phase別ベースサイズ
   let baseSize = 3; // Phase 1
   if (phase >= 2) baseSize = 5;
   if (phase >= 3) baseSize = 8;
+
+  // 管理者が明示した希望値を上限10の範囲で尊重する。
+  // Safety/エラー時の自動減速はこの後で必ず適用する。
+  if (requestedBatchSize >= 1) {
+    baseSize = Math.max(baseSize, Math.min(10, Math.floor(requestedBatchSize)));
+  }
 
   // モード別調整
   if (mode === 'TURBO') baseSize = Math.min(10, Math.round(baseSize * 1.5));
