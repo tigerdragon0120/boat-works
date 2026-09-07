@@ -319,15 +319,8 @@ export default async function(req) {
             return;
           }
           const odds = stage === "pre" ? null : (oddsByRace[r.id] || null);
-          // 2日目以降は前日までの節間ポイントが無い状態でpre分析しない。
-          if (stage === "pre" && Number(r.series_day || 1) > 1) {
-            const bySeries = seriesPointsBySeries[r.series_key] || {};
-            if (Object.keys(bySeries).length === 0) {
-              skipped++;
-              errorDetails.push({ race_id:r.id, venue_code:r.venue_code, race_number:r.race_number, phase:"series_points", message:"前日までの節間ポイント未確定のためpre分析待機" });
-              return;
-            }
-          }
+          // 節間ポイント(SeriesRacerPoint)は補助データ。欠落していてもpre分析を止めない。
+          // Bファイル由来のRace/RaceEntryが6艇揃っていれば即時にpre予想を生成する。
           const a = computeRaceAnalysis(r, entries, odds, stats, settings, stage);
 
           // 一度展示取得済みの正式finalがある場合、後続の一時的な展示MISSING再計算は

@@ -840,8 +840,9 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
 
     // v10: 一般戦でB2が普段通り5/6枠に置かれているだけの構成は番組意図として扱わない。
     // また1号艇が今節明確に低調ならS/Aアラートへ上げない。
-    if (!seriesContext.snapshot_ready) preGrade = "C";
-    else if (seriesContext.routine_outer_exclusion) preGrade = "C";
+    // 節間ポイント未確定(snapshot_ready=false)は補助データ欠落として警告のみ。
+    // 番組意図・選手能力・モーター評価が主軸であり、節間ポイントは補助特徴量であるためpreGradeを強制下げしない。
+    if (seriesContext.routine_outer_exclusion) preGrade = "C";
     else if (seriesContext.weak_series && (preGrade === "S" || preGrade === "A")) preGrade = "B";
   }
 
