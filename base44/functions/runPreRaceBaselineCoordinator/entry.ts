@@ -227,7 +227,9 @@ export default async function(req) {
       const alertsReady=preCount>=12;
       const evalsReady=rd.racer_evaluations_ready===true;
       const coreReady=Number(rd.core_complete_races||0)>=12 && Number(rd.complete_entry_races||0)>=12;
-      const preRaceReady=coreReady && evalsReady && structuresReady && alertsReady;
+      // RacePlayerStructureは旧ういち専用の補助指標。現在のv13事前予想はRacerTermStatV2を直接使うため、
+      // この補助指標が未生成でも事前予想全体を停止させない。
+      const preRaceReady=coreReady && evalsReady && alertsReady;
       await base44.asServiceRole.entities.VenueDayReadiness.update(rd.id,{
         player_structures_count:structureCount,
         player_structures_ready:structuresReady,
