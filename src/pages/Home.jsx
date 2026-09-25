@@ -173,8 +173,10 @@ export default function Home() {
       .filter((r) => {
         if (tab !== "today") return true;
         if (!r.deadline) return true;
-        // Race.status を優先する。締切時刻の誤差や更新遅延だけで全レースを消さない。
-        // 結果確定済みだけHomeから除外し、scheduled/live は表示を維持する。
+        // Homeは「これから買えるレース」専用。締切を過ぎたら結果取得の成否に関係なく消す。
+        // 結果・払戻・検証は「検証」ページへ引き継ぐ。
+        const deadlineMs = new Date(r.deadline).getTime();
+        if (Number.isFinite(deadlineMs) && now >= deadlineMs) return false;
         if (r.status === "finished" || r.status === "completed") return false;
         return true;
       })
