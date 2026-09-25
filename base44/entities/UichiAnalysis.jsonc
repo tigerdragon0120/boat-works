@@ -43,6 +43,29 @@
       "type": "number",
       "description": "\u88cf\u3046\u3044\u3061 1-56-234 \u63a8\u5b9a\u51fa\u73fe\u7387(0-1)"
     },
+    "new_uichi_rate": {
+      "type": "number",
+      "description": "\u65b0\u3046\u3044\u3061 1-3456-2 \u63a8\u5b9a\u51fa\u73fe\u7387(0-1)"
+    },
+    "new_ura_uichi_rate": {
+      "type": "number",
+      "description": "\u65b0\u88cf\u3046\u3044\u3061 2-1-3456 \u63a8\u5b9a\u51fa\u73fe\u7387(0-1)"
+    },
+    "pattern_scores": {
+      "type": "object",
+      "description": "4\u578b\u6bd4\u8f03\u30b9\u30b3\u30a2"
+    },
+    "recommended_bets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u63a8\u5968\u578b\u306e\u8cb7\u3044\u76ee"
+    },
+    "recommended_pattern_label": {
+      "type": "string",
+      "description": "\u63a8\u59684\u578b\u306e\u8868\u793a\u540d"
+    },
     "synthetic_odds": {
       "type": "number"
     },
@@ -123,6 +146,8 @@
       "enum": [
         "MAIN",
         "URA",
+        "NEW_MAIN",
+        "NEW_URA",
         "NEUTRAL"
       ]
     },
@@ -254,6 +279,8 @@
       "enum": [
         "MAIN",
         "URA",
+        "NEW_MAIN",
+        "NEW_URA",
         "NEUTRAL"
       ]
     },
