@@ -2,11 +2,11 @@
 // RaceResult全件を読まず、RacerStats/RacerVenueStats/VenueRaceStats等の集計済みEntityから分析する。
 // データ量が増えても分析時間は増えない。
 
-import { UICHI_COMBOS, URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.js";
+import { UICHI_COMBOS, URA_UICHI_COMBOS, NEW_UICHI_COMBOS, NEW_URA_UICHI_COMBOS, gradeBoat1, syntheticOdds, expectedValue } from "./uichi.js";
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v13";
+export const ANALYSIS_VERSION = "v14";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -697,18 +697,24 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   // 裏ういち 1-56-234。過去の場×R出現率を土台に、1号艇信頼と5/6号艇の
   // 『2着まで突っ込める力』で補正する。集計未構築時は0として誤表示しない。
   const baseUraRate = vrs?.ura_uichi_rate ?? 0;
+  const baseNewUichiRate = vrs?.new_uichi_rate ?? 0;
+  const baseNewUraRate = vrs?.new_ura_uichi_rate ?? 0;
 
   const similarCount = vrs?.total_races ?? 0;
   const uichiHits = vrs?.uichi_hits ?? 0;
 
   // オッズ。最終EVは本線/裏の推奨方向が決まってから計算する。
-  let synthOdds = 0, oddsValues = [], mainSynthOdds = 0, uraSynthOdds = 0;
+  let synthOdds = 0, oddsValues = [], mainSynthOdds = 0, uraSynthOdds = 0, newMainSynthOdds = 0, newUraSynthOdds = 0;
   if (odds && stage !== "pre") {
     const allOdds = odds.all_trifecta_odds || {};
     const mainValues = UICHI_COMBOS.map(c => odds["odds_" + c.replace(/-/g, "_")] ?? allOdds[c]);
     const uraValues = URA_UICHI_COMBOS.map(c => allOdds[c]);
+    const newMainValues = NEW_UICHI_COMBOS.map(c => allOdds[c]);
+    const newUraValues = NEW_URA_UICHI_COMBOS.map(c => allOdds[c]);
     mainSynthOdds = syntheticOdds(mainValues);
     uraSynthOdds = syntheticOdds(uraValues);
+    newMainSynthOdds = syntheticOdds(newMainValues);
+    newUraSynthOdds = syntheticOdds(newUraValues);
   }
   const minOk = similarCount >= (settings?.min_similar_races || 30);
 
@@ -755,6 +761,15 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const uraUichiRate = baseUraRate > 0
     ? clamp(baseUraRate * racerEscapeAdj * trustAdj * uraStructureAdj, 0, 0.45)
     : 0;
+  // 新ういち: 1逃げ＋2号艇3着残し。中外(3〜6)の2着力と2号艇の残りやすさを評価。
+  const b2 = entries.find(e => e.boat_number === 2);
+  const b2Remain = b2 ? clamp(((b2.national_2rate || 0) * 0.45 + (b2.local_2rate || 0) * 0.25 + (b2.motor_2rate || 0) * 0.20 + clamp((0.22-(b2.avg_st||0.22))/0.12,0,1)*100*0.10) / 100, 0.45, 1.25) : 0.8;
+  const newMainStructure = clamp((uichiDirection.mid_second_score || 0) * 0.55 + (uichiDirection.outer_second_score || 0) * 0.25 + b2Remain * 100 * 0.20, 0, 100);
+  const newUichiRate = baseNewUichiRate > 0 ? clamp(baseNewUichiRate * racerEscapeAdj * trustAdj * clamp(0.8 + newMainStructure/320,0.8,1.12),0,0.45) : 0;
+  // 新裏: 2号艇が1号艇を差し、1号艇は2着残り。2号艇のST/勝率/モーターと1号艇信頼を組み合わせる。
+  const b2Attack = b2 ? clamp((b2.national_2rate||0)*0.35 + (b2.local_2rate||0)*0.20 + (b2.motor_2rate||0)*0.25 + clamp((0.22-(b2.avg_st||0.22))/0.12,0,1)*100*0.20,0,100) : 0;
+  const newUraStructure = clamp(b2Attack*0.62 + (trust?.score||0)*0.38,0,100);
+  const newUraUichiRate = baseNewUraRate > 0 ? clamp(baseNewUraRate * clamp(0.82 + b2Attack/300,0.82,1.16) * clamp(0.9+(trust?.score||0)/900,0.9,1.02),0,0.40) : 0;
 
   const totalPool = stats.totalRaces ?? 0;
   const validPool = totalPool;
