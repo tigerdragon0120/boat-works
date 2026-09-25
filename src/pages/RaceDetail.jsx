@@ -16,7 +16,7 @@ import {
 import { getCachedAnalysesForRace, analyzeRaceFinal } from "@/lib/analysisCache";
 import { base44 } from "@/api/base44Client";
 import {
-  UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline,
+  UICHI_COMBOS, URA_UICHI_COMBOS, NEW_UICHI_COMBOS, NEW_URA_UICHI_COMBOS, UICHI_LABEL, GRADE_STYLE, fmtPct, fmtNum, fmtTime, fmtTimeSec, minutesUntilDeadline,
   canFinalJudge, JUDGMENT_STYLE, reliabilityGrade, trustScoreColor, finalJudgeTime,
 } from "@/lib/boat";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,13 @@ export default function RaceDetail() {
       valid_pool: cached.valid_pool,
       stage: cached.stage,
       pre_grade: cached.pre_grade,
+      ura_uichi_rate: cached.ura_uichi_rate,
+      new_uichi_rate: cached.new_uichi_rate,
+      new_ura_uichi_rate: cached.new_ura_uichi_rate,
+      recommended_pattern: cached.recommended_pattern,
+      recommended_pattern_label: cached.recommended_pattern_label,
+      recommended_bets: cached.recommended_bets || [],
+      pattern_scores: cached.pattern_scores || {},
       captured_at: cached.captured_at,
     };
     return { analysis, trust };
@@ -457,24 +464,34 @@ export default function RaceDetail() {
       {/* 選手配置指数（ういち・裏ういち） */}
       <PlayerStructureCard raceId={id} race={race} entries={entries} />
 
-      {/* 6点オッズ */}
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold">ういち買い6点（{UICHI_LABEL}）</h3>
-          <span className="text-xs text-muted-foreground">合成 {fmtNum(analysis?.synthetic_odds, 2)}倍</span>
+      {/* 4型・全買い目オッズ */}
+      <div className="rounded-2xl bg-card border border-border p-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold">4型 全買い目・オッズ</h3>
+            <div className="text-[11px] text-muted-foreground mt-0.5">推奨型だけでなく、4型すべてを常時表示</div>
+          </div>
+          {analysis?.recommended_pattern_label && <span className="text-xs font-bold px-2 py-1 rounded-lg bg-primary/10 text-primary">推奨 {analysis.recommended_pattern_label}</span>}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {UICHI_COMBOS.map((c) => {
-            const key = "odds_" + c.replace(/-/g, "_");
-            const val = odds?.[key];
-            return (
-              <div key={c} className="rounded-xl bg-background/50 px-3 py-2 flex items-center justify-between">
-                <span className="text-sm font-mono font-semibold">{c}</span>
-                <span className="text-lg font-bold tabular-nums text-primary">{val ? fmtNum(val, 1) : "—"}</span>
-              </div>
-            );
-          })}
-        </div>
+        {[
+          {key:'MAIN',label:'ういち目',notation:'1-234-56',rate:analysis?.appearance_rate,combos:UICHI_COMBOS},
+          {key:'URA',label:'裏ういち目',notation:'1-56-234',rate:analysis?.ura_uichi_rate,combos:URA_UICHI_COMBOS},
+          {key:'NEW_MAIN',label:'新ういち目',notation:'1-3456-2',rate:analysis?.new_uichi_rate,combos:NEW_UICHI_COMBOS},
+          {key:'NEW_URA',label:'新裏ういち目',notation:'2-1-3456',rate:analysis?.new_ura_uichi_rate,combos:NEW_URA_UICHI_COMBOS},
+        ].map(p => {
+          const values=p.combos.map(c=>Number(odds?.all_trifecta_odds?.[c] ?? odds?.['odds_'+c.replace(/-/g,'_')])).filter(v=>Number.isFinite(v)&&v>0);
+          const synth=values.length===p.combos.length ? 1/values.reduce((sum,v)=>sum+1/v,0) : null;
+          const recommended=analysis?.recommended_pattern===p.key;
+          return <div key={p.key} className={cn('rounded-xl border p-3',recommended?'border-primary bg-primary/5':'border-border bg-background/30')}>
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <div className="flex items-center gap-2 flex-wrap"><span className="font-bold text-sm">{p.label}</span><span className="font-mono text-xs text-muted-foreground">{p.notation}</span>{recommended&&<span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary text-primary-foreground">推奨</span>}</div>
+              <div className="text-right text-xs"><span className="font-bold">出現率 {fmtPct(p.rate,1)}</span><span className="ml-2 text-muted-foreground">合成 {synth?fmtNum(synth,2)+'倍':'—'}</span></div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {p.combos.map(c=>{const val=odds?.all_trifecta_odds?.[c] ?? odds?.['odds_'+c.replace(/-/g,'_')];return <div key={c} className="rounded-lg bg-card px-3 py-2 flex items-center justify-between"><span className="text-sm font-mono font-semibold">{c}</span><span className="text-base font-bold tabular-nums text-primary">{val?fmtNum(val,1):'—'}</span></div>})}
+            </div>
+          </div>
+        })}
       </div>
 
       {/* オッズ履歴 */}
