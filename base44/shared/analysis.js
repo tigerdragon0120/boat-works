@@ -776,12 +776,19 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   const sufficiency = totalPool > 0 ? 1 : 0;
   const reliability = reliabilityGradeFromSample(similarCount, settings);
 
-  // 方向指数から狙う型を決める。中立は無理に買い方向を付けない。
-  let recommendedPattern = "NEUTRAL";
-  if (uichiDirection.direction_index >= 20) recommendedPattern = "MAIN";
-  else if (uichiDirection.direction_index <= -20) recommendedPattern = "URA";
-  const recommendedRate = recommendedPattern === "URA" ? uraUichiRate : recommendedPattern === "MAIN" ? appearanceRate : Math.max(appearanceRate, uraUichiRate);
-  const recommendedStructure = recommendedPattern === "URA" ? uichiDirection.ura_structure : recommendedPattern === "MAIN" ? uichiDirection.main_structure : Math.max(uichiDirection.main_structure, uichiDirection.ura_structure);
+  // v14: 4型を同時採点。過去出現率だけでなく、その日の番組構造を掛けて比較する。
+  const patternScores = {
+    MAIN: appearanceRate * (0.65 + uichiDirection.main_structure / 285),
+    URA: uraUichiRate * (0.65 + uichiDirection.ura_structure / 285),
+    NEW_MAIN: newUichiRate * (0.65 + newMainStructure / 285),
+    NEW_URA: newUraUichiRate * (0.65 + newUraStructure / 285)
+  };
+  const patternRates = { MAIN: appearanceRate, URA: uraUichiRate, NEW_MAIN: newUichiRate, NEW_URA: newUraUichiRate };
+  const patternStructures = { MAIN: uichiDirection.main_structure, URA: uichiDirection.ura_structure, NEW_MAIN: newMainStructure, NEW_URA: newUraStructure };
+  let recommendedPattern = Object.entries(patternScores).sort((a,b)=>b[1]-a[1])[0]?.[0] || "NEUTRAL";
+  if ((patternScores[recommendedPattern] || 0) <= 0) recommendedPattern = "NEUTRAL";
+  const recommendedRate = recommendedPattern === "NEUTRAL" ? Math.max(...Object.values(patternRates)) : patternRates[recommendedPattern];
+  const recommendedStructure = recommendedPattern === "NEUTRAL" ? Math.max(...Object.values(patternStructures)) : patternStructures[recommendedPattern];
 
   // v8: 最終判定も推奨方向の6点オッズを使う。裏推奨時に本線オッズでEVを出さない。
   if (stage !== "pre") {
@@ -791,6 +798,12 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     } else if (recommendedPattern === "MAIN") {
       synthOdds = mainSynthOdds;
       oddsValues = UICHI_COMBOS.map(c => odds?.["odds_" + c.replace(/-/g, "_")] ?? odds?.all_trifecta_odds?.[c]);
+    } else if (recommendedPattern === "NEW_MAIN") {
+      synthOdds = newMainSynthOdds;
+      oddsValues = NEW_UICHI_COMBOS.map(c => odds?.all_trifecta_odds?.[c]);
+    } else if (recommendedPattern === "NEW_URA") {
+      synthOdds = newUraSynthOdds;
+      oddsValues = NEW_URA_UICHI_COMBOS.map(c => odds?.all_trifecta_odds?.[c]);
     } else {
       synthOdds = 0;
       oddsValues = [];
@@ -872,6 +885,11 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     appearance_rate: appearanceRate,
     ura_uichi_hits: vrs?.ura_uichi_hits ?? 0,
     ura_uichi_rate: uraUichiRate,
+    new_uichi_rate: newUichiRate,
+    new_ura_uichi_rate: newUraUichiRate,
+    pattern_scores: patternScores,
+    recommended_pattern_label: ({MAIN:'ういち目',URA:'裏ういち目',NEW_MAIN:'新ういち目',NEW_URA:'新裏ういち目'})[recommendedPattern] || '中立',
+    recommended_bets: recommendedPattern === 'MAIN' ? UICHI_COMBOS : recommendedPattern === 'URA' ? URA_UICHI_COMBOS : recommendedPattern === 'NEW_MAIN' ? NEW_UICHI_COMBOS : recommendedPattern === 'NEW_URA' ? NEW_URA_UICHI_COMBOS : [],
     synthetic_odds: synthOdds,
     expected_value: ev,
     judgment,
