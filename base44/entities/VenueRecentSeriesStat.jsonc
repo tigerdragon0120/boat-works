@@ -1,0 +1,86 @@
+{
+  "name": "VenueRecentSeriesStat",
+  "type": "object",
+  "properties": {
+    "venue_code": {
+      "type": "string"
+    },
+    "venue_name": {
+      "type": "string"
+    },
+    "series_key": {
+      "type": "string"
+    },
+    "series_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "series_end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "event_name": {
+      "type": "string"
+    },
+    "grade": {
+      "type": "string"
+    },
+    "race_count": {
+      "type": "number"
+    },
+    "boat1_win_count": {
+      "type": "number"
+    },
+    "boat1_win_rate": {
+      "type": "number"
+    },
+    "boat2_win_count": {
+      "type": "number"
+    },
+    "boat2_win_rate": {
+      "type": "number"
+    },
+    "boat3_win_count": {
+      "type": "number"
+    },
+    "boat3_win_rate": {
+      "type": "number"
+    },
+    "boat4_win_count": {
+      "type": "number"
+    },
+    "boat4_win_rate": {
+      "type": "number"
+    },
+    "boat5_win_count": {
+      "type": "number"
+    },
+    "boat5_win_rate": {
+      "type": "number"
+    },
+    "boat6_win_count": {
+      "type": "number"
+    },
+    "boat6_win_rate": {
+      "type": "number"
+    },
+    "uichi_count": {
+      "type": "number"
+    },
+    "uichi_rate": {
+      "type": "number"
+    },
+    "average_payout": {
+      "type": "number"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "venue_code",
+    "series_key",
+    "series_start_date"
+  ]
+}

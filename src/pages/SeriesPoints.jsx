@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Loader2, ShieldAlert, Trophy } from "lucide-react";
+import { Activity, Loader2, ShieldAlert, Trophy, History } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ export default function SeriesPoints() {
   const [contexts, setContexts] = useState([]);
   const [points, setPoints] = useState([]);
   const [selected, setSelected] = useState("");
+  const [recentStats, setRecentStats] = useState([]);
 
   useEffect(() => {
     let alive = true;
@@ -35,13 +36,15 @@ export default function SeriesPoints() {
           const jcds = [...new Set((races || []).map(r => r.venue_code).filter(Boolean))];
           await Promise.all(jcds.map(jcd => base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date: today, jcd }).catch(()=>null)));
         } catch {}
-        const [c, p] = await Promise.all([
+        const [c, p, s] = await Promise.all([
           base44.entities.SeriesContext.list("-refreshed_at", 200),
           base44.entities.SeriesRacerPoint.list("-snapshot_at", 2000),
+          base44.entities.VenueRecentSeriesStat.list("-series_start_date", 500).catch(()=>[]),
         ]);
         if (!alive) return;
         setContexts(c || []);
         setPoints(p || []);
+        setRecentStats(s || []);
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
@@ -55,6 +58,10 @@ export default function SeriesPoints() {
 
   const selectedKey = selected || latestContexts[0]?.series_key || "";
   const context = latestContexts.find(c => c.series_key === selectedKey);
+  const venueRecent = useMemo(() => {
+    if (!context?.venue_code) return [];
+    return recentStats.filter(s => String(s.venue_code) === String(context.venue_code)).sort((a,b) => String(b.series_start_date || "").localeCompare(String(a.series_start_date || ""))).slice(0, 3);
+  }, [recentStats, context?.venue_code]);
 
   const isFirstDay = Number(context?.series_day || 1) < 2;
 
@@ -105,6 +112,20 @@ export default function SeriesPoints() {
                   <div className="text-muted-foreground">{context.point_rank_available ? context.point_rank_as_of || "公式得点率あり" : "公式得点率なし"}</div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {context && (
+            <div className="rounded-2xl border bg-card p-4 space-y-3">
+              <div>
+                <div className="flex items-center gap-2 font-bold"><History className="w-4 h-4 text-primary" />{context.venue_name} 過去3開催</div>
+                <div className="text-[10px] text-muted-foreground mt-1">開催単位で場の最近の傾向を蓄積。今後の予想ロジックにも接続します。</div>
+              </div>
+              {venueRecent.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">過去開催データはこれから蓄積します。結果取得後に開催単位で自動集計します。</div>
+              ) : (
+                <div className="grid gap-2 md:grid-cols-3">{venueRecent.map((s,i) => <RecentSeriesCard key={s.series_key || i} stat={s} index={i} />)}</div>
+              )}
             </div>
           )}
 
@@ -187,6 +208,22 @@ function RacerSeriesCard({ racer: r, position }) {
       {hist.some(h=>h.finish === 1 && h.margin_1_2_seconds != null) && (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><Trophy className="w-3.5 h-3.5" />勝利時の着差もシリーズ学習データに保存済み</div>
       )}
+    </div>
+  );
+}
+
+function RecentSeriesCard({ stat:s, index }) {
+  const rates = [1,2,3,4,5,6].map(n => ({n, v:Number(s[`boat${n}_win_rate`] || 0)}));
+  const best = [...rates].sort((a,b)=>b.v-a.v)[0];
+  return (
+    <div className="rounded-xl border bg-background/50 p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div><div className="text-xs font-bold">{index === 0 ? "直近開催" : `${index+1}開催前`}</div><div className="text-[10px] text-muted-foreground">{fmtDate(s.series_start_date)}〜{fmtDate(s.series_end_date)} {s.grade || ""}</div></div>
+        <div className="text-right"><div className="text-[9px] text-muted-foreground">集計</div><div className="text-sm font-bold">{s.race_count || 0}R</div></div>
+      </div>
+      <div className="grid grid-cols-6 gap-1">{rates.map(x => <div key={x.n} className="text-center rounded-md border px-1 py-1"><div className="text-[9px] text-muted-foreground">{x.n}号艇</div><div className="text-[10px] font-bold">{x.v.toFixed(1)}%</div></div>)}</div>
+      <div className="flex justify-between text-[10px]"><span>最多勝枠 <b>{best?.n || "—"}号艇</b></span><span>ういち <b>{s.uichi_rate != null ? Number(s.uichi_rate).toFixed(1)+"%" : "—"}</b></span></div>
+      {s.average_payout != null && <div className="text-[10px] text-muted-foreground">3連単平均払戻 ¥{Math.round(s.average_payout).toLocaleString()}</div>}
     </div>
   );
 }
