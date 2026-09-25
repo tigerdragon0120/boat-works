@@ -173,8 +173,10 @@ export default function Home() {
       .filter((r) => {
         if (tab !== "today") return true;
         if (!r.deadline) return true;
-        // Homeは進行中・未来レースだけ表示。締切を過ぎたBUY/WATCHも即非表示にする。
-        return new Date(r.deadline).getTime() > now;
+        // Race.status を優先する。締切時刻の誤差や更新遅延だけで全レースを消さない。
+        // 結果確定済みだけHomeから除外し、scheduled/live は表示を維持する。
+        if (r.status === "finished" || r.status === "completed") return false;
+        return true;
       })
       .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
   }, [races, alerts, tab, tick]);
