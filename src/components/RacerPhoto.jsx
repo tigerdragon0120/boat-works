@@ -22,7 +22,7 @@ const ICON_SIZES = {
 const photoCache = new Map();
 const pendingCache = new Map();
 const failureCache = new Map();
-const FAILURE_TTL = 60 * 1000; // 一時失敗は1分後に再試行。nullを永久キャッシュしない
+const FAILURE_TTL = 15 * 1000; // 一時失敗は短時間だけ抑制。成功済み写真は失敗で消さない
 
 function base64ToBlobUrl(base64, contentType = "image/jpeg") {
   const binary = atob(base64);
@@ -36,7 +36,7 @@ async function loadPhoto(registrationNumber) {
   if (!/^\d{4}$/.test(reg)) return null;
   if (photoCache.has(reg)) return photoCache.get(reg);
   const failedAt = failureCache.get(reg);
-  if (failedAt && Date.now() - failedAt < FAILURE_TTL) return null;
+  if (failedAt && Date.now() - failedAt < FAILURE_TTL) return photoCache.get(reg) || null;
   if (pendingCache.has(reg)) return pendingCache.get(reg);
 
   const p = base44.functions.invoke("getRacerPhoto", { registration_number: reg })
@@ -48,16 +48,18 @@ async function loadPhoto(registrationNumber) {
       if (url) {
         photoCache.set(reg, url);
         failureCache.delete(reg);
-      } else {
-        failureCache.set(reg, Date.now());
+        pendingCache.delete(reg);
+        return url;
       }
+      // 一時的なAPI失敗でも、すでに成功済みの写真は維持する
+      failureCache.set(reg, Date.now());
       pendingCache.delete(reg);
-      return url;
+      return photoCache.get(reg) || null;
     })
     .catch(() => {
       failureCache.set(reg, Date.now());
       pendingCache.delete(reg);
-      return null;
+      return photoCache.get(reg) || null;
     });
   pendingCache.set(reg, p);
   return p;
@@ -109,9 +111,9 @@ export default function RacerPhoto({ registrationNumber, racerName, size = "md",
       loading={lazy ? "lazy" : "eager"}
       onClick={onClick}
       onError={() => {
-        photoCache.delete(reg);
+        // Blob URLの一時エラーで成功済みキャッシュを破棄しない。
+        // 短時間後に再取得できるよう失敗時刻だけ記録する。
         failureCache.set(reg, Date.now());
-        setUrl(null);
         setLoaded(true);
       }}
       className={cn(
