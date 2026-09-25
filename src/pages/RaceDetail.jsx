@@ -116,7 +116,9 @@ export default function RaceDetail() {
       const within5 = canFinalJudge(r.deadline);
       const finalCached = byStage.final;
       const preCached = byStage.pre;
-      const chosen = (within5 && finalCached) ? finalCached : (finalCached || preCached);
+      // final が保存済みなら締切時刻に関係なく最優先で表示する。
+      // 画面側の時刻判定とWorker実行時刻がずれても、確定済み判定を隠さない。
+      const chosen = finalCached || preCached;
       if (preCached) setPreAnalysis(preCached);
       if (chosen) {
         const { analysis, trust } = cachedToObjects(chosen, s);
