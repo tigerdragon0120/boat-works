@@ -10,6 +10,15 @@ export const UICHI_COMBOS = [
 ];
 
 export const UICHI_LABEL = "1-234-56";
+export const URA_UICHI_COMBOS = ["1-5-2", "1-5-3", "1-5-4", "1-6-2", "1-6-3", "1-6-4"];
+export const NEW_UICHI_COMBOS = ["1-3-2", "1-4-2", "1-5-2", "1-6-2"];
+export const NEW_URA_UICHI_COMBOS = ["2-1-3", "2-1-4", "2-1-5", "2-1-6"];
+export const UICHI_PATTERNS = {
+  MAIN: { label: "ういち目", notation: UICHI_LABEL, combos: UICHI_COMBOS },
+  URA: { label: "裏ういち目", notation: "1-56-234", combos: URA_UICHI_COMBOS },
+  NEW_MAIN: { label: "新ういち目", notation: "1-3456-2", combos: NEW_UICHI_COMBOS },
+  NEW_URA: { label: "新裏ういち目", notation: "2-1-3456", combos: NEW_URA_UICHI_COMBOS },
+};
 
 export const VENUES = [
   { code: "KRY", name: "桐生" },
