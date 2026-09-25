@@ -1,2 +1,27 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-export default async function(req){try{const b=createClientFromRequest(req);const sr=b.asServiceRole.entities;const j=new Date(Date.now()+9*3600000);const date=j.toISOString().slice(0,10);const races=await sr.Race.filter({race_date:date},'race_number',500).catch(()=>[]);let invoked=0,failed=0;for(const race of races){try{await b.asServiceRole.functions.invoke('syncBoatcastRace',{race_date:date,venue_code:race.venue_code,race_number:race.race_number});invoked++;}catch{failed++;}await new Promise(r=>setTimeout(r,120));}return Response.json({ok:true,date,races:races.length,invoked,failed,source:'BOATCAST'});}catch(e){return Response.json({ok:false,error:e.message},{status:500})}}
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.49';
+
+// BOAT WORKS: 当日のBOATCAST自動同期
+// syncBoatcastDay(当日: Race生成+展示/オッズ/結果)を呼び出す
+// 翌日同期は "BOATCAST Tomorrow Sync" ワークフローで別途実行
+
+export default async function(req) {
+  try {
+    const base44 = createClientFromRequest(req);
+    let user = null;
+    try { user = await base44.auth.me(); } catch {}
+    if (user && user.role !== 'admin') {
+      return Response.json({ ok: false, error: '管理者権限が必要です' }, { status: 403 });
+    }
+
+    // 当日同期(Race生成 + 展示/オッズ/結果)
+    const result = await base44.asServiceRole.functions.invoke('syncBoatcastDay', {
+      target_offset: 0,
+      sync_details: true,
+    });
+
+    const data = result?.data || result;
+    return Response.json(data);
+  } catch (e) {
+    return Response.json({ ok: false, error: e.message }, { status: 500 });
+  }
+}
