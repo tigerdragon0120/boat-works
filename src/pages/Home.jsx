@@ -128,6 +128,28 @@ export default function Home() {
     };
   }, [tab, loading, races]);
 
+  // 「明日」を開いた時点で翌日データがまだ無ければ、その場で公式出走表を取得する。
+  // 定期ワークフロー(10分ごと)の取りこぼしがあっても自己修復する。
+  useEffect(() => {
+    if (tab !== "tomorrow" || loading || races.length > 0) return;
+    const key = `boatworks_tomorrow_bootstrap_${dateStr(1)}`;
+    const last = Number(sessionStorage.getItem(key) || 0);
+    if (Date.now() - last < 5 * 60 * 1000) return;
+    sessionStorage.setItem(key, String(Date.now()));
+    (async () => {
+      try {
+        await base44.functions.invoke("runDailyOvernight", { target_offset: 1 });
+        invalidateCache(`races_${dateStr(1)}`);
+        const [freshRaces, freshAnalyses] = await Promise.all([
+          getRacesByDate(dateStr(1)), getCachedAnalysesByDate(dateStr(1)),
+        ]);
+        setRaces(freshRaces);
+        setAnalyses(freshAnalyses);
+        setCacheHitRate(computeCacheHitRate(freshRaces, freshAnalyses));
+      } catch {}
+    })();
+  }, [tab, loading, races.length]);
+
   // 当日Homeで締切90分以内なのに分析未作成のレースが見えている場合、
   // バックグラウンド定期実行を待たず自己修復を1回だけ起動する。
   useEffect(() => {
