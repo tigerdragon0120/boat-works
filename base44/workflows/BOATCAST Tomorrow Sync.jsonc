@@ -31,7 +31,9 @@
           "with": {
             "function_name": "runDailyOvernight",
             "args": {
-              "target_offset": 1
+              "target_offset": 1,
+              "require_collection": false,
+              "skip_aggregate": true
             }
           },
           "then": "end"
