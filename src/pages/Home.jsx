@@ -167,21 +167,19 @@ export default function Home() {
     })();
   }, [tab, loading, races, analyses]);
 
-  const sortedRaces = useMemo(() => {
-    const now = Date.now();
-    return [...races]
-      .filter((r) => {
-        if (tab !== "today") return true;
-        if (!r.deadline) return true;
-        // Homeは「これから買えるレース」専用。締切を過ぎたら結果取得の成否に関係なく消す。
-        // 結果・払戻・検証は「検証」ページへ引き継ぐ。
-        const deadlineMs = new Date(r.deadline).getTime();
-        if (Number.isFinite(deadlineMs) && now >= deadlineMs) return false;
-        if (r.status === "finished" || r.status === "completed") return false;
-        return true;
-      })
-      .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
-  }, [races, alerts, tab, tick]);
+  const sortedRaces = useMemo(() => [...races].sort((a, b) => new Date(a.deadline) - new Date(b.deadline)), [races, tab, tick]);
+
+  // レース一覧はBOAT WORKS 2方式：開催場を選び、終了済みを含む1〜12Rをいつでも見返せる。
+  const venues = useMemo(() => {
+    const m = new Map();
+    for (const r of races) if (!m.has(r.venue_code)) m.set(r.venue_code, { code:r.venue_code, name:r.venue_name });
+    return [...m.values()];
+  }, [races]);
+  const [selectedVenue, setSelectedVenue] = useState("");
+  useEffect(() => {
+    if (venues.length && !venues.some(v => v.code === selectedVenue)) setSelectedVenue(venues[0].code);
+  }, [venues, selectedVenue]);
+  const venueRaces = useMemo(() => sortedRaces.filter(r => r.venue_code === selectedVenue).sort((a,b)=>Number(a.race_number)-Number(b.race_number)), [sortedRaces, selectedVenue]);
 
   // alert races: 一度アラート対象になったレースは、BUY/WATCH/SKIPに関係なく結果確定まで表示する。
   const alertRaces = useMemo(() => {
@@ -327,24 +325,28 @@ export default function Home() {
       </section>
 
 
-      {/* All races */}
+      {/* All races — 開催場→1〜12Rを見返す */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <CalendarClock className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日の全レース" : "明日の全レース"}</h2>
+          <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日の開催・全レース" : "明日の開催・全レース"}</h2>
           <span className="ml-auto text-xs text-muted-foreground">{sortedRaces.length}レース</span>
         </div>
-        {sortedRaces.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            該当するレースがありません
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {sortedRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} seriesPoint={pointForRace(r, analyses[r.id])} />
-            ))}
-          </div>
-        )}
+        {venues.length > 0 && <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
+          {venues.map(v => <button key={v.code} onClick={()=>setSelectedVenue(v.code)} className={cn("shrink-0 rounded-xl border px-3 py-2 text-sm font-bold", selectedVenue===v.code ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border")}>{v.name}</button>)}
+        </div>}
+        {venueRaces.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">該当するレースがありません</div> :
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {venueRaces.map(r => {
+              const finished = r.status === "finished" || r.status === "completed" || (r.deadline && Date.now() >= new Date(r.deadline).getTime());
+              return <Link key={r.id} to={`/race/${r.id}`} className={cn("rounded-xl border p-3 text-center bg-card", finished ? "border-slate-200" : "border-primary/40")}>
+                <div className="font-bold">{r.race_number}R</div>
+                <div className="text-[10px] text-muted-foreground mt-1">{finished ? "結果を見る" : fmtTime(r.deadline)}</div>
+                {r.result_trifecta && <div className="text-xs font-bold mt-1">{r.result_trifecta}</div>}
+                {r.payout_trifecta != null && <div className="text-[10px] font-semibold text-emerald-600">{Math.round(r.payout_trifecta).toLocaleString()}円</div>}
+              </Link>;
+            })}
+          </div>}
       </section>
     </div>
   );
