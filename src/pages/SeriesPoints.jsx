@@ -27,9 +27,17 @@ export default function SeriesPoints() {
     let alive = true;
     (async () => {
       try {
+        // 今節ページを開いた時にも当日分を再集計。夜間処理待ちにしない。
+        const jst = new Date(Date.now() + 9*60*60*1000);
+        const today = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth()+1).padStart(2,"0")}-${String(jst.getUTCDate()).padStart(2,"0")}`;
+        try {
+          const races = await base44.entities.Race.filter({ race_date: today }, "venue_code", 500);
+          const jcds = [...new Set((races || []).map(r => r.venue_code).filter(Boolean))];
+          await Promise.all(jcds.map(jcd => base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date: today, jcd }).catch(()=>null)));
+        } catch {}
         const [c, p] = await Promise.all([
           base44.entities.SeriesContext.list("-refreshed_at", 200),
-          base44.entities.SeriesRacerPoint.list("-snapshot_at", 1000),
+          base44.entities.SeriesRacerPoint.list("-snapshot_at", 2000),
         ]);
         if (!alive) return;
         setContexts(c || []);
