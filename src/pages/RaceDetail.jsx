@@ -530,20 +530,32 @@ export default function RaceDetail() {
         </div>
       )}
 
-      {/* 出走表 */}
-      <div className="rounded-2xl bg-card border border-border p-4">
-        <h3 className="text-sm font-bold mb-3">出走表</h3>
-        <div className="space-y-1.5">
-          {entries.map((e) => (
-            <div key={e.id} className="flex items-center gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
-              <span className="w-6 h-6 rounded-md bg-primary/15 text-primary font-bold flex items-center justify-center text-xs">{e.boat_number}</span>
-              <RacerPhoto registrationNumber={e.registration_number} racerName={e.racer_name} size="sm" />
-              <span className="font-semibold flex-1 truncate">{e.racer_name}</span>
-              <span className="text-xs text-muted-foreground">{e.grade_class}</span>
-              <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">全国{fmtNum(e.national_win_rate, 2)}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">ST{fmtNum(e.avg_st, 2)}</span>
+      {/* 出走表 — BOAT WORKS 2 と同じ情報密度 */}
+      <div className="rounded-2xl bg-card border border-border overflow-hidden">
+        <div className="px-4 pt-4 pb-3"><h3 className="text-sm font-bold">出走表</h3></div>
+        <div className="overflow-x-auto">
+          <div className="min-w-[720px]">
+            <div className="grid grid-cols-[42px_250px_48px_58px_90px_90px_48px] gap-2 px-4 py-2 bg-muted/35 text-[10px] text-muted-foreground font-semibold">
+              <span>枠</span><span>選手名</span><span className="text-center">FL</span><span className="text-center">ST</span><span className="text-center">全国勝率</span><span className="text-center">当地勝率</span><span className="text-center">評価</span>
             </div>
-          ))}
+            {entries.map((e) => (
+              <div key={e.id} className={cn("grid grid-cols-[42px_250px_48px_58px_90px_90px_48px] gap-2 items-center px-4 py-3 border-t border-border/60 text-sm", e.boat_number === 3 && "bg-rose-50/55", e.boat_number === 5 && "bg-amber-50/55", e.boat_number === 6 && "bg-emerald-50/55")}>
+                <span className="w-8 h-8 rounded-lg bg-primary/15 text-primary font-bold flex items-center justify-center">{e.boat_number}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <RacerPhoto registrationNumber={e.registration_number} racerName={e.racer_name} size="sm" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0"><span className="font-bold truncate">{e.racer_name || "—"}</span><span className="font-semibold truncate text-xs">{e.branch || ""}</span><span className="px-1.5 py-0.5 rounded bg-slate-700 text-white text-[10px] font-bold">{e.grade_class || "—"}</span></div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">登録{e.registration_number || "—"}</div>
+                  </div>
+                </div>
+                <span className="text-center tabular-nums">{e.f_count ? "F"+e.f_count : e.l_count ? "L"+e.l_count : "—"}</span>
+                <span className="text-center tabular-nums font-semibold">{fmtNum(e.avg_st, 2)}</span>
+                <div className="text-center"><div className="font-bold tabular-nums">{fmtNum(e.national_win_rate, 2)}</div>{e.national_2rate != null && <div className="text-[10px] text-muted-foreground">2連{fmtNum(e.national_2rate, 2)}%</div>}</div>
+                <div className="text-center"><div className="font-bold tabular-nums">{fmtNum(e.local_win_rate, 2)}</div>{e.local_2rate != null && <div className="text-[10px] text-muted-foreground">2連{fmtNum(e.local_2rate, 2)}%</div>}</div>
+                <span className="text-center font-bold text-amber-500">{e.evaluation_score != null ? Math.round(e.evaluation_score) : "—"}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
