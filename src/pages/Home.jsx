@@ -139,10 +139,8 @@ export default function Home() {
     sessionStorage.setItem(key, String(Date.now()));
     (async () => {
       try {
-        await base44.functions.invoke("runDailyOvernight", {
-          target_offset: 1,
-          require_collection: false,
-          skip_aggregate: true,
+        await base44.functions.invoke("bootstrapTomorrowOfficial", {
+          race_date: dateStr(1),
         });
         invalidateCache(`races_${dateStr(1)}`);
         const [freshRaces, freshAnalyses] = await Promise.all([
