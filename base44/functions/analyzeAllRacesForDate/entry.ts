@@ -350,6 +350,10 @@ export default async function(req) {
             similar_count: a.similar_count, uichi_hits: a.uichi_hits, appearance_rate: a.appearance_rate,
             ura_uichi_hits: a.ura_uichi_hits, ura_uichi_rate: a.ura_uichi_rate,
             synthetic_odds: a.synthetic_odds, expected_value: a.expected_value, judgment: a.judgment,
+            // v15: 4型の最終計算結果をDBへ必ず保存
+            new_uichi_rate: a.new_uichi_rate, new_ura_uichi_rate: a.new_ura_uichi_rate,
+            pattern_scores: a.pattern_scores || {}, recommended_pattern_label: a.recommended_pattern_label || null,
+            recommended_bets: a.recommended_bets || [],
             boat1_grade: a.boat1_grade, boat1_score: a.boat1?.national_win_rate || 0, min_similar_ok: a.min_similar_ok,
             captured_at: now, analyzed_at: now,
             reliability: a.reliability, data_sufficiency: a.data_sufficiency,
