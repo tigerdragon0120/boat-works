@@ -29,10 +29,9 @@
         "sync": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "syncBoatcastDay",
+            "function_name": "runDailyOvernight",
             "args": {
-              "target_offset": 1,
-              "sync_details": false
+              "target_offset": 1
             }
           },
           "then": "end"
