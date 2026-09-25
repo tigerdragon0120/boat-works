@@ -35,6 +35,14 @@ async function loadPhoto(registrationNumber) {
   const reg = String(registrationNumber || "").trim();
   if (!/^\d{4}$/.test(reg)) return null;
   if (photoCache.has(reg)) return photoCache.get(reg);
+
+  // 公式写真URLは登録番号で固定。まず直接表示し、バックエンドAPIは補助経路として使う。
+  // これにより関数呼び出しの一時失敗で写真が消えるのを防ぐ。
+  const directUrl = `https://www.boatrace.jp/racerphoto/${reg}.jpg`;
+  photoCache.set(reg, directUrl);
+  return directUrl;
+
+  /* fallback proxy (direct URLが使えない環境向けに残す) */
   const failedAt = failureCache.get(reg);
   if (failedAt && Date.now() - failedAt < FAILURE_TTL) return photoCache.get(reg) || null;
   if (pendingCache.has(reg)) return pendingCache.get(reg);
