@@ -40,6 +40,12 @@ export default async function(req) {
     const analyses = await base44.asServiceRole.entities.UichiAnalysis.filter(
       { race_id: { $in: ids } }, '-captured_at', Math.min(limit * 3, 2000)
     ).catch(() => []);
+    // BOATCAST同期はRace本体にも確定結果・払戻を保存する。
+    // RaceResult生成が遅れても検証不能にならないようRaceをフォールバックとして読む。
+    const raceRows = await base44.asServiceRole.entities.Race.filter(
+      { id: { $in: ids } }, '-race_date', Math.min(limit, 1000)
+    ).catch(() => []);
+    const raceMap = new Map(raceRows.map(r => [r.id, r]));
 
     const resultMap = new Map();
     const resultKey = (x) => `${x.race_date}_${String(x.venue_code || '').padStart(2, '0')}_${Number(x.race_number || 0)}`;
@@ -57,11 +63,15 @@ export default async function(req) {
 
     const rows = alerts.map(al => {
       const result = resultMap.get(resultKey(al)) || null;
+      const race = raceMap.get(al.race_id) || null;
       const final = finalMap.get(al.race_id) || null;
       const pre = preMap.get(al.race_id) || null;
       const judgment = final?.judgment || al.final_judgment || null;
-      const completed = !!result;
-      const hit = completed ? !!result.is_uichi : null;
+      const resultTrifecta = result?.trifecta || race?.result_trifecta || null;
+      const payoutTrifecta = result?.payout_trifecta ?? race?.payout_trifecta ?? null;
+      const completed = !!resultTrifecta || !!result || race?.status === 'finished' || race?.status === 'completed';
+      const uichiCombos = new Set(['1-2-5','1-2-6','1-3-5','1-3-6','1-4-5','1-4-6']);
+      const hit = completed ? (result?.is_uichi ?? uichiCombos.has(resultTrifecta)) : null;
       return {
         race_id: al.race_id,
         race_date: al.race_date,
@@ -77,8 +87,8 @@ export default async function(req) {
         final_expected_value: final?.expected_value ?? al.final_expected_value ?? null,
         synthetic_odds: final?.synthetic_odds ?? al.synthetic_odds ?? null,
         completed,
-        result_trifecta: result?.trifecta || null,
-        payout_trifecta: result?.payout_trifecta ?? null,
+        result_trifecta: resultTrifecta,
+        payout_trifecta: payoutTrifecta,
         is_uichi: hit,
       };
     }).filter(r => r.pre_grade || r.pre_appearance_rate != null);
