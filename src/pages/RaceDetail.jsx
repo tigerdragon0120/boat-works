@@ -74,6 +74,7 @@ export default function RaceDetail() {
       new_uichi_rate: cached.new_uichi_rate,
       new_ura_uichi_rate: cached.new_ura_uichi_rate,
       recommended_pattern: cached.recommended_pattern,
+      recommended_rate: cached.recommended_rate,
       recommended_pattern_label: cached.recommended_pattern_label,
       recommended_bets: cached.recommended_bets || [],
       pattern_scores: cached.pattern_scores || {},
@@ -177,6 +178,21 @@ export default function RaceDetail() {
   const mins = finalAt ? Math.max(0, Math.ceil((finalAt.getTime() - Date.now()) / 60000)) : null;
   const within5 = canFinalJudge(race.deadline);
   const boat1 = entries.find((e) => e.boat_number === 1);
+
+  // DBのfinal保存が一巡遅れても、取得済み120通り実オッズから合成オッズ/EVを即時計算して表示する。
+  const PATTERN_COMBOS = {
+    MAIN: ['1-2-5','1-2-6','1-3-5','1-3-6','1-4-5','1-4-6'],
+    URA: ['1-5-2','1-5-3','1-5-4','1-6-2','1-6-3','1-6-4'],
+    NEW_MAIN: ['1-3-2','1-4-2','1-5-2','1-6-2'],
+    NEW_URA: ['2-1-3','2-1-4','2-1-5','2-1-6'],
+  };
+  const displayCombos = PATTERN_COMBOS[analysis?.recommended_pattern] || [];
+  const displayOddsValues = displayCombos.map(c => Number(odds?.all_trifecta_odds?.[c])).filter(v => Number.isFinite(v) && v > 1);
+  const fallbackSynth = displayOddsValues.length === displayCombos.length && displayOddsValues.length > 0
+    ? 1 / displayOddsValues.reduce((s, v) => s + 1 / v, 0) : null;
+  const displaySynth = Number(analysis?.synthetic_odds) > 0 ? Number(analysis.synthetic_odds) : fallbackSynth;
+  const displayEv = analysis?.expected_value != null ? Number(analysis.expected_value)
+    : (displaySynth && Number(analysis?.recommended_rate) > 0 ? Number(analysis.recommended_rate) * displaySynth * 100 : null);
   const isOfficial = race.data_source === "official";
 
   const handleRefetch = async () => {
@@ -346,8 +362,8 @@ export default function RaceDetail() {
       <div className="grid grid-cols-3 gap-3">
         <StatTile label="ういち出現率" value={fmtPct(analysis?.appearance_rate, 1)} accent="primary"
           sub={`類似 ${analysis?.similar_count ?? "—"}件 / 的中 ${analysis?.uichi_hits ?? "—"}件`} />
-        <StatTile label="合成オッズ" value={within5 && odds ? fmtNum(analysis?.synthetic_odds, 2) : "—"} accent="emerald" unit={within5 && odds ? "倍" : ""} />
-        <StatTile label="期待値指数" value={within5 && odds ? fmtNum(analysis?.expected_value, 0) + "%" : "—"} accent="amber" />
+        <StatTile label="合成オッズ" value={odds && displaySynth ? fmtNum(displaySynth, 2) : "—"} accent="emerald" unit={odds && displaySynth ? "倍" : ""} />
+        <StatTile label="期待値指数" value={odds && displayEv != null ? fmtNum(displayEv, 0) + "%" : "—"} accent="amber" />
       </div>
 
       {/* データ品質指標 */}
