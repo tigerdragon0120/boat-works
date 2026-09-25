@@ -1,8 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Loader2, AlertCircle, CalendarClock } from "lucide-react";
-import RaceCard from "@/components/RaceCard";
-import JudgmentBadge from "@/components/JudgmentBadge";
+import { Loader2, AlertCircle, CalendarClock } from "lucide-react";
 import {
   seedIfNeeded, getSettings, getRacesByDate,
   getAlerts,
@@ -254,14 +252,6 @@ export default function Home() {
         ))}
       </div>
 
-      {/* キャッシュヒット率 */}
-      {cacheHitRate != null && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-          <span className={cn("inline-block w-2 h-2 rounded-full", cacheHitRate >= 0.95 ? "bg-emerald-400" : "bg-amber-400")} />
-          <span>分析キャッシュヒット率 <span className={cn("font-semibold tabular-nums", cacheHitRate >= 0.95 ? "text-emerald-600" : "text-amber-600")}>{Math.round(cacheHitRate * 100)}%</span></span>
-        </div>
-      )}
-
       {/* 候補ランキング（保存済み分析から全場横断） */}
       {rankedRaces.length > 0 && (
         <section>
@@ -300,30 +290,6 @@ export default function Home() {
           </div>
         </section>
       )}
-
-      {/* Alert section */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Bell className="w-4 h-4 text-amber-500" />
-          <h2 className="text-sm font-bold tracking-wide">{tab === "today" ? "本日のういち買いアラート" : "前日ういち買いアラート候補"}</h2>
-          <span className="ml-auto text-xs text-muted-foreground">{alertRaces.length}件</span>
-        </div>
-        {tab === "today" && (
-          <div className="text-[11px] text-muted-foreground mb-2">締切を過ぎたレースはHomeから自動で消えます。終了後の結果は下メニューの「検証」で確認できます。</div>
-        )}
-        {alertRaces.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {tab === "today" ? "現在アラート対象レースはありません" : "前日出現率の高いレースはありません"}
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {alertRaces.map((r) => (
-              <RaceCard key={r.id} race={r} analysis={analyses[r.id]} mode={tab} preGrade={alertMap[r.id]?.pre_grade} finalStatus={finalStatusMap[r.id]} seriesPoint={pointForRace(r, analyses[r.id])} />
-            ))}
-          </div>
-        )}
-      </section>
-
 
       {/* All races — 開催場→1〜12Rを見返す */}
       <section>
