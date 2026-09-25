@@ -43,7 +43,9 @@ export default async function(req) {
     // 公式サイト側の大規模障害等の可能性）は、従来通り安全側に倒して待機する。
     let collectionGate:any=null;
     let stuckVenues:any[] = [];
-    if (targetOffset === 1 && body.require_collection !== false) {
+    // 翌日の出走表取得そのものは、今日の収集完了を待たせない。
+    // 今日の節間データが未完でもRace/RaceEntryを先に作り、事前分析側だけ既存データで安全に処理する。
+    if (targetOffset === 1 && body.require_collection === true) {
       const sourceDate = localDateStr(0);
       try {
         const c = await base44.asServiceRole.functions.invoke('runSeriesNightFinalize', { race_date: sourceDate });
