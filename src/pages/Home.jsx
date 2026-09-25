@@ -134,11 +134,16 @@ export default function Home() {
     if (tab !== "tomorrow" || loading || races.length > 0) return;
     const key = `boatworks_tomorrow_bootstrap_${dateStr(1)}`;
     const last = Number(sessionStorage.getItem(key) || 0);
-    if (Date.now() - last < 5 * 60 * 1000) return;
+    // 0件の間は長時間ロックしない。失敗後30秒で再試行可能。
+    if (Date.now() - last < 30 * 1000) return;
     sessionStorage.setItem(key, String(Date.now()));
     (async () => {
       try {
-        await base44.functions.invoke("runDailyOvernight", { target_offset: 1 });
+        await base44.functions.invoke("runDailyOvernight", {
+          target_offset: 1,
+          require_collection: false,
+          skip_aggregate: true,
+        });
         invalidateCache(`races_${dateStr(1)}`);
         const [freshRaces, freshAnalyses] = await Promise.all([
           getRacesByDate(dateStr(1)), getCachedAnalysesByDate(dateStr(1)),
@@ -146,7 +151,10 @@ export default function Home() {
         setRaces(freshRaces);
         setAnalyses(freshAnalyses);
         setCacheHitRate(computeCacheHitRate(freshRaces, freshAnalyses));
-      } catch {}
+        if (!freshRaces?.length) sessionStorage.removeItem(key);
+      } catch {
+        sessionStorage.removeItem(key);
+      }
     })();
   }, [tab, loading, races.length]);
 
