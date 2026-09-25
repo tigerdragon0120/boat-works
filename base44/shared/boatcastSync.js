@@ -113,7 +113,8 @@ export function parseStr3(text) {
 // Parse TKZ (展示タイム)
 export function parseTkz(text) {
   const ls = text.split(/\r?\n/).filter(x => x.trim() && x.trim() !== 'data=');
-  const rows = ls.filter(l => !/^\d\t\.\d/.test(l)).slice(0, 6);
+  // 先頭のレース番号行(例: "1")を除外し、選手6行だけを対象にする
+  const rows = ls.filter(l => l.includes('\t') && !/^\d\t\.\d/.test(l)).slice(0, 6);
   const st = ls.find(l => /^\d\t\.\d/.test(l));
   const stMap = {};
   if (st) {
