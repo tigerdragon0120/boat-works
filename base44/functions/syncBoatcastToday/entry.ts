@@ -17,12 +17,13 @@ export default async function(req){
   }).sort((a,b)=>{
    const ap=!a.exhibition_ready?0:1,bp=!b.exhibition_ready?0:1;if(ap!==bp)return ap-bp;
    return new Date(a.deadline||0).getTime()-new Date(b.deadline||0).getTime();
-  }).slice(0,36);
+  }).slice(0,12);
   let ok=0,failed=0;
-  for(let i=0;i<targets.length;i+=6){
-   const batch=targets.slice(i,i+6);
+  for(let i=0;i<targets.length;i+=3){
+   const batch=targets.slice(i,i+3);
    const rr=await Promise.all(batch.map(r=>base44.asServiceRole.functions.invoke('syncBoatcastRace',{race_date:raceDate,venue_code:String(r.venue_code).padStart(2,'0'),race_number:Number(r.race_number)}).catch(e=>({error:e.message}))));
    for(const x of rr){const d=x?.data||x;if(d?.ok)ok++;else failed++;}
+   if(i+3<targets.length) await new Promise(r=>setTimeout(r,1200));
   }
   return Response.json({ok:true,race_date:raceDate,races:races.length,targets:targets.length,synced:ok,failed});
  }catch(e){return Response.json({ok:false,error:e.message},{status:500});}
