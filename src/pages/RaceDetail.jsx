@@ -502,6 +502,7 @@ export default function RaceDetail() {
           {entries.map((e) => (
             <div key={e.id} className="flex items-center gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
               <span className="w-6 h-6 rounded-md bg-primary/15 text-primary font-bold flex items-center justify-center text-xs">{e.boat_number}</span>
+              <RacerPhoto registrationNumber={e.registration_number} racerName={e.racer_name} size="sm" />
               <span className="font-semibold flex-1 truncate">{e.racer_name}</span>
               <span className="text-xs text-muted-foreground">{e.grade_class}</span>
               <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">全国{fmtNum(e.national_win_rate, 2)}</span>
