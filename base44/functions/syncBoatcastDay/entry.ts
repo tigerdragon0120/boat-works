@@ -1,8 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.49';
 import {
   VENUE_NAMES, fetchBoatcastText, parseStr3, parseTkz, parseOdds, parseRs1, parseRs2,
-  discoverVenues, defaultDeadline
+  discoverVenues
 } from '../../shared/boatcastSync.js';
+import { parseDaySchedule } from '../../shared/scraper.js';
 
 // BOAT WORKS: BOATCASTから1日分のレースデータを自動取得・同期
 // 開催場検出 → Race/RaceEntry生成 → 展示/オッズ/結果同期
@@ -65,6 +66,20 @@ export default async function(req) {
       const venueName = VENUE_NAMES[vc] || vc;
       let venueRaces = 0, venueEntries = 0;
 
+      // 締切時刻は推測値を使わず、公式raceindexの実時刻を取得する。
+      // 取得失敗時は既存値を保持し、新規Raceはdeadline=nullで作成する。
+      let deadlineByRace = new Map();
+      try {
+        const hd = raceDate.replace(/-/g, '');
+        const res = await fetch(`https://boatrace.jp/owpc/pc/race/raceindex?jcd=${vc}&hd=${hd}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+        });
+        if (res.ok) {
+          const schedule = parseDaySchedule(await res.text(), raceDate);
+          deadlineByRace = new Map(schedule.map(x => [Number(x.race_number), x.deadline]));
+        }
+      } catch {}
+
       // STR3を1R〜12Rまで並列取得
       const str3Results = await Promise.all(
         Array.from({ length: 12 }, (_, i) =>
@@ -96,7 +111,7 @@ export default async function(req) {
           series_end_date: raceDate,
           series_total_days: 1,
           series_day: 1,
-          deadline: defaultDeadline(raceDate, raceNumber),
+          deadline: deadlineByRace.get(raceNumber) || existing?.deadline || null,
           status: 'scheduled',
           data_source: 'official',
           scratched_boats: scratchedBoats,
