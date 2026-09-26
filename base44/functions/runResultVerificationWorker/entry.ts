@@ -96,7 +96,14 @@ async function processDate(base44, raceDate, nowMs) {
     const r1 = Number(result.result_1 || 0), r2 = Number(result.result_2 || 0), r3 = Number(result.result_3 || 0);
     const mainHit = r1 === 1 && [2,3,4].includes(r2) && [5,6].includes(r3);
     const uraHit = r1 === 1 && [5,6].includes(r2) && [2,3,4].includes(r3);
-    const recommendedHit = sample.recommended_pattern === 'MAIN' ? mainHit : sample.recommended_pattern === 'URA' ? uraHit : false;
+    const newMainHit = r1 === 1 && [3,4,5,6].includes(r2) && r3 === 2;
+    const newUraHit = r1 === 2 && r2 === 1 && [3,4,5,6].includes(r3);
+    const hitMap = { MAIN: mainHit, URA: uraHit, NEW_MAIN: newMainHit, NEW_URA: newUraHit };
+    const recommendedHit = hitMap[sample.recommended_pattern] === true;
+    const actualPattern = mainHit ? 'MAIN' : uraHit ? 'URA' : newMainHit ? 'NEW_MAIN' : newUraHit ? 'NEW_URA' : 'OTHER';
+    const falseSkip = actualPattern !== 'OTHER' && sample.final_judgment === 'SKIP';
+    const falseWatch = actualPattern !== 'OTHER' && sample.final_judgment === 'WATCH';
+    const missReason = (falseSkip || falseWatch) ? `${actualPattern} hit but ${sample.final_judgment}; predicted=${sample.recommended_pattern || 'NEUTRAL'}; rate=${sample.recommended_rate || 0}; structure=${sample.recommended_structure || 0}; EV=${sample.final_expected_value || 0}` : null;
     learningUpdates.push({
       id: sample.id,
       result_1: r1, result_2: r2, result_3: r3,
@@ -105,8 +112,13 @@ async function processDate(base44, raceDate, nowMs) {
       boat1_win: r1 === 1,
       main_hit: mainHit,
       ura_hit: uraHit,
+      new_main_hit: newMainHit,
+      new_ura_hit: newUraHit,
       recommended_hit: recommendedHit,
-      outcome_pattern: mainHit ? 'MAIN' : uraHit ? 'URA' : 'OTHER',
+      false_skip: falseSkip,
+      false_watch: falseWatch,
+      miss_reason: missReason,
+      outcome_pattern: actualPattern,
       result_attached_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
