@@ -20,20 +20,20 @@ async function processDate(base44, raceDate, nowMs) {
   const resultKeys = new Set(results.map(resultKey));
   const venueTargets = new Set<string>();
 
-  // Raceがある日は、締切5分後を過ぎた未結果レースの開催場を回収対象にする。
+  // Raceがある日は、締切1分後を過ぎた未結果レースの開催場を回収対象にする。
   // 結果未取得は毎回対象に残すため、一時失敗しても次周期で自動再試行する。
   for (const r of races) {
     if (!r?.deadline || resultKeys.has(resultKey(r))) continue;
     const deadlineMs = new Date(r.deadline).getTime();
     if (!Number.isFinite(deadlineMs)) continue;
-    if (nowMs >= deadlineMs + 5 * 60 * 1000) venueTargets.add(String(r.venue_code).padStart(2, '0'));
+    if (nowMs >= deadlineMs + 1 * 60 * 1000) venueTargets.add(String(r.venue_code).padStart(2, '0'));
   }
 
   // 前日などRaceが欠けていても、終了済みAlertが結果待ちならその開催場を回収する。
   for (const a of alerts) {
     if (resultKeys.has(resultKey(a))) continue;
     const deadlineMs = a.deadline ? new Date(a.deadline).getTime() : 0;
-    if (!deadlineMs || nowMs >= deadlineMs + 5 * 60 * 1000) {
+    if (!deadlineMs || nowMs >= deadlineMs + 1 * 60 * 1000) {
       venueTargets.add(String(a.venue_code).padStart(2, '0'));
     }
   }
