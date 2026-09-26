@@ -101,7 +101,7 @@ export default function RaceDetail() {
       const [ents, latestOdds, hist, byStage, results, vrs] = await Promise.all([
         getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
         base44.entities.RaceResult.filter({ race_id: id }, "-finished_at", 1).catch(() => []),
-        base44.entities.VenueRaceStats.filter({ venue_code: r.venue_code, race_number: Number(r.race_number) }, "-updated_date", 1).catch(() => []),
+        base44.entities.RaceResult.filter({ venue_code: r.venue_code, race_number: Number(r.race_number), data_source: "official" }, "-race_date", 500).catch(() => []),
       ]);
       setVenuePatternRates(vrs?.[0] || null);
       setRaceResult(results?.[0] || null);
