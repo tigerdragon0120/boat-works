@@ -333,9 +333,22 @@ export default function Home() {
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {venueRaces.map(r => {
               const finished = r.status === "finished" || r.status === "completed" || (r.deadline && Date.now() >= new Date(r.deadline).getTime());
-              return <Link key={r.id} to={`/race/${r.id}`} className={cn("rounded-xl border p-3 text-center bg-card", finished ? "border-slate-200" : "border-primary/40")}>
+              const a = analyses[r.id];
+              const al = alertMap[r.id];
+              const pattern = a?.recommended_pattern || al?.recommended_pattern;
+              const patternLabel =
+                pattern === "MAIN" ? "ういち" :
+                pattern === "URA" ? "裏ういち" :
+                pattern === "NEW_MAIN" ? "新ういち" :
+                pattern === "NEW_URA" ? "新裏ういち" : null;
+              const judgment = a?.judgment || al?.final_judgment;
+              return <Link key={r.id} to={`/race/${r.id}`} className={cn("rounded-xl border p-3 text-center bg-card", finished ? "border-slate-200" : judgment === "BUY" ? "border-emerald-400 ring-1 ring-emerald-300" : "border-primary/40")}>
                 <div className="font-bold">{r.race_number}R</div>
                 <div className="text-[10px] text-muted-foreground mt-1">{finished ? "結果を見る" : fmtTime(r.deadline)}</div>
+                {patternLabel && <div className="mt-1 text-[10px] font-bold text-primary">{patternLabel}</div>}
+                {patternLabel && judgment && judgment !== "PENDING" && (
+                  <div className={cn("mt-0.5 text-[11px] font-black", judgment === "BUY" ? "text-emerald-600" : judgment === "WATCH" ? "text-amber-600" : "text-slate-500")}>{judgment}</div>
+                )}
                 {r.result_trifecta && <div className="text-xs font-bold mt-1">{r.result_trifecta}</div>}
                 {r.payout_trifecta != null && <div className="text-[10px] font-semibold text-emerald-600">{Math.round(r.payout_trifecta).toLocaleString()}円</div>}
               </Link>;
