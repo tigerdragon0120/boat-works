@@ -103,7 +103,10 @@ export default function RaceDetail() {
         base44.entities.RaceResult.filter({ race_id: id }, "-finished_at", 1).catch(() => []),
         base44.entities.RaceResult.filter({ venue_code: r.venue_code, race_number: Number(r.race_number), data_source: "official" }, "-race_date", 500).catch(() => []),
       ]);
-      setVenuePatternRates(vrs?.[0] || null);
+      const historical = vrs || [];
+      const newMainHits = historical.filter(x => Number(x.result_1) === 1 && [3,4,5,6].includes(Number(x.result_2)) && Number(x.result_3) === 2).length;
+      const newUraHits = historical.filter(x => Number(x.result_1) === 2 && Number(x.result_2) === 1 && [3,4,5,6].includes(Number(x.result_3))).length;
+      setVenuePatternRates(historical.length ? { new_uichi_rate: newMainHits / historical.length, new_ura_uichi_rate: newUraHits / historical.length } : null);
       setRaceResult(results?.[0] || null);
       setEntries(ents);
       const b1 = (ents || []).find(e => Number(e.boat_number) === 1);
