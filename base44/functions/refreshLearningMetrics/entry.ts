@@ -39,6 +39,10 @@ export default async function(req) {
       add('direction_confidence_bucket', bucket(s.direction_confidence), s);
       add('hypothesis_x_escape', `${s.program_hypothesis || 'UNKNOWN'}|${bucket(s.racer_escape_execution)}`, s);
       add('scenario_x_pattern', `${s.program_scenario_status || 'UNKNOWN'}|${s.recommended_pattern || 'UNKNOWN'}`, s);
+      add('logic_mode', s.logic_mode || 'OTHER', s);
+      add('series_day', String(s.series_day || 0), s);
+      add('logic_x_pattern', `${s.logic_mode || 'OTHER'}|${s.recommended_pattern || 'UNKNOWN'}`, s);
+      add('venue_x_logic', `${s.venue_code || '00'}|${s.logic_mode || 'OTHER'}`, s);
     }
 
     const existing = await base44.asServiceRole.entities.UichiLearningMetric.list('metric_key', 1000).catch(() => []);
@@ -52,14 +56,26 @@ export default async function(req) {
       const boat1Wins = rows.filter(x => x.boat1_win === true).length;
       const mainHits = rows.filter(x => x.main_hit === true).length;
       const uraHits = rows.filter(x => x.ura_hit === true).length;
+      const newMainHits = rows.filter(x => x.new_main_hit === true).length;
+      const newUraHits = rows.filter(x => x.new_ura_hit === true).length;
       const recHits = rows.filter(x => x.recommended_hit === true).length;
+      const falseSkips = rows.filter(x => x.false_skip === true).length;
+      const falseWatches = rows.filter(x => x.false_watch === true).length;
+      const patternRates = { MAIN:pct(mainHits,n), URA:pct(uraHits,n), NEW_MAIN:pct(newMainHits,n), NEW_URA:pct(newUraHits,n) };
+      const candidate = Object.entries(patternRates).sort((a,b)=>b[1]-a[1])[0] || ['NONE',0];
+      const candidateStatus = n >= MIN_SAMPLE ? 'RELIABLE' : n >= 30 ? 'CANDIDATE' : 'LEARNING';
       const payload = {
         metric_key:g.metric_key, dimension:g.dimension, value:g.value,
         sample_count:n,
         boat1_win_count:boat1Wins, boat1_win_rate:pct(boat1Wins,n),
         main_hit_count:mainHits, main_hit_rate:pct(mainHits,n),
         ura_hit_count:uraHits, ura_hit_rate:pct(uraHits,n),
+        new_main_hit_count:newMainHits, new_main_hit_rate:pct(newMainHits,n),
+        new_ura_hit_count:newUraHits, new_ura_hit_rate:pct(newUraHits,n),
         recommended_hit_count:recHits, recommended_hit_rate:pct(recHits,n),
+        false_skip_count:falseSkips, false_skip_rate:pct(falseSkips,n),
+        false_watch_count:falseWatches, false_watch_rate:pct(falseWatches,n),
+        candidate_pattern:candidate[0], candidate_lift:candidate[1], candidate_status:candidateStatus,
         reliable:n >= MIN_SAMPLE, min_sample:MIN_SAMPLE,
         analysis_version:'v8',
         last_sample_date:rows[0]?.race_date || null,
