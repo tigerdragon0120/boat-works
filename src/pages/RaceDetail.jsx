@@ -511,8 +511,8 @@ export default function RaceDetail() {
         {[
           {key:'MAIN',label:'ういち目',notation:'1-234-56',rate:analysis?.appearance_rate,combos:UICHI_COMBOS},
           {key:'URA',label:'裏ういち目',notation:'1-56-234',rate:analysis?.ura_uichi_rate,combos:URA_UICHI_COMBOS},
-          {key:'NEW_MAIN',label:'新ういち目',notation:'1-3456-2',rate:(analysis?.new_uichi_rate > 0 ? analysis.new_uichi_rate : venuePatternRates?.new_uichi_rate),combos:NEW_UICHI_COMBOS},
-          {key:'NEW_URA',label:'新裏ういち目',notation:'2-1-3456',rate:(analysis?.new_ura_uichi_rate > 0 ? analysis.new_ura_uichi_rate : venuePatternRates?.new_ura_uichi_rate),combos:NEW_URA_UICHI_COMBOS},
+          {key:'NEW_MAIN',label:'新ういち目',notation:'1-3456-2',rate:(Number(venuePatternRates?.new_uichi_rate) > 0 ? Number(venuePatternRates.new_uichi_rate) : analysis?.new_uichi_rate),combos:NEW_UICHI_COMBOS},
+          {key:'NEW_URA',label:'新裏ういち目',notation:'2-1-3456',rate:(Number(venuePatternRates?.new_ura_uichi_rate) > 0 ? Number(venuePatternRates.new_ura_uichi_rate) : analysis?.new_ura_uichi_rate),combos:NEW_URA_UICHI_COMBOS},
         ].map(p => {
           const values=p.combos.map(c=>Number(odds?.all_trifecta_odds?.[c] ?? odds?.['odds_'+c.replace(/-/g,'_')])).filter(v=>Number.isFinite(v)&&v>0);
           const synth=values.length===p.combos.length ? 1/values.reduce((sum,v)=>sum+1/v,0) : null;
