@@ -100,6 +100,31 @@ export default async function(req) {
     const venueRaceStats = {};
     for (const v of allVRS) (venueRaceStats[v.venue_code] = venueRaceStats[v.venue_code] || {})[v.race_number] = v;
 
+    // v15: 新ういち/新裏ういちが旧v3集計で欠損している場合は、
+    // 公式RaceResultから場×R別の実出現率を直接補完して4型判定へ接続する。
+    // 画面表示だけでなく、recommended_pattern / BUY-WATCH / EV の入力値そのものに使う。
+    const needsPatternFallback = allVRS.some(v => v.new_uichi_rate == null || v.new_ura_uichi_rate == null);
+    if (needsPatternFallback) {
+      const historicalResults = await base44.asServiceRole.entities.RaceResult.filter({ data_source: "official" }, "-race_date", 50000).catch(() => []);
+      const buckets = {};
+      for (const rr of historicalResults) {
+        const key = `${rr.venue_code}:${Number(rr.race_number)}`;
+        const b = buckets[key] || (buckets[key] = { total:0, newMain:0, newUra:0 });
+        b.total++;
+        if (Number(rr.result_1) === 1 && [3,4,5,6].includes(Number(rr.result_2)) && Number(rr.result_3) === 2) b.newMain++;
+        if (Number(rr.result_1) === 2 && Number(rr.result_2) === 1 && [3,4,5,6].includes(Number(rr.result_3))) b.newUra++;
+      }
+      for (const [key,b] of Object.entries(buckets)) {
+        const [venue, rn] = key.split(':');
+        const row = venueRaceStats[venue]?.[Number(rn)];
+        if (!row || !b.total) continue;
+        if (row.new_uichi_rate == null) row.new_uichi_rate = b.newMain / b.total;
+        if (row.new_ura_uichi_rate == null) row.new_ura_uichi_rate = b.newUra / b.total;
+        row.new_uichi_hits = row.new_uichi_hits ?? b.newMain;
+        row.new_ura_uichi_hits = row.new_ura_uichi_hits ?? b.newUra;
+      }
+    }
+
     // 2. VenueStats
     const allVS = await base44.asServiceRole.entities.VenueStats.filter({ data_source: "official" }, "venue_code", 50);
     const venueStats = {};
