@@ -162,9 +162,13 @@ export default function RaceDetail() {
   }, [id, reloadKey]);
 
   useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 15000);
+    // 時刻表示だけでなく、最終判定待ち中はDBのfinal判定も自動再読込する。
+    const t = setInterval(() => {
+      setTick((x) => x + 1);
+      if (canFinalJudge(race?.deadline)) setReloadKey((k) => k + 1);
+    }, 15000);
     return () => clearInterval(t);
-  }, []);
+  }, [race?.deadline]);
 
   if (loading) {
     return (
