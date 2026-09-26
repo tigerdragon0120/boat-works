@@ -39,6 +39,7 @@ export default function RaceDetail() {
   const [reloadKey, setReloadKey] = useState(0);
   const [racerOpen, setRacerOpen] = useState(false);
   const [preAnalysis, setPreAnalysis] = useState(null);
+  const [venuePatternRates, setVenuePatternRates] = useState(null);
   const [seriesPoint, setSeriesPoint] = useState(null);
   const [raceResult, setRaceResult] = useState(null);
 
@@ -97,10 +98,12 @@ export default function RaceDetail() {
       const r = await base44.entities.Race.get(id);
       setSettings(s);
       setRace(r);
-      const [ents, latestOdds, hist, byStage, results] = await Promise.all([
+      const [ents, latestOdds, hist, byStage, results, vrs] = await Promise.all([
         getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
         base44.entities.RaceResult.filter({ race_id: id }, "-finished_at", 1).catch(() => []),
+        base44.entities.VenueRaceStats.filter({ venue_code: r.venue_code, race_number: Number(r.race_number) }, "-updated_date", 1).catch(() => []),
       ]);
+      setVenuePatternRates(vrs?.[0] || null);
       setRaceResult(results?.[0] || null);
       setEntries(ents);
       const b1 = (ents || []).find(e => Number(e.boat_number) === 1);
@@ -508,8 +511,8 @@ export default function RaceDetail() {
         {[
           {key:'MAIN',label:'ういち目',notation:'1-234-56',rate:analysis?.appearance_rate,combos:UICHI_COMBOS},
           {key:'URA',label:'裏ういち目',notation:'1-56-234',rate:analysis?.ura_uichi_rate,combos:URA_UICHI_COMBOS},
-          {key:'NEW_MAIN',label:'新ういち目',notation:'1-3456-2',rate:analysis?.new_uichi_rate,combos:NEW_UICHI_COMBOS},
-          {key:'NEW_URA',label:'新裏ういち目',notation:'2-1-3456',rate:analysis?.new_ura_uichi_rate,combos:NEW_URA_UICHI_COMBOS},
+          {key:'NEW_MAIN',label:'新ういち目',notation:'1-3456-2',rate:(analysis?.new_uichi_rate > 0 ? analysis.new_uichi_rate : venuePatternRates?.new_uichi_rate),combos:NEW_UICHI_COMBOS},
+          {key:'NEW_URA',label:'新裏ういち目',notation:'2-1-3456',rate:(analysis?.new_ura_uichi_rate > 0 ? analysis.new_ura_uichi_rate : venuePatternRates?.new_ura_uichi_rate),combos:NEW_URA_UICHI_COMBOS},
         ].map(p => {
           const values=p.combos.map(c=>Number(odds?.all_trifecta_odds?.[c] ?? odds?.['odds_'+c.replace(/-/g,'_')])).filter(v=>Number.isFinite(v)&&v>0);
           const synth=values.length===p.combos.length ? 1/values.reduce((sum,v)=>sum+1/v,0) : null;
