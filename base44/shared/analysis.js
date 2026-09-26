@@ -288,6 +288,17 @@ function computeSeriesRaceContext(race, entries, stats) {
   const pressure = Number(b1?.rank_pressure_score ?? 50);
   const phase = race?.race_phase || 'OTHER';
   const grade = race?.grade || 'GENERAL';
+  const day = Number(race?.series_day || 1);
+  const raceName = String(race?.race_name || '');
+  const isSemi = /準優/.test(raceName) || phase === 'SEMIFINAL';
+  const isFinal = (/優勝/.test(raceName) && !isSemi) || phase === 'FINAL';
+  const isSpecial = /特選|選抜/.test(raceName);
+  const isGeneral = /一般/.test(raceName) || grade === 'GENERAL';
+  const logicMode = isSemi ? 'SEMIFINAL'
+    : isFinal ? 'FINAL'
+    : day >= 6 && isSpecial ? 'SPECIAL_SELECTION'
+    : day >= 5 && isGeneral ? 'PROGRAM_GENERAL'
+    : day >= 4 ? 'QUALIFYING_LATE' : 'QUALIFYING';
   const previousDate = (() => {
     if (!race?.race_date) return null;
     const d = new Date(`${race.race_date}T00:00:00Z`);
@@ -312,7 +323,7 @@ function computeSeriesRaceContext(race, entries, stats) {
 
   // 予選ボーダー付近で翌日1号艇を与えられた場合は「軸配置の意図」の補強材料。
   // 能力そのものへの大加点はせず、番組意図の信頼度だけを上げる。
-  const placementSignal = phase === 'QUALIFYING' && pressure >= 80 && (
+  const placementSignal = (logicMode === 'QUALIFYING' || logicMode === 'QUALIFYING_LATE') && pressure >= 80 && (
     Number(b1?.avg_lane || 0) >= 3.3 || Number(b1?.inner_lane_count || 0) <= 1
   );
 
@@ -326,10 +337,18 @@ function computeSeriesRaceContext(race, entries, stats) {
   if (!snapshotReady) concerns.push({ label:'前日全結果・今節ポイントの確定待ち', severity:30, layer:'series' });
   if (routineOuterExclusion) concerns.push({ label:'一般戦のB2外枠通常配置（偽シグナル）', severity:20, layer:'series' });
   if (weakSeries) concerns.push({ label:`1号艇 今節指数${Math.round(b1Score)}で低調`, severity:10, layer:'series' });
+  if (logicMode === 'PROGRAM_GENERAL') reasons.push({ label:`${day}日目一般戦：番組構成重視`, strength:82, layer:'series' });
+  if (logicMode === 'SEMIFINAL') reasons.push({ label:'準優勝戦：得点率補正を外し実力・枠・ST・機力重視', strength:90, layer:'series' });
+  if (logicMode === 'FINAL') reasons.push({ label:'優勝戦：得点率補正なし・今節実績と直前気配重視', strength:95, layer:'series' });
+  if (logicMode === 'SPECIAL_SELECTION') reasons.push({ label:'最終日特選：実力・枠・今節実績重視', strength:88, layer:'series' });
 
   return {
     by_boat:byBoat, boat1:b1 || null, boat1_score:b1Score, boat1_runs:b1Runs,
-    pressure, score_adjustment:scoreAdj, placement_signal:placementSignal,
+    pressure,
+    // 準優・優勝・特選では「予選順位の勝負がけ」を予想へ持ち込まない。
+    score_adjustment:(logicMode === 'SEMIFINAL' || logicMode === 'FINAL' || logicMode === 'SPECIAL_SELECTION') ? 0 : scoreAdj,
+    placement_signal:placementSignal,
+    logic_mode:logicMode, series_day:day,
     snapshot_ready:snapshotReady,
     routine_outer_exclusion:routineOuterExclusion, weak_series:weakSeries,
     reasons, concerns,
