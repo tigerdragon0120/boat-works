@@ -3,7 +3,8 @@
 //
 // 重要: RaceResultは削除しない。集計Entityは RaceResult から導出されるキャッシュ。
 
-export const STATS_VERSION = 3;
+// v4: 新ういち(1-3456-2) / 新裏ういち(2-1-3456) の集計列を既存統計へ確実に再構築する。
+export const STATS_VERSION = 4;
 
 export function windSpeedGroup(ws) {
   if (ws == null) return "unknown";
