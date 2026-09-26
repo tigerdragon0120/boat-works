@@ -40,6 +40,7 @@ export default function RaceDetail() {
   const [racerOpen, setRacerOpen] = useState(false);
   const [preAnalysis, setPreAnalysis] = useState(null);
   const [seriesPoint, setSeriesPoint] = useState(null);
+  const [raceResult, setRaceResult] = useState(null);
 
   // キャッシュ済みUichiAnalysis → 表示用オブジェクト変換
   const cachedToObjects = (cached, s) => {
@@ -90,14 +91,17 @@ export default function RaceDetail() {
     setTrust(null);
     setPreAnalysis(null);
     setSeriesPoint(null);
+    setRaceResult(null);
     try {
       const s = await getSettings();
       const r = await base44.entities.Race.get(id);
       setSettings(s);
       setRace(r);
-      const [ents, latestOdds, hist, byStage] = await Promise.all([
+      const [ents, latestOdds, hist, byStage, results] = await Promise.all([
         getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
+        base44.entities.RaceResult.filter({ race_id: id }, "-finished_at", 1).catch(() => []),
       ]);
+      setRaceResult(results?.[0] || null);
       setEntries(ents);
       const b1 = (ents || []).find(e => Number(e.boat_number) === 1);
       if (r.series_key && b1?.registration_number) {
@@ -289,6 +293,16 @@ export default function RaceDetail() {
 
       {/* 判定表示: final > 事前評価 > 未作成 */}
       <div className="rounded-2xl bg-card border border-border p-5 text-center">
+        {(raceResult?.is_finished || raceResult?.result_status === "RESULT_FINAL" || race.result_trifecta) && (
+          <div className="mb-4 pb-4 border-b border-border">
+            <div className="text-xs text-muted-foreground tracking-wider mb-1">レース結果</div>
+            <div className="text-3xl font-black tabular-nums">{raceResult?.result_trifecta || race.result_trifecta || "—"}</div>
+            {(raceResult?.payout != null || race.payout_trifecta != null) && (
+              <div className="text-sm font-bold text-emerald-600 mt-1">{Math.round(raceResult?.payout ?? race.payout_trifecta).toLocaleString()}円</div>
+            )}
+            {raceResult?.winning_method && <div className="text-xs text-muted-foreground mt-1">決まり手 {raceResult.winning_method}</div>}
+          </div>
+        )}
         {analysis?.stage === "final" && analysis.judgment && analysis.judgment !== "PENDING" ? (
           <>
             <div className="text-xs text-muted-foreground tracking-wider mb-2">最終判定</div>
