@@ -6,7 +6,7 @@ import { UICHI_COMBOS, URA_UICHI_COMBOS, NEW_UICHI_COMBOS, NEW_URA_UICHI_COMBOS,
 import { windSpeedGroup } from "./aggregation.js";
 
 // 分析ロジックバージョン（ロジック変更時のみインクリメント）
-export const ANALYSIS_VERSION = "v14";
+export const ANALYSIS_VERSION = "v15";
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
