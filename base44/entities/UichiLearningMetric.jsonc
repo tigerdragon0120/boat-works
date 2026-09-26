@@ -54,6 +54,51 @@
     "updated_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "new_main_hit_count": {
+      "type": "number"
+    },
+    "new_main_hit_rate": {
+      "type": "number"
+    },
+    "new_ura_hit_count": {
+      "type": "number"
+    },
+    "new_ura_hit_rate": {
+      "type": "number"
+    },
+    "false_skip_count": {
+      "type": "number"
+    },
+    "false_skip_rate": {
+      "type": "number"
+    },
+    "false_watch_count": {
+      "type": "number"
+    },
+    "false_watch_rate": {
+      "type": "number"
+    },
+    "candidate_pattern": {
+      "type": "string",
+      "enum": [
+        "MAIN",
+        "URA",
+        "NEW_MAIN",
+        "NEW_URA",
+        "NONE"
+      ]
+    },
+    "candidate_lift": {
+      "type": "number"
+    },
+    "candidate_status": {
+      "type": "string",
+      "enum": [
+        "LEARNING",
+        "CANDIDATE",
+        "RELIABLE"
+      ]
     }
   },
   "required": [
