@@ -73,13 +73,11 @@ export default function Admin() {
     setAggregateRunning(true);
     setAggregateResult(null);
     try {
-      const res = await base44.functions.invoke("ensureAggregateVersion", {});
+      const res = await base44.functions.invoke("buildAggregates", {});
       const data = res?.data || res;
-      if (data?.status === "current") {
-        setAggregateResult({ ok: true, text: `集計は最新です（v${data.stats_version}）` });
-      } else if (data?.status === "success" || data?.status === "done") {
-        const n = data?.result?.total_results;
-        setAggregateResult({ ok: true, text: `裏ういち再集計が完了しました（v${data.stats_version}${n ? ` / ${Number(n).toLocaleString()}レース` : ""}）` });
+      if (data?.status === "success" || data?.status === "done") {
+        const n = data?.total_results || data?.result?.total_results;
+        setAggregateResult({ ok: true, text: `4パターン全過去データの再集計が完了しました${n ? `（${Number(n).toLocaleString()}レース）` : ""}` });
       } else {
         setAggregateResult({ ok: false, text: `再集計に失敗しました：${data?.message || data?.status || "不明なエラー"}` });
       }
@@ -107,15 +105,15 @@ export default function Admin() {
           </div>
         </div>
         <div className="border-t border-border pt-3">
-          <div className="text-sm font-bold">裏ういち初回集計</div>
-          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">「1-56-234」の過去実績を全公式レースから一度だけ集計します。v2になった後は毎日自動更新されます。</div>
+          <div className="text-sm font-bold">4パターン過去データ再集計</div>
+          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">ういち・裏ういち・新ういち「1-3456-2」・新裏ういち「2-1-3456」を全公式RaceResultから再集計します。</div>
           <button
             onClick={rebuildAggregates}
             disabled={aggregateRunning}
             className="mt-3 w-full py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-primary font-bold flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {aggregateRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {aggregateRunning ? "裏ういちを再集計中…" : "裏ういち過去データを再集計"}
+            {aggregateRunning ? "4パターンを再集計中…" : "4パターン過去データを全再集計"}
           </button>
           {aggregateResult && (
             <div className={cn("mt-2 text-xs font-semibold", aggregateResult.ok ? "text-emerald-600" : "text-red-600")}>
