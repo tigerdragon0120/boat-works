@@ -825,10 +825,13 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
   // 本線ういちは「加重確率22%以上・1号艇信頼75以上・条件一致70%以上・展示PASS・EV115%以上」を必須化する。
   // 閾値未満でも従来EV条件を満たすものはWATCHへ落として検証対象として残す。
   const weightedProbabilityForJudge = recommendedRate * (0.55 + (trust?.score || 0) / 400 + recommendedStructure / 500 + (uichiDirection.confidence || 0) / 1000);
-  const strictMainBuyGate = recommendedPattern !== "MAIN" || (
-    weightedProbabilityForJudge >= 0.22 &&
-    (trust?.score || 0) >= 75 &&
-    (trust?.condition_match?.score || 0) >= 70 &&
+  // 4型すべてを同じ最終判定パイプラインへ通す。
+  // 新ういち/新裏ういちも、型ごとの構造スコア＋出現率＋展示＋EVでBUY/WATCH/SKIP判定する。
+  const strictPatternBuyGate = (
+    weightedProbabilityForJudge >= (recommendedPattern === "NEW_MAIN" || recommendedPattern === "NEW_URA" ? 0.18 : 0.22) &&
+    (trust?.score || 0) >= (recommendedPattern === "NEW_URA" ? 62 : 68) &&
+    (trust?.condition_match?.score || 0) >= 60 &&
+    recommendedStructure >= 58 &&
     exhibitionGate.status === "PASS" &&
     ev != null && ev >= 115
   );
@@ -844,8 +847,8 @@ export function computeRaceAnalysis(race, entries, odds, stats, settings, stage)
     judgment = judgeWithSample(ev, similarCount, settings);
     // 注意域はBUYまで上げずWATCH止まり。PASSだけがBUY可能。
     if (exhibitionGate.status === "CAUTION" && judgment === "BUY") judgment = "WATCH";
-    // v11: MAINのBUYだけ厳格ゲートを追加。裏ういちは検証母数が別なのでv10条件を維持する。
-    if (judgment === "BUY" && !strictMainBuyGate) judgment = "WATCH";
+    // 4型共通でBUYゲートを適用。新2型も高オッズだけでBUYにはしない。
+    if (judgment === "BUY" && !strictPatternBuyGate) judgment = "WATCH";
   }
   else judgment = "SKIP";
 
