@@ -34,6 +34,8 @@
       "enum": [
         "MAIN",
         "URA",
+        "NEW_MAIN",
+        "NEW_URA",
         "NEUTRAL"
       ]
     },
@@ -87,6 +89,8 @@
       "enum": [
         "MAIN",
         "URA",
+        "NEW_MAIN",
+        "NEW_URA",
         "NEUTRAL"
       ]
     },
@@ -164,6 +168,8 @@
       "enum": [
         "MAIN",
         "URA",
+        "NEW_MAIN",
+        "NEW_URA",
         "OTHER",
         "PENDING"
       ]
@@ -171,6 +177,36 @@
     "result_attached_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "new_main_hit": {
+      "type": "boolean"
+    },
+    "new_ura_hit": {
+      "type": "boolean"
+    },
+    "false_skip": {
+      "type": "boolean"
+    },
+    "false_watch": {
+      "type": "boolean"
+    },
+    "miss_reason": {
+      "type": "string"
+    },
+    "logic_mode": {
+      "type": "string",
+      "enum": [
+        "QUALIFYING",
+        "QUALIFYING_LATE",
+        "PROGRAM_GENERAL",
+        "SEMIFINAL",
+        "FINAL",
+        "SPECIAL_SELECTION",
+        "OTHER"
+      ]
+    },
+    "series_day": {
+      "type": "number"
     }
   },
   "required": [
