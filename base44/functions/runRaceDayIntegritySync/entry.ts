@@ -140,10 +140,23 @@ export default async function(req) {
         });
         const prevEntries = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: r.id }, 'boat_number', 20).catch(() => []);
         const mergedEntries = preserveExhibitionFields(parsed.entries, prevEntries);
-        await base44.asServiceRole.entities.RaceEntry.deleteMany({ race_id: r.id });
-        await base44.asServiceRole.entities.RaceEntry.bulkCreate(mergedEntries.map(e => ({
-          ...e, race_id: r.id, race_date: raceDate, venue_code: jcd, race_number: r.race_number,
-        })));
+        // 先に新6艇を検証。既存RaceEntryを先に全削除しない。
+        if (mergedEntries.length !== 6 || new Set(mergedEntries.map(e => Number(e.boat_number))).size !== 6) {
+          errors.push({ phase: 'urgent_entry_guard', jcd, race_number: r.race_number, message: `差替中止:${mergedEntries.length}艇` });
+          return null;
+        }
+        // upsert型: 各艇を更新/追加し、成功後にのみ余剰重複を掃除する
+        for (const e of mergedEntries) {
+          const old = prevEntries.find(x => Number(x.boat_number) === Number(e.boat_number));
+          const data = { ...e, race_id: r.id, race_date: raceDate, venue_code: jcd, race_number: r.race_number };
+          if (old?.id) await base44.asServiceRole.entities.RaceEntry.update(old.id, data);
+          else await base44.asServiceRole.entities.RaceEntry.create(data);
+        }
+        const after = await base44.asServiceRole.entities.RaceEntry.filter({ race_id: r.id }, 'boat_number', 20).catch(() => []);
+        for (const e of after) {
+          const same = after.filter(x => Number(x.boat_number) === Number(e.boat_number));
+          if (same.length > 1 && e.id !== same[0].id) await base44.asServiceRole.entities.RaceEntry.delete(e.id).catch(() => {});
+        }
         urgentRepairedIds.push(r.id);
         return r.id;
       } catch (e) {
