@@ -354,12 +354,21 @@ export async function autoFetchTodayRaces() {
 
 // 公式サイト実データ取得（バックエンド関数経由）
 export async function fetchOfficialRace(raceDate, jcd, raceNumber) {
-  const res = await base44.functions.invoke("fetchRaceData", {
-    race_date: raceDate,
-    jcd: String(jcd).padStart(2, "0"),
-    race_number: Number(raceNumber),
-  });
-  return res.data;
+  const args = { race_date: raceDate, jcd: String(jcd).padStart(2, "0"), race_number: Number(raceNumber) };
+  let lastError = null;
+  // 一時的な500/上流取得失敗は短い間隔で自動再試行する。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await base44.functions.invoke("fetchRaceData", args);
+      return res.data;
+    } catch (e) {
+      lastError = e;
+      if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1200 * (attempt + 1)));
+    }
+  }
+  // fetchRaceDataが落ちても、既存DBを壊さず結果回収ワーカーを起動して復旧を試す。
+  try { await base44.functions.invoke("runResultVerificationWorker", { race_date: raceDate }); } catch {}
+  return { status: "retry_pending", message: "一時的に取得できません。既存データを保持したまま自動再取得します。", error: lastError?.message || null };
 }
 
 // 過去レース結果取得（第1段階・結果のみ高速取得）
