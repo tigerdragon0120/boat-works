@@ -86,7 +86,7 @@ export default function SeriesPoints() {
         if (alive && result.status === "partial") {
           const messages=[];
           if (result.missing_details) messages.push(`出走表 ${result.missing_details}レース未取得`);
-          if (result.standings_races != null && result.standings_races < 12) messages.push(`公式順位 ${result.standings_races}/12レース取得（未取得分は保存済み順位を維持）`);
+          if (result.capture_rank && result.standings_races != null && result.standings_races < 12) messages.push(`公式順位 ${result.standings_races}/12レース取得（未取得分は保存済み順位を維持）`);
           if (result.standings_errors?.length) messages.push(result.standings_errors.slice(0,2).join('、'));
           setNotice(messages.join('／') || '一部データを取得できませんでした');
         }
@@ -135,7 +135,7 @@ export default function SeriesPoints() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-bold">{context.venue_name}　今節成績</div>
-                  <div className="text-xs text-muted-foreground mt-1">BOATCASTの枠・着順・STで集計／順位・得点率は得点率早見から取得（着差は未取得）</div>
+                  <div className="text-xs text-muted-foreground mt-1">BOATCASTの枠・着順・STで集計／順位・得点率は夜間に確定（着差は未取得）</div>
                 </div>
                 <div className="text-right text-xs">
                   <div className="font-bold">集計対象 {fmtDate(context.as_of_date)}</div>
@@ -184,7 +184,7 @@ function RacerSeriesCard({ racer: r, position }) {
       <div className="grid grid-cols-4 gap-2">
         <Mini label="内容" value={r.result_quality_score != null ? Math.round(r.result_quality_score) : "—"} />
         <Mini label="直近" value={r.series_momentum_score != null ? Math.round(r.series_momentum_score) : "—"} />
-        <Mini label="順位" value={r.rank != null ? `${r.rank}位` : "—"} sub={r.point_rate != null ? `得点率 ${Number(r.point_rate).toFixed(2)}` : "公式値なし"} />
+        <Mini label="順位" value={r.rank != null ? `${r.rank}位` : "—"} sub={r.rank != null ? `${r.rank_source_date ? fmtDate(r.rank_source_date)+'確定' : '保存値'} ${r.point_rate != null ? '得点率 '+Number(r.point_rate).toFixed(2) : ''}` : "夜間確定待ち"} />
         <Mini label="勝負度" value={r.rank != null ? Math.round(r.rank_pressure_score ?? 50) : "—"} sub={r.rank != null ? "順位をもとにした目安" : "未評価"} />
       </div>
 
