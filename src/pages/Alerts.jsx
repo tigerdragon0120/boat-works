@@ -22,7 +22,13 @@ function dateStr(offset = 0) {
 
 export default function Alerts() {
   const [loading, setLoading] = useState(true);
-  const [todayAlerts, setTodayAlerts] = useState([]);
+  const todayAlerts = useMemo(() => todayRaces.filter(r => {
+    const deadline = r.deadline ? new Date(r.deadline).getTime() : NaN;
+    if (r.status === "finished" || r.status === "cancelled" || (Number.isFinite(deadline) && deadline <= Date.now())) return false;
+    const a = analyses[r.id];
+    if (a?.stage === "final" && a.judgment !== "PENDING") return ["BUY", "WATCH"].includes(a.judgment);
+    return ["S", "A", "B"].includes(a?.pre_grade);
+  }), [todayRaces, analyses, tick]);
   const [tomorrowAlerts, setTomorrowAlerts] = useState([]);
   const [todayRaces, setTodayRaces] = useState([]);
   const [tomorrowRaces, setTomorrowRaces] = useState([]);
@@ -35,7 +41,7 @@ export default function Alerts() {
   useEffect(() => {
     let m = true;
     (async () => {
-      setLoading(true);
+      if (tick === 0) setLoading(true);
       try {
         const [todayR, tomorrowR, cachedAn, cachedTomorrowAn] = await Promise.all([
           getRacesByDate(dateStr(0)), getRacesByDate(dateStr(1)), getCachedAnalysesByDate(dateStr(0)), getCachedAnalysesByDate(dateStr(1)),
@@ -77,21 +83,13 @@ export default function Alerts() {
         for (const e of tomEnts) (tomByRace[e.race_id] = tomByRace[e.race_id] || []).push(e);
         if (m) setTomorrowEntries(tomByRace);
 
-        // today alerts: 最終判定前は事前評価S/A/B候補、最終判定後はfinal BUY/WATCH
-        const ta = todayR.filter((r) => {
-          const a = cachedAn[r.id];
-          if (canFinalJudge(r.deadline)) {
-            return a?.judgment === "BUY" || a?.judgment === "WATCH";
-          }
-          return a?.pre_grade === "S" || a?.pre_grade === "A" || a?.pre_grade === "B";
-        });
-        if (m) setTodayAlerts(ta);
+
       } catch {
         if (m) setLoading(false);
       }
     })();
     return () => { m = false; };
-  }, []);
+  }, [tick]);
 
   useEffect(() => {
     const t = setInterval(() => setTick((x) => x + 1), 30000);
@@ -109,7 +107,7 @@ export default function Alerts() {
 
       {/* Today */}
       <section>
-        <h2 className="text-sm font-bold mb-3 text-muted-foreground tracking-wider">本日のBUY/WATCH</h2>
+        <h2 className="text-sm font-bold mb-3 text-muted-foreground tracking-wider">本日の事前候補・BUY/WATCH</h2>
         {todayAlerts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             現在BUY/WATCH判定のレースはありません
