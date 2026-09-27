@@ -18,58 +18,78 @@ function fmtDate(d) {
 }
 
 export default function SeriesPoints() {
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
   const [loading, setLoading] = useState(true);
   const [contexts, setContexts] = useState([]);
   const [points, setPoints] = useState([]);
+  const [venues, setVenues] = useState([]);
   const [selected, setSelected] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        // 今節ページを開いた時にも当日分を再集計。夜間処理待ちにしない。
-        const jst = new Date(Date.now() + 9*60*60*1000);
-        const today = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth()+1).padStart(2,"0")}-${String(jst.getUTCDate()).padStart(2,"0")}`;
-        try {
-          const races = await base44.entities.Race.filter({ race_date: today }, "venue_code", 500);
-          const jcds = [...new Set((races || []).map(r => r.venue_code).filter(Boolean))];
-          await Promise.all(jcds.map(jcd => base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date: today, jcd }).catch(()=>null)));
-        } catch {}
-        const [c, p] = await Promise.all([
-          base44.entities.SeriesContext.list("-refreshed_at", 200),
-          base44.entities.SeriesRacerPoint.list("-snapshot_at", 2000),
-        ]);
-        if (!alive) return;
-        setContexts(c || []);
-        setPoints(p || []);
+        const races = await base44.entities.Race.filter({ race_date:today }, "venue_code", 500);
+        const map = new Map();
+        for (const r of races) if (r.venue_code) map.set(r.venue_code, r.venue_name || r.venue_code);
+        if (alive) {
+          const available = [...map].map(([code, name]) => ({ code, name }));
+          setVenues(available);
+          setSelected(prev => available.some(v => v.code === prev) ? prev : available[0]?.code || "");
+          if (!available.length) setLoading(false);
+        }
+      } catch { if (alive) { setError("本日の開催場を読み込めませんでした。ページを再読み込みしてください。"); setLoading(false); } }
+    })();
+    return () => { alive = false; };
+  }, [today]);
+
+  useEffect(() => {
+    if (!selected) return;
+    let alive = true;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    setContexts([]);
+    setPoints([]);
+    const readSaved = async () => {
+      const rows = await base44.entities.SeriesContext.filter({
+        venue_code:selected, series_start_date:{ $lte:today }, series_end_date:{ $gte:today },
+      }, "-refreshed_at", 50);
+      const c = rows[0];
+      const p = c ? await base44.entities.SeriesRacerPoint.filter({
+        series_key:c.series_key,
+      }, "-snapshot_at", 500) : [];
+      if (alive) { setContexts(c ? [c] : []); setPoints(p); }
+    };
+    (async () => {
+      try {
+        await readSaved();
+        const response = await base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date:today, jcd:selected });
+        const result = response.data;
+        if (!result || result.status === "error") throw new Error(result?.message || "再集計に失敗しました");
+        if (alive && result.status === "partial") setNotice(`詳細結果があと${result.missing_details ?? "数"}レース未取得です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
+        await readSaved();
+      } catch (e) {
+        if (alive) setError(e?.response?.data?.message || e?.message || "更新できませんでした。");
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [selected, today, refresh]);
 
-  const latestContexts = useMemo(() => {
-    const map = new Map();
-    for (const c of contexts) if (!map.has(c.series_key)) map.set(c.series_key, c);
-    return [...map.values()].sort((a,b) => `${a.venue_code}`.localeCompare(`${b.venue_code}`));
-  }, [contexts]);
-
-  const selectedKey = selected || latestContexts[0]?.series_key || "";
-  const context = latestContexts.find(c => c.series_key === selectedKey);
-
-  const isFirstDay = Number(context?.series_day || 1) < 2;
-
+  const context = contexts[0];
   const racers = useMemo(() => {
-    if (!selectedKey || isFirstDay) return [];
     const map = new Map();
     for (const p of points) {
-      if (p.series_key !== selectedKey) continue;
+      if (p.as_of_date !== context?.as_of_date) continue;
       const key = String(p.registration_number);
-      if (!map.has(key)) map.set(key, p); // snapshot_at descなので最新のみ
+      if (!map.has(key)) map.set(key, p);
     }
-    return [...map.values()].sort((a,b) => Number(b.series_score || 0) - Number(a.series_score || 0));
-  }, [points, selectedKey, isFirstDay]);
-
-  if (loading) return <div className="py-24 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" />今節データ読込中…</div>;
+    return [...map.values()].filter(r => Number(r.races_run) > 0)
+      .sort((a,b) => Number(b.series_score || 0) - Number(a.series_score || 0));
+  }, [points, context]);
 
   return (
     <div className="space-y-5">
@@ -80,18 +100,16 @@ export default function SeriesPoints() {
         </div>
       </div>
 
-      {latestContexts.length === 0 ? (
-        <div className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">シリーズデータは次回の夜間処理から作成されます。</div>
-      ) : (
-        <>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {latestContexts.map(c => (
-              <button key={c.series_key} onClick={() => setSelected(c.series_key)} className={cn("shrink-0 rounded-xl border px-3 py-2 text-left", selectedKey === c.series_key ? "border-primary bg-primary/5" : "border-border bg-card")}>
-                <div className="text-sm font-bold">{c.venue_name}</div>
-                <div className="text-[10px] text-muted-foreground">{c.grade} {c.series_day || "—"}/{c.series_total_days || "—"}日</div>
-              </button>
-            ))}
-          </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {venues.map(v => (
+          <button key={v.code} onClick={() => setSelected(v.code)} className={cn("shrink-0 rounded-xl border px-3 py-2 text-sm font-bold", selected === v.code ? "border-primary bg-primary/5" : "border-border bg-card")}>{v.name}</button>
+        ))}
+      </div>
+      <button disabled={loading || !selected} onClick={() => setRefresh(x => x + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-50">{loading ? "集計中…" : "再集計"}</button>
+      {loading && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mr-2" />公式結果を確認しています…</div>}
+      {error && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">更新できませんでした：{error} 保存済みデータがあれば表示しています。</div>}
+      {notice && <div role="status" className="rounded-xl border border-amber-300 p-3 text-sm">{notice}</div>}
+      {!loading && !error && venues.length === 0 && <div className="p-6 text-sm text-muted-foreground">本日の開催データがありません。</div>}
 
           {context && (
             <div className="rounded-2xl border bg-card p-4">
@@ -101,26 +119,22 @@ export default function SeriesPoints() {
                   <div className="text-xs text-muted-foreground mt-1">{fmtDate(context.series_start_date)}〜{fmtDate(context.series_end_date)}・{context.grade}・{context.series_day}日目 / 全{context.series_total_days}日</div>
                 </div>
                 <div className="text-right text-xs">
-                  <div className="font-bold">前夜確定 {fmtDate(context.as_of_date)}</div>
+                  <div className="font-bold">集計対象 {fmtDate(context.as_of_date)}</div>
                   <div className="text-muted-foreground">{context.point_rank_available ? context.point_rank_as_of || "公式得点率あり" : "公式得点率なし"}</div>
                 </div>
               </div>
             </div>
           )}
 
-          {isFirstDay ? (
-            <div className="rounded-2xl border border-dashed bg-card p-8 text-center">
-              <div className="text-lg font-bold">初日・節間ポイント集計前</div>
-              <div className="text-sm text-muted-foreground mt-2">初日のレース結果を収集してから節間ポイントを作成します。</div>
-              <div className="text-xs text-muted-foreground mt-1">節間ポイントは2日目以降に表示されます。</div>
+          {!loading && racers.length === 0 ? (
+            <div className="rounded-2xl border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
+              {context ? "採点できる詳細結果がまだありません。結果取得後に再集計してください。" : "今節の開催情報を取得できていません。"}
             </div>
           ) : (
             <div className="space-y-3">
-              {racers.map((r, idx) => <RacerSeriesCard key={`${r.series_key}_${r.registration_number}`} racer={r} position={idx + 1} />)}
+              {racers.map((r, idx) => <RacerSeriesCard key={r.registration_number} racer={r} position={idx + 1} />)}
             </div>
           )}
-        </>
-      )}
     </div>
   );
 }
