@@ -70,7 +70,7 @@ export default function SeriesPoints() {
         const response = await base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date:today, jcd:selected });
         const result = response.data;
         if (!result || result.status === "error") throw new Error(result?.message || "再集計に失敗しました");
-        if (alive && result.status === "partial") setNotice(`詳細結果があと${result.missing_details ?? "数"}レース未取得です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
+        if (alive && result.status === "partial") setNotice(`詳細結果が${result.missing_details ?? "数"}レース未取得${result.missing_dates?.length ? `、開催表未取得 ${result.missing_dates.join("・")}` : ""}です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
         await readSaved();
       } catch (e) {
         if (alive) setError(e?.response?.data?.message || e?.message || "更新できませんでした。");
