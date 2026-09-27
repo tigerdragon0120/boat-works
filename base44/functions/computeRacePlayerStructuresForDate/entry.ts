@@ -123,26 +123,59 @@ export default async function (req) {
       computed++;
     }
 
-    // バルク保存
+    // ネストした選手評価を含むため小さなバッチで保存する。
+    // 1件の不正データでバッチ全体が失敗した場合は、1件ずつへフォールバックして
+    // 正常なレースまで巻き添えにしない。
+    let createdCount = 0;
+    let updatedCount = 0;
+    const saveErrors = [];
     if (toCreate.length > 0) {
-      for (let i = 0; i < toCreate.length; i += 100) {
-        await base44.asServiceRole.entities.RacePlayerStructure.bulkCreate(toCreate.slice(i, i + 100));
+      for (let i = 0; i < toCreate.length; i += 20) {
+        const batch = toCreate.slice(i, i + 20);
+        try {
+          await base44.asServiceRole.entities.RacePlayerStructure.bulkCreate(batch);
+          createdCount += batch.length;
+        } catch (batchError) {
+          for (const row of batch) {
+            try {
+              await base44.asServiceRole.entities.RacePlayerStructure.create(row);
+              createdCount++;
+            } catch (error) {
+              saveErrors.push({ race_id: row.race_id, operation: 'create', message: error?.message || String(error) });
+            }
+          }
+        }
       }
     }
     if (toUpdate.length > 0) {
-      for (let i = 0; i < toUpdate.length; i += 100) {
-        await base44.asServiceRole.entities.RacePlayerStructure.bulkUpdate(toUpdate.slice(i, i + 100));
+      for (let i = 0; i < toUpdate.length; i += 20) {
+        const batch = toUpdate.slice(i, i + 20);
+        try {
+          await base44.asServiceRole.entities.RacePlayerStructure.bulkUpdate(batch);
+          updatedCount += batch.length;
+        } catch (batchError) {
+          for (const row of batch) {
+            try {
+              const { id, ...fields } = row;
+              await base44.asServiceRole.entities.RacePlayerStructure.update(id, fields);
+              updatedCount++;
+            } catch (error) {
+              saveErrors.push({ race_id: row.race_id, operation: 'update', message: error?.message || String(error) });
+            }
+          }
+        }
       }
     }
 
     return Response.json({
-      status: 'success',
+      status: saveErrors.length === 0 ? 'success' : 'partial',
       race_date: raceDate,
       race_count: races.length,
       computed,
       skipped,
-      created_count: toCreate.length,
-      updated_count: toUpdate.length,
+      created_count: createdCount,
+      updated_count: updatedCount,
+      save_errors: saveErrors.slice(0, 20),
       evaluations_available: Object.keys(evalMap).length,
     });
   } catch (error) {
