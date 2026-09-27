@@ -57,8 +57,8 @@ export default async function (req) {
     // RacerEvaluationを一括取得（チャンクごと）
     const evalMap = {};
     const regNumArr = [...allRegNums];
-    for (let i = 0; i < regNumArr.length; i += 500) {
-      const chunk = regNumArr.slice(i, i + 500);
+    for (let i = 0; i < regNumArr.length; i += 100) {
+      const chunk = regNumArr.slice(i, i + 100);
       const evals = await base44.asServiceRole.entities.RacerEvaluation.filter(
         { registration_number: { $in: chunk } }, '-computed_at', 600
       ).catch(() => []);
@@ -125,13 +125,13 @@ export default async function (req) {
 
     // バルク保存
     if (toCreate.length > 0) {
-      for (let i = 0; i < toCreate.length; i += 200) {
-        await base44.asServiceRole.entities.RacePlayerStructure.bulkCreate(toCreate.slice(i, i + 200));
+      for (let i = 0; i < toCreate.length; i += 100) {
+        await base44.asServiceRole.entities.RacePlayerStructure.bulkCreate(toCreate.slice(i, i + 100));
       }
     }
     if (toUpdate.length > 0) {
-      for (let i = 0; i < toUpdate.length; i += 200) {
-        await base44.asServiceRole.entities.RacePlayerStructure.bulkUpdate(toUpdate.slice(i, i + 200));
+      for (let i = 0; i < toUpdate.length; i += 100) {
+        await base44.asServiceRole.entities.RacePlayerStructure.bulkUpdate(toUpdate.slice(i, i + 100));
       }
     }
 
