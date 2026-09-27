@@ -3,7 +3,7 @@ import {
   VENUE_NAMES, fetchBoatcastText, parseStr3, parseTkz, parseOdds, parseRs1, parseRs2,
   discoverVenues
 } from '../../shared/boatcastSync.js';
-import { parseDaySchedule } from '../../shared/scraper.js';
+import { parseDaySchedule, parseSeriesContext } from '../../shared/scraper.js';
 
 // BOAT WORKS: BOATCASTから1日分のレースデータを自動取得・同期
 // 開催場検出 → Race/RaceEntry生成 → 展示/オッズ/結果同期
@@ -69,13 +69,17 @@ export default async function(req) {
       // 締切時刻は推測値を使わず、公式raceindexの実時刻を取得する。
       // 取得失敗時は既存値を保持し、新規Raceはdeadline=nullで作成する。
       let deadlineByRace = new Map();
+      let seriesContext = null;
       try {
         const hd = raceDate.replace(/-/g, '');
         const res = await fetch(`https://boatrace.jp/owpc/pc/race/raceindex?jcd=${vc}&hd=${hd}`, {
           headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
         });
         if (res.ok) {
-          const schedule = parseDaySchedule(await res.text(), raceDate);
+          const html = await res.text();
+          const schedule = parseDaySchedule(html, raceDate);
+          const parsed = parseSeriesContext(html, raceDate);
+          if (parsed.series_dates.includes(raceDate)) seriesContext = parsed;
           deadlineByRace = new Map(schedule.map(x => [Number(x.race_number), x.deadline]));
         }
       } catch {}
@@ -104,13 +108,16 @@ export default async function(req) {
           venue_code: vc,
           venue_name: venueName,
           race_number: raceNumber,
-          race_name: `${raceNumber}R`,
-          grade: 'GENERAL',
-          series_key: `${vc}_${raceDate}`,
-          series_start_date: raceDate,
-          series_end_date: raceDate,
-          series_total_days: 1,
-          series_day: 1,
+          race_name: existing?.race_name || `${raceNumber}R`,
+          ...(seriesContext ? {
+            event_name: seriesContext.event_name,
+            grade: seriesContext.grade,
+            series_key: `${vc}_${seriesContext.series_start_date}`,
+            series_start_date: seriesContext.series_start_date,
+            series_end_date: seriesContext.series_end_date,
+            series_total_days: seriesContext.series_total_days,
+            series_day: seriesContext.series_day,
+          } : {}),
           deadline: deadlineByRace.get(raceNumber) || existing?.deadline || null,
           status: 'scheduled',
           data_source: 'official',
