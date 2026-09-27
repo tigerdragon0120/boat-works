@@ -49,8 +49,9 @@ export default async function(req) {
         } catch(e) { rankResults.push({jcd,status:'error',message:e?.message||String(e)}); }
       }
     }));
-    const ok=aggregates?.status!=='error'&&learning?.status!=='error';
-    return Response.json({status:ok?'success':'partial',race_date:raceDate,collection,aggregates,learning,rank_results:rankResults});
+    const rankPending=rankResults.filter(x=>x.status!=='success').length;
+    const ok=aggregates?.status!=='error'&&learning?.status!=='error'&&rankPending===0;
+    return Response.json({status:ok?'success':'partial',race_date:raceDate,collection,aggregates,learning,rank_pending:rankPending,rank_results:rankResults});
   } catch(error) {
     return Response.json({status:'error',message:error?.message||String(error)},{status:500});
   }
