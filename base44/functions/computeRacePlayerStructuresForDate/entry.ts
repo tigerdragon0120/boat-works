@@ -31,11 +31,15 @@ export default async function (req) {
       return Response.json({ status: 'success', race_date: raceDate, race_count: 0, computed: 0 });
     }
 
-    // 全レースのRaceEntryを一括取得
+    // 全レースのRaceEntryを日付で一括取得。
+    // 多数のrace_idを$inへ渡すとBase44側で取得に失敗し、空配列として扱われることがある。
+    // 対象日はRaceEntryにも保存済みなので、安定したrace_date条件を使う。
     const raceIds = races.map(r => r.id);
-    const allEntries = await base44.asServiceRole.entities.RaceEntry.filter(
-      { race_id: { $in: raceIds } }, 'boat_number', 2000
+    const raceIdSet = new Set(raceIds);
+    const allEntriesForDate = await base44.asServiceRole.entities.RaceEntry.filter(
+      { race_date: raceDate }, 'boat_number', 2000
     ).catch(() => []);
+    const allEntries = allEntriesForDate.filter(e => raceIdSet.has(e.race_id));
 
     // レースごとにエントリをグループ化
     const entriesByRace = {};
@@ -61,10 +65,11 @@ export default async function (req) {
       for (const e of evals) evalMap[e.registration_number] = e;
     }
 
-    // 既存RacePlayerStructureを一括取得
-    const existingStructures = await base44.asServiceRole.entities.RacePlayerStructure.filter(
-      { race_id: { $in: raceIds } }, '-created_date', 500
+    // 既存RacePlayerStructureも日付で取得し、巨大な$in条件を避ける。
+    const existingStructuresForDate = await base44.asServiceRole.entities.RacePlayerStructure.filter(
+      { race_date: raceDate }, '-created_date', 500
     ).catch(() => []);
+    const existingStructures = existingStructuresForDate.filter(s => raceIdSet.has(s.race_id));
     const existingMap = {};
     for (const s of existingStructures) existingMap[s.race_id] = s;
 
