@@ -31,7 +31,7 @@ export default async function(req) {
     } catch(e) { learning={status:'error',message:e?.message||String(e)}; }
     // 順位は日中に何度も取得せず、23:45の確定時に場ごとに保存する。
     const allRaces=await base44.asServiceRole.entities.Race.filter({race_date:raceDate},'race_number',500).catch(()=>[]);
-    const venueCodes=[...new Set(allRaces.map(r=>String(r.venue_code||'').padStart(2,'0')).filter(x=>/^\\d{2}$/.test(x)))];
+    const venueCodes=[...new Set(allRaces.map(r=>String(r.venue_code||'').padStart(2,'0')).filter(x=>/^\d{2}$/.test(x)))];
     const rankResults:any[]=[];
     let cursor=0;
     await Promise.all(Array.from({length:3},async()=>{
