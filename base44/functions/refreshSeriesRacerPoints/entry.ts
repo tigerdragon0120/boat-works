@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
     if (user && user.role !== 'admin') return Response.json({ status:'error', message:'管理者権限が必要です' }, { status:403 });
     const body = await req.json().catch(() => ({}));
     const asOfDate = body.as_of_date;
+    const captureRank = body.capture_rank === true;
     const jcd = String(body.jcd || '').padStart(2,'0');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate || '') || !VENUE_NAMES[jcd])
       return Response.json({ status:'error', message:'as_of_date と jcd が必要です' }, { status:400 });
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
             }
           }
         } catch { failed.push(rn); }
-        try {
+        if (captureRank) try {
           const rows=await fetchScoreRate(jcd,asOfDate,rn);
           if(rows.length) {
             standingsAvailable++;
@@ -113,8 +114,8 @@ Deno.serve(async (req) => {
       };
       const old=existingByReg.get(reg);
       const official=standings.get(reg);
-      if(official?.rank!=null) payload.rank=official.rank;
-      else if(old?.rank!=null) payload.rank=old.rank;
+      if(official?.rank!=null) { payload.rank=official.rank; payload.rank_snapshot_at=now; }
+      else if(old?.rank!=null) { payload.rank=old.rank; if(old.rank_snapshot_at) payload.rank_snapshot_at=old.rank_snapshot_at; }
       if(official?.point_rate!=null) payload.point_rate=official.point_rate;
       else if(old?.point_rate!=null) payload.point_rate=old.point_rate;
       if(payload.rank!=null) {
@@ -128,7 +129,7 @@ Deno.serve(async (req) => {
     }
     if(toUpdate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkUpdate(toUpdate);
     if(toCreate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkCreate(toCreate);
-    return Response.json({status:failed.length || standingsAvailable<raceNumbers.length?'partial':'success',missing_details:failed.length,
+    return Response.json({status:failed.length || (captureRank && standingsAvailable<raceNumbers.length)?'partial':'success',missing_details:failed.length,capture_rank:captureRank,
       racers:saved,ranked_racers:[...standings.values()].filter(x=>x.rank!=null).length,standings_races:standingsAvailable,standings_errors:standingsErrors.slice(0,12),series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
   } catch(error) {
     return Response.json({status:'error',message:error?.message || String(error),implementation:'boatcast-series-20260927'},{status:500});
