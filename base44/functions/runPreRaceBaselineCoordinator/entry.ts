@@ -207,6 +207,11 @@ export default async function(req) {
       structureResult={status:'error',message:e?.message||String(e)};
     }
 
+    // 計算結果をreadinessのnotesへ残し、無言で0件になる障害を追跡できるようにする。
+    const structureDiagnostic = structureResult?.status === 'success'
+      ? `選手配置計算: success computed=${structureResult?.computed ?? 0} skipped=${structureResult?.skipped ?? 0} created=${structureResult?.created_count ?? 0} updated=${structureResult?.updated_count ?? 0} errors=${structureResult?.save_errors?.length ?? 0}`
+      : `選手配置計算: ${structureResult?.status || 'unknown'} ${structureResult?.message || ''}`.trim();
+
     // readinessの派生フラグを実データから再計算する。
     const [structuresNow,preNow]=await Promise.all([
       base44.asServiceRole.entities.RacePlayerStructure.filter({race_date:raceDate},'race_number',500).catch(()=>[]),
@@ -224,7 +229,9 @@ export default async function(req) {
       // RacePlayerStructureは旧ういち専用の補助指標。現在のv13事前予想はRacerTermStatV2を直接使うため、
       // この補助指標が未生成でも事前予想全体を停止させない。
       const preRaceReady=coreReady && evalsReady && alertsReady;
+      const preservedNotes=(rd.notes||[]).filter(n=>!String(n).startsWith('選手配置計算:'));
       await base44.asServiceRole.entities.VenueDayReadiness.update(rd.id,{
+        notes:[...preservedNotes,structureDiagnostic],
         player_structures_count:structureCount,
         player_structures_ready:structuresReady,
         pre_alerts_count:preCount,
