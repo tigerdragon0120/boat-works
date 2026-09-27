@@ -3,7 +3,7 @@ import { VENUE_NAMES, fetchBoatcastText, parseStr3 } from '../../shared/boatcast
 import { computeSeriesRacerScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
 
 // STR3の今節成績を使用。日程を推定せず、日付別スナップショットとして保存する。
-export default async function(req) {
+Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     let user = null;
@@ -86,8 +86,8 @@ export default async function(req) {
       saved++;
     }
     return Response.json({status:failed.length?'partial':'success',missing_details:failed.length,
-      racers:saved,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd]});
+      racers:saved,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
   } catch(error) {
-    return Response.json({status:'error',message:error?.message || String(error)},{status:500});
+    return Response.json({status:'error',message:error?.message || String(error),implementation:'boatcast-series-20260927'},{status:500});
   }
-}
+});
