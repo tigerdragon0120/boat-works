@@ -69,7 +69,13 @@ export default function SeriesPoints() {
         const response = await base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date:today, jcd:selected });
         const result = response.data;
         if (!result || result.status === "error") throw new Error(result?.message || "再集計に失敗しました");
-        if (alive && result.status === "partial") setNotice(`出走表が${result.missing_details ?? "数"}レース未取得${result.missing_dates?.length ? `、開催表未取得 ${result.missing_dates.join("・")}` : ""}です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
+        if (alive && result.status === "partial") {
+          const messages=[];
+          if (result.missing_details) messages.push(`出走表 ${result.missing_details}レース未取得`);
+          if (result.standings_races != null && result.standings_races < 12) messages.push(`公式順位 ${result.standings_races}/12レース取得（未取得分は保存済み順位を維持）`);
+          if (result.standings_errors?.length) messages.push(result.standings_errors.slice(0,2).join('、'));
+          setNotice(messages.join('／') || '一部データを取得できませんでした');
+        }
         await readSaved();
       } catch (e) {
         if (alive) setError(e?.response?.data?.message || e?.message || "更新できませんでした。");
