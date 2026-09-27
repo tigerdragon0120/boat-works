@@ -115,7 +115,7 @@ export default function SeriesPoints() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="font-bold">{context.venue_name}　今節成績</div>
-                  <div className="text-xs text-muted-foreground mt-1">BOATCASTの枠・着順・STで集計／着差と公式得点率は未取得</div>
+                  <div className="text-xs text-muted-foreground mt-1">BOATCASTの枠・着順・STで集計／順位・得点率は得点率早見から取得（着差は未取得）</div>
                 </div>
                 <div className="text-right text-xs">
                   <div className="font-bold">集計対象 {fmtDate(context.as_of_date)}</div>
@@ -165,7 +165,7 @@ function RacerSeriesCard({ racer: r, position }) {
         <Mini label="内容" value={r.result_quality_score != null ? Math.round(r.result_quality_score) : "—"} />
         <Mini label="直近" value={r.series_momentum_score != null ? Math.round(r.series_momentum_score) : "—"} />
         <Mini label="順位" value={r.rank != null ? `${r.rank}位` : "—"} sub={r.point_rate != null ? `得点率 ${Number(r.point_rate).toFixed(2)}` : "公式値なし"} />
-        <Mini label="勝負度" value={r.rank != null ? Math.round(r.rank_pressure_score ?? 50) : "—"} sub={r.rank != null ? "順位文脈" : "未評価"} />
+        <Mini label="勝負度" value={r.rank != null ? Math.round(r.rank_pressure_score ?? 50) : "—"} sub={r.rank != null ? "順位をもとにした目安" : "未評価"} />
       </div>
 
       {hist.length > 0 && (
