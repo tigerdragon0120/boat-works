@@ -2,6 +2,25 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { VENUE_NAMES, fetchBoatcastText, parseStr3 } from '../../shared/boatcastSync.js';
 import { computeSeriesRacerScore, computeRankPressureScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
 
+function parseScoreRate(text) {
+  const lines=String(text||'').split(/\r?\n/).filter(x=>x.trim());
+  if(lines[0]==='data=') lines.shift();
+  if(lines[0]!=='1') return [];
+  return lines.slice(1,7).map(line=>{
+    const p=line.split('\t');
+    const rank=/^\d+$/.test(p[6]||'') ? Number(p[6]) : null;
+    const point_rate=/^\d+(?:\.\d+)?$/.test(p[5]||'') ? Number(p[5]) : null;
+    return /^\d{4}$/.test(p[2]||'') ? {registration_number:p[2],rank:rank>0?rank:null,point_rate} : null;
+  }).filter(Boolean);
+}
+async function fetchScoreRate(jcd,date,raceNumber) {
+  const day=date.replace(/-/g,'');
+  const url=`https://race.boatcast.jp/hp_txt/${jcd}/bc_j_tokuten_hayami_${day}_${jcd}_${raceNumber}.txt`;
+  const res=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'},signal:AbortSignal.timeout(10000)});
+  if(!res.ok) throw new Error(`得点率早見 HTTP ${res.status}`);
+  return parseScoreRate(await res.text());
+}
+
 // STR3の今節成績を使用。日程を推定せず、日付別スナップショットとして保存する。
 Deno.serve(async (req) => {
   try {
@@ -19,6 +38,8 @@ Deno.serve(async (req) => {
     if (!raceNumbers.length) throw new Error('本日の開催データがありません');
     const byReg = new Map();
     const failed = [];
+    const standings = new Map();
+    let standingsAvailable = 0;
     let next = 0;
     await Promise.all(Array.from({length:3},async()=>{
       while(next < raceNumbers.length) {
@@ -49,6 +70,13 @@ Deno.serve(async (req) => {
             }
           }
         } catch { failed.push(rn); }
+        try {
+          const rows=await fetchScoreRate(jcd,asOfDate,rn);
+          if(rows.length) {
+            standingsAvailable++;
+            for(const row of rows) if(row.rank!=null || row.point_rate!=null) standings.set(row.registration_number,row);
+          }
+        } catch {} // 出走表の集計と独立して取得
       }
     }));
     if (!byReg.size) throw new Error('BOATCASTの今節成績を取得できませんでした');
@@ -83,6 +111,16 @@ Deno.serve(async (req) => {
         snapshot_at:now,algorithm_version:SERIES_SCORE_VERSION+'-boatcast',
       };
       const old=existingByReg.get(reg);
+      const official=standings.get(reg);
+      if(official?.rank!=null) payload.rank=official.rank;
+      else if(old?.rank!=null) payload.rank=old.rank;
+      if(official?.point_rate!=null) payload.point_rate=official.point_rate;
+      else if(old?.point_rate!=null) payload.point_rate=old.point_rate;
+      if(payload.rank!=null) {
+        payload.rank_pressure_score=computeRankPressureScore({rank:payload.rank,qualifyingCut:18});
+        payload.score_reasons=payload.score_reasons.filter(x=>!x.includes('公式得点率は未取得'));
+        payload.score_reasons.push(official ? 'BOATCAST得点率早見の公式順位' : '前回取得した公式順位（今回未更新）');
+      }
       if(old) toUpdate.push({id:old.id,...payload});
       else toCreate.push(payload);
       saved++;
@@ -90,7 +128,7 @@ Deno.serve(async (req) => {
     if(toUpdate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkUpdate(toUpdate);
     if(toCreate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkCreate(toCreate);
     return Response.json({status:failed.length?'partial':'success',missing_details:failed.length,
-      racers:saved,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
+      racers:saved,ranked_racers:[...standings.values()].filter(x=>x.rank!=null).length,standings_races:standingsAvailable,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
   } catch(error) {
     return Response.json({status:'error',message:error?.message || String(error),implementation:'boatcast-series-20260927'},{status:500});
   }
