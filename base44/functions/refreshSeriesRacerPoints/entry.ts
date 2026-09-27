@@ -63,6 +63,8 @@ Deno.serve(async (req) => {
     const existing=await base44.asServiceRole.entities.SeriesRacerPoint.filter({series_key:key,as_of_date:asOfDate},'registration_number',100);
     const existingByReg=new Map(existing.map(x=>[String(x.registration_number),x]));
     let saved=0;
+    const toCreate=[];
+    const toUpdate=[];
     for(const [reg,racer] of byReg) {
       const hist=[...racer.history.values()].sort((a,b)=>a.series_day-b.series_day || a.race_number-b.race_number);
       for(const h of hist) {
@@ -81,10 +83,12 @@ Deno.serve(async (req) => {
         snapshot_at:now,algorithm_version:SERIES_SCORE_VERSION+'-boatcast',
       };
       const old=existingByReg.get(reg);
-      if(old) await base44.asServiceRole.entities.SeriesRacerPoint.update(old.id,payload);
-      else await base44.asServiceRole.entities.SeriesRacerPoint.create(payload);
+      if(old) toUpdate.push({id:old.id,...payload});
+      else toCreate.push(payload);
       saved++;
     }
+    if(toUpdate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkUpdate(toUpdate);
+    if(toCreate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkCreate(toCreate);
     return Response.json({status:failed.length?'partial':'success',missing_details:failed.length,
       racers:saved,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
   } catch(error) {
