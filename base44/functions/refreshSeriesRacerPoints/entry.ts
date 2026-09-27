@@ -37,6 +37,33 @@ Deno.serve(async (req) => {
     const races = await base44.asServiceRole.entities.Race.filter({race_date:asOfDate,venue_code:jcd},'race_number',100);
     const raceNumbers = [...new Set(races.map(r=>Number(r.race_number)).filter(n=>n>=1 && n<=12))];
     if (!raceNumbers.length) throw new Error('本日の開催データがありません');
+    if (body.rank_only === true) {
+      const key='boatcast_'+jcd+'_'+asOfDate;
+      const existing=await base44.asServiceRole.entities.SeriesRacerPoint.filter({series_key:key,as_of_date:asOfDate},'registration_number',100);
+      if (!existing.length) return Response.json({status:'waiting',reason:'series_points_missing',venue_code:jcd});
+      const standings=new Map();
+      const errors=[];
+      let nextRank=0;
+      await Promise.all(Array.from({length:3},async()=>{
+        while(nextRank<raceNumbers.length) {
+          const rn=raceNumbers[nextRank++];
+          try {
+            for (const row of await fetchScoreRate(jcd,asOfDate,rn))
+              if(row.rank!=null) standings.set(row.registration_number,row);
+          } catch(e) { errors.push(`${rn}R: ${e?.message||e}`); }
+        }
+      }));
+      const at=new Date().toISOString();
+      const updates=existing.flatMap(old=>{
+        const row=standings.get(String(old.registration_number));
+        return row ? [{id:old.id,rank:row.rank,point_rate:row.point_rate,
+          rank_snapshot_at:at,rank_pressure_score:computeRankPressureScore({rank:row.rank,qualifyingCut:18})}] : [];
+      });
+      if(updates.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkUpdate(updates);
+      return Response.json({status:errors.length?'partial':'success',venue_code:jcd,ranked:updates.length,
+        total:existing.length,rank_snapshot_at:at,errors:errors.slice(0,12)});
+    }
+
     const byReg = new Map();
     const failed = [];
     const standings = new Map();
