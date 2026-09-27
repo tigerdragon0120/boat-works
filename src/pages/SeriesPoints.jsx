@@ -58,9 +58,23 @@ export default function SeriesPoints() {
       const p = await base44.entities.SeriesRacerPoint.filter({
         series_key:'boatcast_'+selected+'_'+today, as_of_date:today,
       }, "-snapshot_at", 100);
+      const yesterday = new Date(new Date(today+'T00:00:00+09:00').getTime()-86400000).toISOString().slice(0,10);
+      const [previous, currentRaces, previousRaces] = await Promise.all([
+        base44.entities.SeriesRacerPoint.filter({series_key:'boatcast_'+selected+'_'+yesterday,as_of_date:yesterday},'-snapshot_at',100).catch(()=>[]),
+        base44.entities.Race.filter({race_date:today,venue_code:selected},'race_number',1).catch(()=>[]),
+        base44.entities.Race.filter({race_date:yesterday,venue_code:selected},'race_number',1).catch(()=>[]),
+      ]);
+      const sameSeries = currentRaces[0]?.series_start_date && currentRaces[0].series_start_date===previousRaces[0]?.series_start_date;
+      const previousByReg = new Map(sameSeries ? previous.filter(x=>x.rank!=null).map(x=>[String(x.registration_number),x]) : []);
+      const shown = p.map(x=>{
+        if(x.rank!=null) return x;
+        const prev=previousByReg.get(String(x.registration_number));
+        return prev ? {...x,rank:prev.rank,point_rate:prev.point_rate,rank_pressure_score:prev.rank_pressure_score,
+          rank_snapshot_at:prev.rank_snapshot_at||prev.snapshot_at,rank_source_date:yesterday} : x;
+      });
       if (alive) {
         setContexts([{as_of_date:today,venue_name:venues.find(v=>v.code===selected)?.name || selected}]);
-        setPoints(p);
+        setPoints(shown);
       }
     };
     (async () => {
