@@ -4,11 +4,11 @@ import { Bell, Loader2, Clock, AlertCircle } from "lucide-react";
 import JudgmentBadge from "@/components/JudgmentBadge";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
-import { getAlerts, getSettings, getRacesByDate, getLatestOddsByDate } from "@/lib/boatService";
+import { getRacesByDate } from "@/lib/boatService";
 import { getCachedAnalysesByDate } from "@/lib/analysisCache";
 import { useFinalAutoJudge } from "@/hooks/useFinalAutoJudge";
 import { base44 } from "@/api/base44Client";
-import { GRADE_STYLE, fmtPct, fmtTime, fmtTimeSec, fmtNum, canFinalJudge, minutesUntilDeadline, finalJudgeTime } from "@/lib/boat";
+import { GRADE_STYLE, fmtPct, fmtTime, fmtTimeSec, fmtNum, minutesUntilDeadline, finalJudgeTime } from "@/lib/boat";
 import { cn } from "@/lib/utils";
 
 function dateStr(offset = 0) {
@@ -75,10 +75,7 @@ export default function Alerts() {
         setLoading(false);
 
         // today odds + tomorrow entries (表示用・非ブロッキング)
-        const [om, tomEnts] = await Promise.all([
-          getLatestOddsByDate(dateStr(0)),
-          base44.entities.RaceEntry.filter({ race_date: dateStr(1) }, "boat_number", 600),
-        ]);
+        const tomEnts = await base44.entities.RaceEntry.filter({ race_date: dateStr(1) }, "boat_number", 2000);
         if (!m) return;
         const tomByRace = {};
         for (const e of tomEnts) (tomByRace[e.race_id] = tomByRace[e.race_id] || []).push(e);
@@ -111,7 +108,7 @@ export default function Alerts() {
         <h2 className="text-sm font-bold mb-3 text-muted-foreground tracking-wider">本日の事前候補・BUY/WATCH</h2>
         {todayAlerts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            現在BUY/WATCH判定のレースはありません
+            現在、締切前の事前候補・BUY/WATCHはありません
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
