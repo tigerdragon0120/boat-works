@@ -1,11 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { VENUE_NAMES, parseSeriesContext, parsePointRank, fetchWithRetry } from '../../shared/scraper.js';
+import { VENUE_NAMES, parseSeriesContext, parsePointRank, parseRaceResultDetail, fetchWithRetry } from '../../shared/scraper.js';
 import { computeSeriesRacerScore, computeRankPressureScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
 
 const BASE = 'https://www.boatrace.jp/owpc/pc/race';
 const CONTEXT_VERSION = 'v10';
 
-function isBetween(date, start, end) { return date >= start && date <= end; }
 
 export default async function(req) {
   try {
@@ -25,6 +24,7 @@ export default async function(req) {
     const raceIndexRes = await fetchWithRetry(`${BASE}/raceindex?jcd=${jcd}&hd=${hd}`, { headers:{'User-Agent':'Mozilla/5.0'} }, 12000, 2);
     const raceIndexHtml = await raceIndexRes.text();
     const ctx = parseSeriesContext(raceIndexHtml, asOfDate);
+    if (!ctx.series_dates.includes(asOfDate)) throw new Error('公式の開催日程を取得できませんでした。節を初日と推定せず更新を中止しました。');
     const seriesKey = `${jcd}_${ctx.series_start_date}`;
     const now = new Date().toISOString();
 
@@ -54,15 +54,57 @@ export default async function(req) {
 
     // 今節の詳細結果だけをDB側で直接取得する。
     // 全期間500件→後段絞り込みだと最近の開催が上限外に落ちるため、開始日〜対象日で先に限定する。
-    const results = await base44.asServiceRole.entities.RaceResult.filter({
+    const savedResults = await base44.asServiceRole.entities.RaceResult.filter({
       venue_code:jcd,
       data_source:'official',
       race_date:{ $gte:ctx.series_start_date, $lte:asOfDate },
-    }, 'race_date', 200).catch(()=>[]);
+    }, '-updated_date', 500);
+    // BOATCASTのRace確定と詳細結果の保存は別経路。欠けている詳細を補完する。
+    const seriesRaces = await base44.asServiceRole.entities.Race.filter({
+      venue_code:jcd, race_date:{ $gte:ctx.series_start_date, $lte:asOfDate },
+    }, 'race_date', 500);
+    const resultKey = r => `${r.race_date}_${Number(r.race_number)}`;
+    const byRace = new Map();
+    for (const r of savedResults) {
+      const old = byRace.get(resultKey(r));
+      if (!old || (!old.finishers?.length && r.finishers?.length)) byRace.set(resultKey(r), r);
+    }
+    const targets = seriesRaces.filter(r =>
+      (r.status === 'finished' || r.result_trifecta || r.race_date < asOfDate) &&
+      r.status !== 'cancelled' && !byRace.get(resultKey(r))?.finishers?.length
+    );
+    const fetchDeadline = Date.now() + 45000;
+    let next = 0;
+    const detailErrors = [];
+    await Promise.all(Array.from({ length:3 }, async () => {
+      while (next < targets.length && Date.now() < fetchDeadline) {
+        const race = targets[next++];
+        try {
+          const res = await fetchWithRetry(`${BASE}/raceresult?rno=${Number(race.race_number)}&jcd=${jcd}&hd=${race.race_date.replace(/-/g,'')}`,
+            { headers:{'User-Agent':'Mozilla/5.0'} }, 7000, 0);
+          const detail = parseRaceResultDetail(await res.text());
+          if (!detail?.finishers?.some(f => f.registration_number && f.finish != null)) continue;
+          const payload = {
+            ...detail, race_id:race.id, race_date:race.race_date,
+            venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd, race_number:Number(race.race_number),
+            data_source:'official', detail_fetched_at:new Date().toISOString(),
+            ...(race.result_trifecta ? { trifecta:race.result_trifecta } : {}),
+            ...(race.payout_trifecta != null ? { payout_trifecta:race.payout_trifecta } : {}),
+          };
+          const old = byRace.get(resultKey(race));
+          const saved = old
+            ? await base44.asServiceRole.entities.RaceResult.update(old.id, payload)
+            : await base44.asServiceRole.entities.RaceResult.create(payload);
+          byRace.set(resultKey(race), { ...payload, ...saved });
+        } catch (error) { detailErrors.push({ race_date:race.race_date, race_number:race.race_number, message:String(error?.message || error) }); }
+      }
+    }));
+    const missingDetails = targets.filter(r => !byRace.get(resultKey(r))?.finishers?.length).length;
+    const results = [...byRace.values()];
     const histories = new Map();
     for (const r of results) {
       const finishers = Array.isArray(r.finishers) ? r.finishers : [];
-      const validStarts = Array.isArray(r.start_info) ? r.start_info.map(x=>Number(x.st)).filter(x=>Number.isFinite(x) && x >= 0) : [];
+      const validStarts = Array.isArray(r.start_info) ? r.start_info.filter(x=>x.st != null).map(x=>Number(x.st)).filter(x=>Number.isFinite(x) && x >= 0) : [];
       const fieldAvgSt = validStarts.length ? validStarts.reduce((a,b)=>a+b,0)/validStarts.length : null;
       for (const f of finishers) {
         const reg = String(f.registration_number || '');
@@ -140,7 +182,7 @@ export default async function(req) {
     }
 
     return Response.json({
-      status:'success', venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd,
+      status:missingDetails ? 'partial' : 'success', missing_details:missingDetails, detail_errors:detailErrors.slice(0,5), venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd,
       as_of_date:asOfDate, series_key:seriesKey, event_name:ctx.event_name, grade:ctx.grade,
       series_day:ctx.series_day, series_total_days:ctx.series_total_days,
       point_rank_available:pointRank.available, standings:pointRank.standings.length,
