@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
 import { VENUE_NAMES, fetchBoatcastText, parseStr3 } from '../../shared/boatcastSync.js';
-import { computeSeriesRacerScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
+import { computeSeriesRacerScore, computeRankPressureScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
 
 // STR3の今節成績を使用。日程を推定せず、日付別スナップショットとして保存する。
 Deno.serve(async (req) => {
