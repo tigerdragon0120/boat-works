@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
     const failed = [];
     const standings = new Map();
     let standingsAvailable = 0;
+    const standingsErrors = [];
     let next = 0;
     await Promise.all(Array.from({length:3},async()=>{
       while(next < raceNumbers.length) {
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
             standingsAvailable++;
             for(const row of rows) if(row.rank!=null || row.point_rate!=null) standings.set(row.registration_number,row);
           }
-        } catch {} // 出走表の集計と独立して取得
+        } catch (error) { standingsErrors.push(`${rn}R: ${error?.message || error}`); } // 出走表の集計と独立して取得
       }
     }));
     if (!byReg.size) throw new Error('BOATCASTの今節成績を取得できませんでした');
@@ -127,8 +128,8 @@ Deno.serve(async (req) => {
     }
     if(toUpdate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkUpdate(toUpdate);
     if(toCreate.length) await base44.asServiceRole.entities.SeriesRacerPoint.bulkCreate(toCreate);
-    return Response.json({status:failed.length?'partial':'success',missing_details:failed.length,
-      racers:saved,ranked_racers:[...standings.values()].filter(x=>x.rank!=null).length,standings_races:standingsAvailable,series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
+    return Response.json({status:failed.length || standingsAvailable<raceNumbers.length?'partial':'success',missing_details:failed.length,
+      racers:saved,ranked_racers:[...standings.values()].filter(x=>x.rank!=null).length,standings_races:standingsAvailable,standings_errors:standingsErrors.slice(0,12),series_key:key,as_of_date:asOfDate,venue_code:jcd,venue_name:VENUE_NAMES[jcd], implementation:'boatcast-series-20260927'});
   } catch(error) {
     return Response.json({status:'error',message:error?.message || String(error),implementation:'boatcast-series-20260927'},{status:500});
   }
