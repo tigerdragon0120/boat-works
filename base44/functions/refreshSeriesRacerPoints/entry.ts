@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.44';
-import { VENUE_NAMES, parseSeriesContext, parsePointRank, parseRaceResultDetail, fetchWithRetry } from '../../shared/scraper.js';
+import { VENUE_NAMES, parseSeriesContext, parsePointRank, parseDaySchedule, parseRaceResultDetail, fetchWithRetry } from '../../shared/scraper.js';
 import { computeSeriesRacerScore, computeRankPressureScore, SERIES_SCORE_VERSION } from '../../shared/seriesScore.js';
 
 const BASE = 'https://www.boatrace.jp/owpc/pc/race';
@@ -63,6 +63,21 @@ export default async function(req) {
     const seriesRaces = await base44.asServiceRole.entities.Race.filter({
       venue_code:jcd, race_date:{ $gte:ctx.series_start_date, $lte:asOfDate },
     }, 'race_date', 500);
+    const missingDates = [];
+    for (const date of ctx.series_dates.filter(d => d <= asOfDate)) {
+      if (seriesRaces.filter(r => r.race_date === date).length >= 12) continue;
+      try {
+        const html = date === asOfDate ? raceIndexHtml : await (await fetchWithRetry(
+          `${BASE}/raceindex?jcd=${jcd}&hd=${date.replace(/-/g,'')}`,
+          { headers:{'User-Agent':'Mozilla/5.0'} }, 7000, 0)).text();
+        const schedule = parseDaySchedule(html, date);
+        if (!schedule.length) { missingDates.push(date); continue; }
+        for (const item of schedule) {
+          if (!seriesRaces.some(r => r.race_date === date && Number(r.race_number) === item.race_number))
+            seriesRaces.push({ ...item, race_date:date, venue_code:jcd });
+        }
+      } catch { missingDates.push(date); }
+    }
     const resultKey = r => `${r.race_date}_${Number(r.race_number)}`;
     const byRace = new Map();
     for (const r of savedResults) {
@@ -70,7 +85,7 @@ export default async function(req) {
       if (!old || (!old.finishers?.length && r.finishers?.length)) byRace.set(resultKey(r), r);
     }
     const targets = seriesRaces.filter(r =>
-      (r.status === 'finished' || r.result_trifecta || r.race_date < asOfDate) &&
+      (r.status === 'finished' || r.result_trifecta || r.race_date < asOfDate || (r.deadline && new Date(r.deadline).getTime() <= Date.now())) &&
       r.status !== 'cancelled' && !byRace.get(resultKey(r))?.finishers?.length
     );
     const fetchDeadline = Date.now() + 45000;
@@ -84,8 +99,20 @@ export default async function(req) {
             { headers:{'User-Agent':'Mozilla/5.0'} }, 7000, 0);
           const detail = parseRaceResultDetail(await res.text());
           if (!detail?.finishers?.some(f => f.registration_number && f.finish != null)) continue;
+          let raceId = race.id;
+          if (!raceId) {
+            const created = await base44.asServiceRole.entities.Race.create({
+              race_date:race.race_date, venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd,
+              race_number:Number(race.race_number), deadline:race.deadline,
+              status:'finished', data_source:'official', series_key:seriesKey,
+              event_name:ctx.event_name, grade:ctx.grade,
+              series_start_date:ctx.series_start_date, series_end_date:ctx.series_end_date,
+              series_total_days:ctx.series_total_days, series_day:ctx.series_dates.indexOf(race.race_date) + 1,
+            });
+            raceId = created.id;
+          }
           const payload = {
-            ...detail, race_id:race.id, race_date:race.race_date,
+            ...detail, race_id:raceId, race_date:race.race_date,
             venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd, race_number:Number(race.race_number),
             data_source:'official', detail_fetched_at:new Date().toISOString(),
             ...(race.result_trifecta ? { trifecta:race.result_trifecta } : {}),
@@ -182,7 +209,7 @@ export default async function(req) {
     }
 
     return Response.json({
-      status:missingDetails ? 'partial' : 'success', missing_details:missingDetails, detail_errors:detailErrors.slice(0,5), venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd,
+      status:missingDetails || missingDates.length ? 'partial' : 'success', missing_details:missingDetails, missing_dates:missingDates, detail_errors:detailErrors.slice(0,5), venue_code:jcd, venue_name:VENUE_NAMES[jcd] || jcd,
       as_of_date:asOfDate, series_key:seriesKey, event_name:ctx.event_name, grade:ctx.grade,
       series_day:ctx.series_day, series_total_days:ctx.series_total_days,
       point_rank_available:pointRank.available, standings:pointRank.standings.length,
