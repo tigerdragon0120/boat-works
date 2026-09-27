@@ -29,8 +29,28 @@ export default async function(req) {
       const l=await base44.asServiceRole.functions.invoke('refreshLearningMetrics',{});
       learning=l?.data||l;
     } catch(e) { learning={status:'error',message:e?.message||String(e)}; }
+    // 順位は日中に何度も取得せず、23:45の確定時に場ごとに保存する。
+    const allRaces=await base44.asServiceRole.entities.Race.filter({race_date:raceDate},'race_number',500).catch(()=>[]);
+    const venueCodes=[...new Set(allRaces.map(r=>String(r.venue_code||'').padStart(2,'0')).filter(x=>/^\\d{2}$/.test(x)))];
+    const rankResults:any[]=[];
+    let cursor=0;
+    await Promise.all(Array.from({length:3},async()=>{
+      while(cursor<venueCodes.length) {
+        const jcd=venueCodes[cursor++];
+        try {
+          let res=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd,rank_only:true});
+          let data=res?.data||res;
+          if(data?.status==='waiting') {
+            await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd});
+            res=await base44.asServiceRole.functions.invoke('refreshSeriesRacerPoints',{as_of_date:raceDate,jcd,rank_only:true});
+            data=res?.data||res;
+          }
+          rankResults.push({jcd,...data});
+        } catch(e) { rankResults.push({jcd,status:'error',message:e?.message||String(e)}); }
+      }
+    }));
     const ok=aggregates?.status!=='error'&&learning?.status!=='error';
-    return Response.json({status:ok?'success':'partial',race_date:raceDate,collection,aggregates,learning});
+    return Response.json({status:ok?'success':'partial',race_date:raceDate,collection,aggregates,learning,rank_results:rankResults});
   } catch(error) {
     return Response.json({status:'error',message:error?.message||String(error)},{status:500});
   }
