@@ -22,13 +22,7 @@ function dateStr(offset = 0) {
 
 export default function Alerts() {
   const [loading, setLoading] = useState(true);
-  const todayAlerts = useMemo(() => todayRaces.filter(r => {
-    const deadline = r.deadline ? new Date(r.deadline).getTime() : NaN;
-    if (r.status === "finished" || r.status === "cancelled" || (Number.isFinite(deadline) && deadline <= Date.now())) return false;
-    const a = analyses[r.id];
-    if (a?.stage === "final" && a.judgment !== "PENDING") return ["BUY", "WATCH"].includes(a.judgment);
-    return ["S", "A", "B"].includes(a?.pre_grade);
-  }), [todayRaces, analyses, tick]);
+
   const [tomorrowAlerts, setTomorrowAlerts] = useState([]);
   const [todayRaces, setTodayRaces] = useState([]);
   const [tomorrowRaces, setTomorrowRaces] = useState([]);
@@ -37,6 +31,13 @@ export default function Alerts() {
   const [tick, setTick] = useState(0);
   const [racerDialog, setRacerDialog] = useState(null);
   const [tomorrowEntries, setTomorrowEntries] = useState({});
+  const todayAlerts = useMemo(() => todayRaces.filter(r => {
+    const deadline = r.deadline ? new Date(r.deadline).getTime() : NaN;
+    if (r.status === "finished" || r.status === "cancelled" || (Number.isFinite(deadline) && deadline <= Date.now())) return false;
+    const a = analyses[r.id];
+    if (a?.stage === "final" && a.judgment !== "PENDING") return ["BUY", "WATCH"].includes(a.judgment);
+    return ["S", "A", "B"].includes(a?.pre_grade);
+  }), [todayRaces, analyses, tick]);
 
   useEffect(() => {
     let m = true;
