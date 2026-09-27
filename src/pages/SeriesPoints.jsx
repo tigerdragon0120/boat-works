@@ -55,14 +55,13 @@ export default function SeriesPoints() {
     setContexts([]);
     setPoints([]);
     const readSaved = async () => {
-      const rows = await base44.entities.SeriesContext.filter({
-        venue_code:selected, series_start_date:{ $lte:today }, series_end_date:{ $gte:today },
-      }, "-refreshed_at", 50);
-      const c = rows[0];
-      const p = c ? await base44.entities.SeriesRacerPoint.filter({
-        series_key:c.series_key,
-      }, "-snapshot_at", 500) : [];
-      if (alive) { setContexts(c ? [c] : []); setPoints(p); }
+      const p = await base44.entities.SeriesRacerPoint.filter({
+        series_key:'boatcast_'+selected+'_'+today, as_of_date:today,
+      }, "-snapshot_at", 100);
+      if (alive) {
+        setContexts([{as_of_date:today,venue_name:venues.find(v=>v.code===selected)?.name || selected}]);
+        setPoints(p);
+      }
     };
     (async () => {
       try {
@@ -70,14 +69,14 @@ export default function SeriesPoints() {
         const response = await base44.functions.invoke("refreshSeriesRacerPoints", { as_of_date:today, jcd:selected });
         const result = response.data;
         if (!result || result.status === "error") throw new Error(result?.message || "再集計に失敗しました");
-        if (alive && result.status === "partial") setNotice(`詳細結果が${result.missing_details ?? "数"}レース未取得${result.missing_dates?.length ? `、開催表未取得 ${result.missing_dates.join("・")}` : ""}です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
+        if (alive && result.status === "partial") setNotice(`出走表が${result.missing_details ?? "数"}レース未取得${result.missing_dates?.length ? `、開催表未取得 ${result.missing_dates.join("・")}` : ""}です。表示は取得済み分の暫定値です。「再集計」で続きを取得できます。`);
         await readSaved();
       } catch (e) {
         if (alive) setError(e?.response?.data?.message || e?.message || "更新できませんでした。");
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
-  }, [selected, today, refresh]);
+  }, [selected, today, refresh, venues]);
 
   const context = contexts[0];
   const racers = useMemo(() => {
@@ -106,7 +105,7 @@ export default function SeriesPoints() {
         ))}
       </div>
       <button disabled={loading || !selected} onClick={() => setRefresh(x => x + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-50">{loading ? "集計中…" : "再集計"}</button>
-      {loading && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mr-2" />公式結果を確認しています…</div>}
+      {loading && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mr-2" />BOATCASTの今節成績を確認しています…</div>}
       {error && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">更新できませんでした：{error} 保存済みデータがあれば表示しています。</div>}
       {notice && <div role="status" className="rounded-xl border border-amber-300 p-3 text-sm">{notice}</div>}
       {!loading && !error && venues.length === 0 && <div className="p-6 text-sm text-muted-foreground">本日の開催データがありません。</div>}
@@ -115,12 +114,12 @@ export default function SeriesPoints() {
             <div className="rounded-2xl border bg-card p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-bold">{context.venue_name}　{context.event_name}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{fmtDate(context.series_start_date)}〜{fmtDate(context.series_end_date)}・{context.grade}・{context.series_day}日目 / 全{context.series_total_days}日</div>
+                  <div className="font-bold">{context.venue_name}　今節成績</div>
+                  <div className="text-xs text-muted-foreground mt-1">BOATCASTの枠・着順・STで集計／着差と公式得点率は未取得</div>
                 </div>
                 <div className="text-right text-xs">
                   <div className="font-bold">集計対象 {fmtDate(context.as_of_date)}</div>
-                  <div className="text-muted-foreground">{context.point_rank_available ? context.point_rank_as_of || "公式得点率あり" : "公式得点率なし"}</div>
+                  <div className="text-muted-foreground">{points[0]?.snapshot_at ? new Date(points[0].snapshot_at).toLocaleTimeString("ja-JP", { timeZone:"Asia/Tokyo",hour:"2-digit",minute:"2-digit" }) + " 更新" : "未集計"}</div>
                 </div>
               </div>
             </div>
@@ -175,7 +174,7 @@ function RacerSeriesCard({ racer: r, position }) {
           <div className="flex gap-1.5 flex-wrap">
             {hist.map((h,i) => (
               <span key={i} className="text-xs font-bold rounded-lg border bg-background px-2 py-1 tabular-nums">
-                {h.lane}号艇 → {h.finish}着
+                {h.series_day != null && <span className="text-[9px] text-muted-foreground mr-1">{h.series_day}日目 {h.race_number}R</span>}{h.lane}号艇 → {h.finish}着
                 {h.st != null && <span className="text-[9px] text-muted-foreground ml-1">ST {Number(h.st).toFixed(2)}</span>}
               </span>
             ))}
