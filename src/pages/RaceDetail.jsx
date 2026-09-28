@@ -86,13 +86,17 @@ export default function RaceDetail() {
   };
 
   const loadAll = async () => {
-    setLoading(true);
+    // 定期確認では確定済みの画面を消さず、初回・別レースへの移動だけ全画面表示にする。
+    const changingRace = race?.id !== id;
+    if (changingRace) {
+      setLoading(true);
+      setAnalysis(null);
+      setTrust(null);
+      setPreAnalysis(null);
+      setSeriesPoint(null);
+      setRaceResult(null);
+    }
     setError(null);
-    setAnalysis(null);
-    setTrust(null);
-    setPreAnalysis(null);
-    setSeriesPoint(null);
-    setRaceResult(null);
     try {
       const s = await getSettings();
       const r = await base44.entities.Race.get(id);
@@ -145,10 +149,14 @@ export default function RaceDetail() {
 
       // final取得・分析はバックエンド Final Judge Worker に一本化。
       // 詳細画面を開いただけでは公式サイトへ再アクセスしない。
-      const finalNeedsUpdate = within5 && (!finalCached || finalCached.judgment === "PENDING");
+      const deadlineMs = new Date(r.deadline).getTime();
+      const finalNeedsUpdate = within5 && Date.now() < deadlineMs && (!finalCached || !finalCached.judgment || finalCached.judgment === "PENDING");
       if (finalNeedsUpdate) {
         setFetching("waiting");
         setFetchMsg("最終オッズを自動取得中…（バックエンドで処理）");
+      } else {
+        setFetching(null);
+        setFetchMsg(null);
       }
     } catch (e) {
       setError(e.message || "データ取得失敗");
@@ -162,13 +170,27 @@ export default function RaceDetail() {
   }, [id, reloadKey]);
 
   useEffect(() => {
-    // 時刻表示だけでなく、最終判定待ち中はDBのfinal判定も自動再読込する。
+    // final未確定時だけ更新する。確定後は結果到着を1分ごとに確認する。
     const t = setInterval(() => {
       setTick((x) => x + 1);
-      if (canFinalJudge(race?.deadline)) setReloadKey((k) => k + 1);
+      const deadlineMs = new Date(race?.deadline).getTime();
+      if (!Number.isFinite(deadlineMs)) return;
+      const now = Date.now();
+      const finalConfirmed = analysis?.stage === "final" && analysis.judgment && analysis.judgment !== "PENDING";
+      if (!finalConfirmed && now < deadlineMs && canFinalJudge(race?.deadline)) setReloadKey((k) => k + 1);
     }, 15000);
     return () => clearInterval(t);
-  }, [race?.deadline]);
+  }, [race?.deadline, analysis?.stage, analysis?.judgment]);
+
+  useEffect(() => {
+    const deadlineMs = new Date(race?.deadline).getTime();
+    if (!Number.isFinite(deadlineMs) || raceResult?.is_finished || raceResult?.result_status === "RESULT_FINAL" || race?.result_trifecta) return;
+    const t = setInterval(() => {
+      const elapsed = Date.now() - deadlineMs;
+      if (elapsed >= 0 && elapsed < 30 * 60 * 1000) setReloadKey((k) => k + 1);
+    }, 60000);
+    return () => clearInterval(t);
+  }, [race?.deadline, race?.result_trifecta, raceResult?.is_finished, raceResult?.result_status]);
 
   if (loading) {
     return (
