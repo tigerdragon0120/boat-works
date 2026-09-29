@@ -10,6 +10,8 @@ import PlayerStructureCard from "@/components/PlayerStructureCard";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
 import RaceNumberNav from "@/components/RaceNumberNav";
+import PullToRefreshIndicator from "@/components/PullToRefreshIndicator";
+import usePullToRefresh from "@/hooks/usePullToRefresh";
 import {
   getSettings, getEntries, getLatestOdds, getOddsHistory, fetchOfficialRace,
   getBoat1TrustScore,
@@ -171,6 +173,8 @@ export default function RaceDetail() {
     }
   };
 
+  const { pullDistance, refreshing, pullHandlers } = usePullToRefresh(loadAll);
+
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,10 +265,21 @@ export default function RaceDetail() {
   };
 
   return (
-    <div className="space-y-5">
-      <button onClick={() => nav(-1)} className="text-sm text-muted-foreground flex items-center gap-1 hover:text-foreground">
-        <ArrowLeft className="w-4 h-4" /> 戻る
-      </button>
+    <div className="space-y-5" {...pullHandlers}>
+      <PullToRefreshIndicator pullDistance={pullDistance} refreshing={refreshing} />
+
+      <div className="flex items-center justify-between">
+        <button onClick={() => nav(-1)} className="text-sm text-muted-foreground flex items-center gap-1 hover:text-foreground">
+          <ArrowLeft className="w-4 h-4" /> 戻る
+        </button>
+        <button
+          onClick={() => loadAll()}
+          disabled={refreshing}
+          className="text-xs font-bold text-primary flex items-center gap-1 disabled:opacity-60"
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", refreshing && "animate-spin")} /> 再読み込み
+        </button>
+      </div>
 
       {/* レース番号の直接切替 */}
       <RaceNumberNav races={dayRaces} currentId={id} onSelect={(rid) => nav(`/race/${rid}`)} />
