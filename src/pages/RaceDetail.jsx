@@ -9,6 +9,7 @@ import EvaluationReasonCard from "@/components/EvaluationReasonCard";
 import PlayerStructureCard from "@/components/PlayerStructureCard";
 import RacerPhoto from "@/components/RacerPhoto";
 import RacerDetailDialog from "@/components/RacerDetailDialog";
+import RaceNumberNav from "@/components/RaceNumberNav";
 import {
   getSettings, getEntries, getLatestOdds, getOddsHistory, fetchOfficialRace,
   getBoat1TrustScore,
@@ -42,6 +43,7 @@ export default function RaceDetail() {
   const [venuePatternRates, setVenuePatternRates] = useState(null);
   const [seriesPoint, setSeriesPoint] = useState(null);
   const [raceResult, setRaceResult] = useState(null);
+  const [dayRaces, setDayRaces] = useState([]);
 
   // キャッシュ済みUichiAnalysis → 表示用オブジェクト変換
   const cachedToObjects = (cached, s) => {
@@ -102,11 +104,16 @@ export default function RaceDetail() {
       const r = await base44.entities.Race.get(id);
       setSettings(s);
       setRace(r);
-      const [ents, latestOdds, hist, byStage, results, vrs] = await Promise.all([
+      const [ents, latestOdds, hist, byStage, results, vrs, dayRs] = await Promise.all([
         getEntries(id), getLatestOdds(id), getOddsHistory(id), getCachedAnalysesForRace(id),
         base44.entities.RaceResult.filter({ race_id: id }, "-finished_at", 1).catch(() => []),
         base44.entities.RaceResult.filter({ venue_code: r.venue_code, race_number: Number(r.race_number), data_source: "official" }, "-race_date", 500).catch(() => []),
+        base44.entities.Race.filter({ race_date: r.race_date, venue_code: r.venue_code }, "race_number", 30).catch(() => []),
       ]);
+      const dayList = (Array.isArray(dayRs) ? dayRs : (dayRs?.items || []))
+        .slice()
+        .sort((a, b) => Number(a.race_number) - Number(b.race_number));
+      setDayRaces(dayList);
       const historical = vrs || [];
       const newMainHits = historical.filter(x => Number(x.result_1) === 1 && [3,4,5,6].includes(Number(x.result_2)) && Number(x.result_3) === 2).length;
       const newUraHits = historical.filter(x => Number(x.result_1) === 2 && Number(x.result_2) === 1 && [3,4,5,6].includes(Number(x.result_3))).length;
@@ -194,8 +201,11 @@ export default function RaceDetail() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin mr-2" /> 読み込み中…
+      <div className="space-y-4">
+        <RaceNumberNav races={dayRaces} currentId={id} onSelect={(rid) => nav(`/race/${rid}`)} />
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="w-6 h-6 animate-spin mr-2" /> 読み込み中…
+        </div>
       </div>
     );
   }
@@ -255,6 +265,9 @@ export default function RaceDetail() {
       <button onClick={() => nav(-1)} className="text-sm text-muted-foreground flex items-center gap-1 hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> 戻る
       </button>
+
+      {/* レース番号の直接切替 */}
+      <RaceNumberNav races={dayRaces} currentId={id} onSelect={(rid) => nav(`/race/${rid}`)} />
 
       {/* Race header */}
       <div className="rounded-2xl bg-gradient-to-br from-card to-background border border-border p-4">
